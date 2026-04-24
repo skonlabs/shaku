@@ -443,10 +443,43 @@ function AccountPanel() {
 function DocumentPanel() {
   const { document: doc } = usePanel();
   const [copied, setCopied] = useState(false);
+  const [fetched, setFetched] = useState<{ url: string; content: string } | null>(null);
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const initialContent = doc?.content ?? "";
+  const needsFetch = !!doc && !initialContent.trim() && !!doc.url;
+
+  useEffect(() => {
+    if (!needsFetch || !doc?.url) return;
+    if (fetched?.url === doc.url) return;
+    let cancelled = false;
+    setFetching(true);
+    setFetchError(null);
+    fetch(doc.url)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      })
+      .then((text) => {
+        if (!cancelled) setFetched({ url: doc.url!, content: text });
+      })
+      .catch((e) => {
+        if (!cancelled) setFetchError(e?.message || "Couldn't load document");
+      })
+      .finally(() => {
+        if (!cancelled) setFetching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsFetch, doc?.url, fetched?.url]);
 
   if (!doc) {
     return <div className="p-4 text-xs text-muted-foreground">No document selected.</div>;
   }
+
+  const content = initialContent.trim() ? initialContent : (fetched?.content ?? "");
 
   const isMarkdown =
     !doc.mime ||
@@ -455,7 +488,7 @@ function DocumentPanel() {
 
   const onCopy = async () => {
     try {
-      await navigator.clipboard.writeText(doc.content);
+      await navigator.clipboard.writeText(content);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
