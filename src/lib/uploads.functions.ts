@@ -25,7 +25,7 @@ export const uploadChatFile = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { userId } = context;
 
-    const bytes = decodeBase64(data_b64Get(data));
+    const bytes = decodeBase64(data.data_b64);
     if (bytes.byteLength > MAX_BYTES) {
       throw new Error("That file is too large. Max 25 MB.");
     }
@@ -61,11 +61,6 @@ export const uploadChatFile = createServerFn({ method: "POST" })
       path,
     };
   });
-
-// Tiny helper to placate TS without a separate type
-function data_b64Get(d: { data_b64: string }) {
-  return d.data_b64;
-}
 
 function decodeBase64(b64: string): Uint8Array {
   const clean = b64.replace(/^data:[^;]+;base64,/, "");
