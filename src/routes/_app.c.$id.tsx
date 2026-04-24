@@ -5,6 +5,7 @@ import { ChatComposer, type Attachment } from "@/components/ChatComposer";
 import { MessageList, type DisplayMessage } from "@/components/MessageList";
 import { getConversation } from "@/lib/conversations.functions";
 import { streamChat } from "@/lib/streamChat";
+import { RateLimitBanner } from "@/components/RateLimitBanner";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/c/$id")({
@@ -173,6 +174,7 @@ function ChatPage() {
           />
         )}
       </div>
+      <RateLimitBanner />
       <ChatComposer
         conversationId={id}
         onSend={send}
