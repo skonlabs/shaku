@@ -1,6 +1,22 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import {
+  Outlet,
+  Link,
+  createRootRouteWithContext,
+  HeadContent,
+  Scripts,
+} from "@tanstack/react-router";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/sonner";
+import { AuthProvider } from "@/lib/auth-context";
+import { ThemeProvider } from "@/lib/theme-context";
+import { KbHelpProvider, PanelProvider } from "@/lib/ui-context";
+import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 
 import appCss from "../styles.css?url";
+
+interface RouterCtx {
+  queryClient: QueryClient;
+}
 
 function NotFoundComponent() {
   return (
@@ -14,7 +30,7 @@ function NotFoundComponent() {
         <div className="mt-6">
           <Link
             to="/"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
           >
             Go home
           </Link>
@@ -24,26 +40,27 @@ function NotFoundComponent() {
   );
 }
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<RouterCtx>()({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Cortex — Your personal AI" },
+      {
+        name: "description",
+        content:
+          "Cortex is your personal AI assistant that remembers, learns, and helps you get things done.",
+      },
+      { property: "og:title", content: "Cortex — Your personal AI" },
+      {
+        property: "og:description",
+        content:
+          "Cortex is your personal AI assistant that remembers, learns, and helps you get things done.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
-    links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
-    ],
+    links: [{ rel: "stylesheet", href: appCss }],
   }),
   shellComponent: RootShell,
   component: RootComponent,
@@ -52,9 +69,20 @@ export const Route = createRootRoute({
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                var t = localStorage.getItem('cortex.theme') || 'system';
+                var d = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                if (d) document.documentElement.classList.add('dark');
+              } catch(e) {}
+            `,
+          }}
+        />
       </head>
       <body>
         {children}
@@ -65,5 +93,20 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  return <Outlet />;
+  const { queryClient } = Route.useRouteContext();
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthProvider>
+          <PanelProvider>
+            <KbHelpProvider>
+              <KeyboardShortcuts />
+              <Outlet />
+              <Toaster richColors closeButton position="top-right" />
+            </KbHelpProvider>
+          </PanelProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
 }
