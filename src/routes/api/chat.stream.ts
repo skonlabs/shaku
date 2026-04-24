@@ -387,6 +387,16 @@ export const Route = createFileRoute("/api/chat/stream")({
           // disconnected or the upstream errored. This prevents the
           // assistant reply from vanishing on refetch.
           const { visible, followups } = splitFollowups(assistantText);
+          // If we exhausted all auto-continues and the model still wanted more
+          // tokens, surface a "Continue generating" follow-up so the user can
+          // resume on demand.
+          if (hitFinalCap) {
+            const cont = "Continue generating";
+            if (!followups.some((f) => f.toLowerCase().includes("continue"))) {
+              followups.unshift(cont);
+              if (followups.length > 3) followups.length = 3;
+            }
+          }
           let assistantId: string | null = null;
           let assistantCreatedAt: string | null = null;
           if (visible.trim().length > 0) {
@@ -394,7 +404,7 @@ export const Route = createFileRoute("/api/chat/stream")({
             if (followups.length) metadata.follow_ups = followups;
             if (priorVersion) metadata.versions = [priorVersion];
             if (streamError) metadata.partial = true;
-            if (stopReason === "max_tokens") metadata.truncated = true;
+            if (hitFinalCap) metadata.truncated = true;
             const asst = await supabase
               .from("messages")
               .insert({
