@@ -34,10 +34,11 @@ function AppLayout() {
   return (
     <div className="flex h-svh w-full overflow-hidden bg-background">
       <AppSidebar />
-      <SidePanel />
+      <SidePanel side="left" />
       <main className="flex flex-1 flex-col overflow-hidden">
         <Outlet />
       </main>
+      <SidePanel side="right" />
     </div>
   );
 }

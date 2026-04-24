@@ -39,7 +39,7 @@ import {
 } from "@/lib/conversations.functions";
 import { MessageContent } from "@/components/MessageContent";
 
-export function SidePanel() {
+export function SidePanel({ side = "left" }: { side?: "left" | "right" }) {
   const { active, setActive, document } = usePanel();
 
   // Close on Esc handled globally; keep panel mounted so animations work
@@ -55,10 +55,15 @@ export function SidePanel() {
   if (!active) return null;
 
   const isDoc = active === "document";
+  // Document panel renders on the right; all other panels on the left.
+  if (side === "right" && !isDoc) return null;
+  if (side === "left" && isDoc) return null;
+
   return (
     <div
       className={cn(
-        "z-20 flex h-svh shrink-0 flex-col border-r border-border bg-card",
+        "z-20 flex h-svh shrink-0 flex-col bg-card",
+        side === "right" ? "border-l border-border" : "border-r border-border",
         isDoc ? "w-[480px]" : "w-[300px]",
       )}
     >
