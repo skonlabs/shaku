@@ -10,7 +10,9 @@ import {
   ArrowDown,
   FileText,
   Sparkles,
+  PanelRightOpen,
 } from "lucide-react";
+import { usePanel } from "@/lib/ui-context";
 import { MessageContent } from "@/components/MessageContent";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
