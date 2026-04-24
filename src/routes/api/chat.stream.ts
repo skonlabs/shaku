@@ -475,6 +475,31 @@ export const Route = createFileRoute("/api/chat/stream")({
 
 // ---------- helpers ----------
 
+/** If `buffer` begins with the tail of `priorTail` (allowing minor leading
+ * noise), strip that overlap and return the remainder. Returns null if we
+ * can't yet decide and the caller should keep buffering. Requires at least
+ * MIN_OVERLAP chars of match to avoid truncating genuine new content.
+ */
+function stripOverlapPrefix(buffer: string, priorTail: string): string | null {
+  if (!priorTail) return buffer;
+  const MIN_OVERLAP = 24;
+  const leadMatch = buffer.match(/^[\s"'`>\-*]{0,8}/);
+  const leadLen = leadMatch ? leadMatch[0].length : 0;
+  const body = buffer.slice(leadLen);
+  const maxLen = Math.min(priorTail.length, body.length);
+  for (let len = maxLen; len >= MIN_OVERLAP; len--) {
+    const tailSlice = priorTail.slice(priorTail.length - len);
+    if (body.startsWith(tailSlice)) {
+      return body.slice(len);
+    }
+  }
+  // If buffer already exceeds priorTail by a comfortable margin with no match,
+  // give up and emit as-is. Otherwise wait for more.
+  if (body.length >= priorTail.length + MIN_OVERLAP) return buffer;
+  return null;
+}
+
+
 function jsonError(error: string, status: number) {
   return new Response(JSON.stringify({ error }), {
     status,
