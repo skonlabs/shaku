@@ -25,16 +25,29 @@ export const initiateConnectorAuth = createServerFn({ method: "POST" })
     // Generate CSRF state token
     const oauthState = crypto.randomUUID();
 
-    // Upsert connector record with state (create if not exists)
-    const { error } = await supabase.from("connectors").upsert(
-      {
+    // Insert if new connector; if one already exists (possibly connected), only update oauth_state
+    // to avoid resetting a connected/syncing connector's status back to "disconnected".
+    const { data: existing } = await supabase
+      .from("connectors")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("service", data.service)
+      .maybeSingle();
+
+    let error: { message: string } | null;
+    if (existing) {
+      ({ error } = await supabase
+        .from("connectors")
+        .update({ oauth_state: oauthState })
+        .eq("id", existing.id));
+    } else {
+      ({ error } = await supabase.from("connectors").insert({
         user_id: userId,
         service: data.service,
         status: "disconnected",
         oauth_state: oauthState,
-      },
-      { onConflict: "user_id,service" },
-    );
+      }));
+    }
     if (error) throw new Error("Couldn't initiate connection.");
 
     // Build provider-specific auth URL

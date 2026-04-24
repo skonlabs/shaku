@@ -143,71 +143,134 @@ export async function syncGoogleDrive(
   let accessToken = await decryptToken(connector.oauth_token_encrypted);
   const refreshToken = await decryptToken(connector.oauth_refresh_token_encrypted);
 
-  // List changed files since last sync
-  const params = new URLSearchParams({
-    pageSize: "50",
-    fields: "nextPageToken,files(id,name,mimeType,size,modifiedTime,webViewLink,owners)",
-    q: "trashed=false and mimeType!='application/vnd.google-apps.folder'",
-  });
-
-  if (connector.sync_cursor) {
-    params.set("pageToken", connector.sync_cursor);
-  }
-
-  let res = await fetch(`${GOOGLE_DRIVE_API}/files?${params}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-
-  // Token expired — refresh and retry once
-  if (res.status === 401) {
-    const refreshed = await refreshAccessToken(refreshToken);
-    accessToken = refreshed.accessToken;
-    const encryptedNew = await encryptToken(accessToken);
-    await supabase.from("connectors").update({ oauth_token_encrypted: encryptedNew }).eq("id", connectorId);
-    res = await fetch(`${GOOGLE_DRIVE_API}/files?${params}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-  }
-
-  if (!res.ok) throw new Error(`Drive API error: ${res.status}`);
-
-  const json = (await res.json()) as {
-    files: { id: string; name: string; mimeType: string; modifiedTime: string; webViewLink?: string }[];
-    nextPageToken?: string;
+  // Retry once after token refresh
+  const fetchWithAuth = async (url: string): Promise<Response> => {
+    let res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (res.status === 401) {
+      const refreshed = await refreshAccessToken(refreshToken);
+      accessToken = refreshed.accessToken;
+      const encryptedNew = await encryptToken(accessToken);
+      await supabase.from("connectors").update({ oauth_token_encrypted: encryptedNew }).eq("id", connectorId);
+      res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    }
+    return res;
   };
 
   const { processFile } = await import("@/lib/datasources/processor");
   const errors: string[] = [];
   let itemsProcessed = 0;
+  let newCursor: string | null = null;
 
-  for (const file of json.files ?? []) {
-    try {
-      const content = await downloadFileContent(file.id, file.mimeType, accessToken);
-      if (!content) continue;
+  if (!connector.sync_cursor) {
+    // ---- Initial sync: list all existing files via files.list ----
+    const params = new URLSearchParams({
+      pageSize: "50",
+      fields: "files(id,name,mimeType,modifiedTime,webViewLink)",
+      q: "trashed=false and mimeType!='application/vnd.google-apps.folder'",
+    });
+    const res = await fetchWithAuth(`${GOOGLE_DRIVE_API}/files?${params}`);
+    if (!res.ok) throw new Error(`Drive API error: ${res.status}`);
 
-      const bytes = new TextEncoder().encode(content);
-      const fileType = mimeToExtension(file.mimeType);
+    const json = (await res.json()) as {
+      files: { id: string; name: string; mimeType: string; modifiedTime: string; webViewLink?: string }[];
+    };
 
-      await processFile(userId, bytes, file.name, fileType, {
-        sourceType: "connector",
-        sourceId: connectorId,
-        sourceItemId: file.id,
-        metadata: {
-          title: file.name,
-          url: file.webViewLink,
-          source_name: "Google Drive",
-          modified_at: file.modifiedTime,
-          permissions: { canAccess: true },
-        },
-      }, supabase);
-
-      itemsProcessed++;
-    } catch (e) {
-      errors.push(`${file.name}: ${e instanceof Error ? e.message : "unknown"}`);
+    for (const file of json.files ?? []) {
+      try {
+        const content = await downloadFileContent(file.id, file.mimeType, accessToken);
+        if (!content) continue;
+        await processFile(
+          userId,
+          new TextEncoder().encode(content),
+          file.name,
+          mimeToExtension(file.mimeType),
+          {
+            sourceType: "connector",
+            sourceId: connectorId,
+            sourceItemId: file.id,
+            metadata: {
+              title: file.name,
+              url: file.webViewLink,
+              source_name: "Google Drive",
+              modified_at: file.modifiedTime,
+              permissions: { canAccess: true },
+            },
+          },
+          supabase,
+        );
+        itemsProcessed++;
+      } catch (e) {
+        errors.push(`${file.name}: ${e instanceof Error ? e.message : "unknown"}`);
+      }
     }
+
+    // Fetch a Changes API startPageToken so the next sync uses incremental changes
+    const startRes = await fetchWithAuth(`${GOOGLE_DRIVE_API}/changes/startPageToken`);
+    if (startRes.ok) {
+      const startJson = (await startRes.json()) as { startPageToken: string };
+      newCursor = startJson.startPageToken;
+    }
+  } else {
+    // ---- Incremental sync: list changes since last Changes API token ----
+    // sync_cursor holds a Drive Changes startPageToken (durable across invocations),
+    // not a files.list nextPageToken (which expires in minutes).
+    const params = new URLSearchParams({
+      pageToken: connector.sync_cursor,
+      pageSize: "50",
+      fields:
+        "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,mimeType,modifiedTime,webViewLink))",
+    });
+    const res = await fetchWithAuth(`${GOOGLE_DRIVE_API}/changes?${params}`);
+    if (!res.ok) throw new Error(`Drive API error: ${res.status}`);
+
+    const json = (await res.json()) as {
+      changes: {
+        fileId: string;
+        removed: boolean;
+        file?: { id: string; name: string; mimeType: string; modifiedTime: string; webViewLink?: string };
+      }[];
+      nextPageToken?: string;
+      newStartPageToken?: string;
+    };
+
+    for (const change of json.changes ?? []) {
+      if (change.removed || !change.file) continue;
+      const file = change.file;
+      if (file.mimeType === "application/vnd.google-apps.folder") continue;
+      try {
+        const content = await downloadFileContent(file.id, file.mimeType, accessToken);
+        if (!content) continue;
+        await processFile(
+          userId,
+          new TextEncoder().encode(content),
+          file.name,
+          mimeToExtension(file.mimeType),
+          {
+            sourceType: "connector",
+            sourceId: connectorId,
+            sourceItemId: file.id,
+            metadata: {
+              title: file.name,
+              url: file.webViewLink,
+              source_name: "Google Drive",
+              modified_at: file.modifiedTime,
+              permissions: { canAccess: true },
+            },
+          },
+          supabase,
+        );
+        itemsProcessed++;
+      } catch (e) {
+        errors.push(`${file.name}: ${e instanceof Error ? e.message : "unknown"}`);
+      }
+    }
+
+    // newStartPageToken (durable) is only on the last page; nextPageToken means more pages remain.
+    // Storing nextPageToken lets the next cron pick up where this page left off.
+    newCursor = json.newStartPageToken ?? json.nextPageToken ?? connector.sync_cursor;
   }
 
-  return { itemsProcessed, newCursor: json.nextPageToken ?? null, errors };
+  return { itemsProcessed, newCursor, errors };
 }
 
 async function downloadFileContent(

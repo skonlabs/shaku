@@ -19,7 +19,7 @@ export const shareResponse = createServerFn({ method: "POST" })
     // Load the assistant message and its preceding user message
     const { data: assistantMsg } = await supabase
       .from("messages")
-      .select("id, content, metadata, conversation_id, conversations!inner(user_id)")
+      .select("id, content, metadata, conversation_id, created_at, conversations!inner(user_id)")
       .eq("id", data.message_id)
       .eq("role", "assistant")
       .single();
@@ -29,14 +29,14 @@ export const shareResponse = createServerFn({ method: "POST" })
       throw new Error("Message not found");
     }
 
-    // Find the preceding user message
+    // Find the user message that preceded this specific assistant message
     const { data: userMsg } = await supabase
       .from("messages")
       .select("content")
       .eq("conversation_id", assistantMsg.conversation_id)
       .eq("role", "user")
       .eq("is_active", true)
-      .lt("created_at", new Date().toISOString())
+      .lt("created_at", assistantMsg.created_at)
       .order("created_at", { ascending: false })
       .limit(1)
       .single();
@@ -77,11 +77,8 @@ export const getSharedResponse = createServerFn({ method: "POST" })
 
     if (error || !shared) throw new Error("Shared response not found.");
 
-    // Increment view count (fire-and-forget)
-    void supabase
-      .from("shared_responses")
-      .update({ view_count: (shared.view_count ?? 0) + 1 })
-      .eq("id", data.share_id);
+    // Atomic view count increment (avoids read-modify-write race condition)
+    void supabase.rpc("increment_shared_view_count", { share_id: data.share_id });
 
     return { response: shared };
   });

@@ -104,7 +104,7 @@ BEGIN
   END IF;
 END$$;
 
--- ---- Shared Responses (intentionally public — no RLS) ----
+-- ---- Shared Responses ----
 CREATE TABLE IF NOT EXISTS public.shared_responses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   message_id UUID REFERENCES public.messages(id) ON DELETE CASCADE,
@@ -115,6 +115,28 @@ CREATE TABLE IF NOT EXISTS public.shared_responses (
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
   view_count INT NOT NULL DEFAULT 0
 );
+
+ALTER TABLE public.shared_responses ENABLE ROW LEVEL SECURITY;
+
+-- Public read: anyone (including unauthenticated) can view shared responses
+CREATE POLICY IF NOT EXISTS "Public read shared responses" ON public.shared_responses
+  FOR SELECT TO anon, authenticated USING (true);
+
+-- Owner insert: only the owner can create shares
+CREATE POLICY IF NOT EXISTS "Owner insert shared responses" ON public.shared_responses
+  FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+
+-- Owner delete: only the owner can delete their shares
+CREATE POLICY IF NOT EXISTS "Owner delete shared responses" ON public.shared_responses
+  FOR DELETE TO authenticated USING (user_id = auth.uid());
+
+-- Atomic view count increment (avoids read-modify-write race, callable by anon)
+CREATE OR REPLACE FUNCTION public.increment_shared_view_count(share_id UUID)
+RETURNS VOID LANGUAGE SQL SECURITY DEFINER SET search_path = public AS $$
+  UPDATE public.shared_responses SET view_count = view_count + 1 WHERE id = share_id;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.increment_shared_view_count TO anon, authenticated;
 
 -- ---- Conversation States ----
 CREATE TABLE IF NOT EXISTS public.conversation_states (

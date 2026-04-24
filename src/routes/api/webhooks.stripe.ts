@@ -65,7 +65,8 @@ async function handleStripeEvent(
     case "customer.subscription.created":
     case "customer.subscription.updated": {
       const sub = event.data.object as Stripe.Subscription;
-      const customerId = sub.customer as string;
+      const customerId = typeof sub.customer === "string" ? sub.customer : null;
+      if (!customerId) break; // Expanded customer object or deleted — skip to avoid bulk updates
       const isActive = sub.status === "active" || sub.status === "trialing";
 
       await supabase
@@ -80,20 +81,23 @@ async function handleStripeEvent(
 
     case "customer.subscription.deleted": {
       const sub = event.data.object as Stripe.Subscription;
+      const customerId = typeof sub.customer === "string" ? sub.customer : null;
+      if (!customerId) break;
       await supabase
         .from("users")
         .update({ plan: "free", stripe_subscription_id: null })
-        .eq("stripe_customer_id", sub.customer as string);
+        .eq("stripe_customer_id", customerId);
       break;
     }
 
     case "invoice.payment_failed": {
       const inv = event.data.object as Stripe.Invoice;
-      // Store payment failure note — UI reads this and shows a banner
+      const customerId = typeof inv.customer === "string" ? inv.customer : null;
+      if (!customerId) break;
       await supabase
         .from("users")
         .update({ plan: "free" })
-        .eq("stripe_customer_id", inv.customer as string);
+        .eq("stripe_customer_id", customerId);
       break;
     }
 
