@@ -138,23 +138,35 @@ function AttachmentRow({
           {canPreview && (
             <button
               onClick={openInPanel}
-              className="flex items-center gap-1 rounded px-1 py-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
-              aria-label="Open in side panel"
-              title="Open in side panel"
+              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              aria-label="Preview"
+              title="Preview"
             >
-              <PanelRightOpen className="h-3 w-3" />
-              Open
+              <Eye className="h-3.5 w-3.5" />
             </button>
+          )}
+          {a.url && (
+            <a
+              href={a.url}
+              download={a.name}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              aria-label="Download"
+              title="Download"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </a>
           )}
           {(hasTranscript || a.extraction_error || a.storage_error) && (
             <button
               onClick={() => setOpen((o) => !o)}
-              className="flex items-center gap-0.5 rounded px-1 py-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              className="flex h-6 items-center gap-0.5 rounded px-1 text-muted-foreground transition hover:bg-accent hover:text-foreground"
               aria-expanded={open}
-              aria-label={open ? "Hide transcript" : "Show transcript"}
+              aria-label={open ? "Hide inline" : "Show inline"}
+              title={open ? "Hide inline" : "Show inline"}
             >
               {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              {isImage ? "Transcript" : "Preview"}
             </button>
           )}
         </div>
