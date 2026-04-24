@@ -1,7 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Link, useNavigate, useLocation } from "@tanstack/react-router";
-import { X, Plus, Pin, MoreHorizontal, Trash2, LogOut, Moon, Sun, Monitor } from "lucide-react";
+import {
+  X,
+  Plus,
+  Pin,
+  MoreHorizontal,
+  Trash2,
+  LogOut,
+  Moon,
+  Sun,
+  Monitor,
+  Search,
+} from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
@@ -20,6 +31,7 @@ import {
   createConversation,
   togglePinConversation,
   deleteConversation,
+  searchMessages,
 } from "@/lib/conversations.functions";
 
 export function SidePanel() {
