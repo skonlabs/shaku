@@ -78,6 +78,12 @@ function ChatPage() {
           qc.invalidateQueries({ queryKey: ["conversation", id] });
           qc.invalidateQueries({ queryKey: ["conversations"] });
         },
+        onInterrupted: () => {
+          setStreamingId(null);
+          setStreamingMessages((cur) =>
+            cur.map((m) => (m.id === tempAsstId ? { ...m, pending: false } : m)),
+          );
+        },
         onError: (msg) => {
           setStreamingId(null);
           toast.error(msg);
@@ -115,6 +121,12 @@ function ChatPage() {
           setStreamingId(null);
           setStreamingMessages([]);
           qc.invalidateQueries({ queryKey: ["conversation", id] });
+        },
+        onInterrupted: () => {
+          setStreamingId(null);
+          setStreamingMessages((cur) =>
+            cur.map((m) => (m.id === tempAsstId ? { ...m, pending: false } : m)),
+          );
         },
         onError: (msg) => {
           setStreamingId(null);

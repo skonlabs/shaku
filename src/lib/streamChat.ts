@@ -4,6 +4,7 @@ export interface StreamCallbacks {
   onUserMessage: (id: string, createdAt: string) => void;
   onDelta: (text: string) => void;
   onDone: (info: { assistantMessageId?: string; followups?: string[] }) => void;
+  onInterrupted?: () => void;
   onError: (message: string) => void;
   onRateLimit?: (resetAt: string) => void;
 }
@@ -76,6 +77,7 @@ export async function streamChat(req: StreamRequest, cb: StreamCallbacks): Promi
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let sawDoneEvent = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -102,6 +104,7 @@ export async function streamChat(req: StreamRequest, cb: StreamCallbacks): Promi
                 receivedAnyToken = true;
                 cb.onDelta(parsed.text);
               } else if (event === "done") {
+                sawDoneEvent = true;
                 cb.onDone({
                   assistantMessageId: parsed.assistant_message_id,
                   followups: parsed.followups,
@@ -116,16 +119,24 @@ export async function streamChat(req: StreamRequest, cb: StreamCallbacks): Promi
             }
           }
         }
-        // Stream ended without an explicit "done" event
-        cb.onDone({});
-        return;
+
+        if (sawDoneEvent) return;
+        if (receivedAnyToken) {
+          cb.onInterrupted?.();
+          return;
+        }
+        throw new Error("Stream ended before completion.");
       } catch (err) {
         if ((err as Error).name === "AbortError") {
           // User pressed Stop — don't fire onDone (which would clear UI). Just exit.
           return;
         }
         // Don't retry once we've started receiving tokens
-        if (receivedAnyToken || attempt >= 3) {
+        if (receivedAnyToken) {
+          cb.onInterrupted?.();
+          return;
+        }
+        if (attempt >= 3) {
           console.error("[streamChat] giving up after", attempt, "attempts", err);
           cb.onError("I lost the connection. Please try again.");
           return;
