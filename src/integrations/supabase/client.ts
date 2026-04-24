@@ -51,7 +51,17 @@ export type Message = {
   metadata: Record<string, unknown> & {
     follow_ups?: string[];
     feedback?: { rating: "up" | "down"; reasons?: string[]; note?: string };
-    attachments?: Array<{ name: string; url: string; size: number; type: string }>;
+    attachments?: Array<{
+      name: string;
+      url: string | null;
+      path?: string | null;
+      size: number;
+      type: string;
+      kind?: string;
+      extracted_text?: string | null;
+      extraction_error?: string | null;
+      storage_error?: string | null;
+    }>;
     versions?: Array<{ content: string; created_at: string }>;
   };
   is_edited: boolean;

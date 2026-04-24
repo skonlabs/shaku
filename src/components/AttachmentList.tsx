@@ -16,12 +16,14 @@ import { updateAttachmentOcr } from "@/lib/conversations.functions";
 
 export interface AttachmentLike {
   name: string;
-  url: string;
+  url: string | null;
+  path?: string | null;
   size: number;
   type: string;
   kind?: string;
   extracted_text?: string | null;
   extraction_error?: string | null;
+  storage_error?: string | null;
   ocr_edited?: boolean;
 }
 
@@ -92,21 +94,25 @@ function AttachmentRow({
         ) : (
           <FileText className="h-3.5 w-3.5 text-muted-foreground" />
         )}
-        <a
-          href={a.url}
-          target="_blank"
-          rel="noreferrer"
-          className="max-w-[180px] truncate font-medium text-foreground hover:underline"
-        >
-          {a.name}
-        </a>
+        {a.url ? (
+          <a
+            href={a.url}
+            target="_blank"
+            rel="noreferrer"
+            className="max-w-[180px] truncate font-medium text-foreground hover:underline"
+          >
+            {a.name}
+          </a>
+        ) : (
+          <span className="max-w-[180px] truncate font-medium text-foreground">{a.name}</span>
+        )}
         <span className="text-muted-foreground">{formatBytes(a.size)}</span>
         {a.ocr_edited && (
           <span className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
             edited
           </span>
         )}
-        {(hasTranscript || a.extraction_error) && (
+        {(hasTranscript || a.extraction_error || a.storage_error) && (
           <button
             onClick={() => setOpen((o) => !o)}
             className="ml-auto flex items-center gap-0.5 rounded px-1 py-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
@@ -119,16 +125,17 @@ function AttachmentRow({
         )}
       </div>
 
-      {/* Image thumbnail */}
-      {isImage && (
+      {isImage && a.url && (
         <a href={a.url} target="_blank" rel="noreferrer" className="block">
           <img src={a.url} alt={a.name} className="max-h-56 w-full object-cover" loading="lazy" />
         </a>
       )}
 
-      {/* Transcript / extraction error */}
       {open && (
         <div className="border-t border-border bg-background/40 p-2">
+          {a.storage_error && (
+            <p className="mb-2 text-xs text-muted-foreground">{a.storage_error}</p>
+          )}
           {a.extraction_error && !hasTranscript ? (
             <p className="text-xs text-destructive">{a.extraction_error}</p>
           ) : editing ? (
@@ -155,7 +162,7 @@ function AttachmentRow({
                 </Button>
               </div>
             </div>
-          ) : (
+          ) : hasTranscript ? (
             <div className="space-y-1.5">
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-foreground/90">
                 {a.extracted_text}
@@ -172,7 +179,7 @@ function AttachmentRow({
                 </button>
               )}
             </div>
-          )}
+          ) : null}
         </div>
       )}
     </div>

@@ -7,12 +7,14 @@ import { useUploadMaxMb } from "@/lib/upload-settings";
 
 export interface Attachment {
   name: string;
-  url: string;
+  url: string | null;
+  path?: string | null;
   size: number;
   type: string;
   kind?: string;
   extracted_text?: string | null;
   extraction_error?: string | null;
+  storage_error?: string | null;
 }
 
 type PendingUpload = {
