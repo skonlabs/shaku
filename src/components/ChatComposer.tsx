@@ -157,6 +157,7 @@ export function ChatComposer({
             name: file.name,
             type: file.type || "application/octet-stream",
             data_b64,
+            max_mb: maxMb,
           },
         });
         setAttachments((cur) => [...cur, result]);
