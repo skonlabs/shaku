@@ -202,3 +202,65 @@ async function transcribeAudio(
   }
   return (await res.text()).trim();
 }
+
+/**
+ * OCR an image using Claude vision. Produces a searchable transcript so the
+ * image's text content is stored on the message metadata + injected into the
+ * assistant's prompt context. Supports PNG, JPEG, GIF, WEBP. HEIC is not
+ * directly supported by Anthropic vision — we surface a friendly notice.
+ */
+async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("Image OCR unavailable (ANTHROPIC_API_KEY not set).");
+
+  const lowerName = name.toLowerCase();
+  const lowerMime = (mime || "").toLowerCase();
+  const isHeic =
+    lowerMime === "image/heic" ||
+    lowerMime === "image/heif" ||
+    lowerName.endsWith(".heic") ||
+    lowerName.endsWith(".heif");
+  if (isHeic) {
+    return "(HEIC images aren't supported for OCR yet — please convert to JPG or PNG and re-upload.)";
+  }
+
+  // Map common image mimes to Anthropic-accepted media types
+  let mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" = "image/jpeg";
+  if (lowerMime === "image/png" || lowerName.endsWith(".png")) mediaType = "image/png";
+  else if (lowerMime === "image/gif" || lowerName.endsWith(".gif")) mediaType = "image/gif";
+  else if (lowerMime === "image/webp" || lowerName.endsWith(".webp")) mediaType = "image/webp";
+  else mediaType = "image/jpeg";
+
+  // base64 (chunked to avoid call-stack overflow on large arrays)
+  let bin = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+  }
+  const b64 = btoa(bin);
+
+  const Anthropic = (await import("@anthropic-ai/sdk")).default;
+  const client = new Anthropic({ apiKey });
+  const res = await client.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 2048,
+    system:
+      "You are an OCR engine. Read the image and return ONLY the text content visible in it, preserving line breaks and reading order. If the image has no readable text, return a one-line description of what's shown (e.g. 'Photo of a golden retriever in a park'). Do not add commentary, headers, or explanations.",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: { type: "base64", media_type: mediaType, data: b64 },
+          },
+          { type: "text", text: "Extract all text from this image." },
+        ],
+      },
+    ],
+  });
+
+  const block = res.content[0];
+  const text = block && block.type === "text" ? block.text.trim() : "";
+  return text || "(No readable text found in the image.)";
+}
