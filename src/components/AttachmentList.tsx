@@ -69,6 +69,8 @@ function AttachmentRow({
   const isImage = a.kind === "image" || (a.type ?? "").startsWith("image/");
   const hasTranscript = typeof a.extracted_text === "string" && a.extracted_text.trim().length > 0;
   const isTempMessage = messageId.startsWith("temp-");
+  // Previewable in side panel when we have either extracted text OR a fetchable URL (non-image).
+  const canPreview = hasTranscript || (!!a.url && !isImage);
 
   const openInPanel = () =>
     openDocument({
