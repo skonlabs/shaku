@@ -55,12 +55,14 @@ const BodySchema = z.object({
     .array(
       z.object({
         name: z.string().max(255),
-        url: z.string().url(),
+        url: z.string().url().nullable().optional(),
+        path: z.string().nullable().optional(),
         size: z.number().nonnegative(),
         type: z.string().max(120),
         kind: z.string().max(20).optional(),
         extracted_text: z.string().nullable().optional(),
         extraction_error: z.string().nullable().optional(),
+        storage_error: z.string().nullable().optional(),
       }),
     )
     .max(10)
@@ -249,7 +251,7 @@ export const Route = createFileRoute("/api/chat/stream")({
           if (baseText.trim()) textParts.push(baseText);
 
           for (const a of body.attachments) {
-            if (a.kind === "image" || (a.type ?? "").startsWith("image/")) {
+            if ((a.kind === "image" || (a.type ?? "").startsWith("image/")) && a.url) {
               blocks.push({
                 type: "image",
                 source: { type: "url", url: a.url },
@@ -262,6 +264,8 @@ export const Route = createFileRoute("/api/chat/stream")({
               textParts.push(
                 `\n\n[Attached "${a.name}" could not be parsed: ${a.extraction_error}]`,
               );
+            } else if (a.storage_error) {
+              textParts.push(`\n\n[Attached file: ${a.name} could not be stored: ${a.storage_error}]`);
             } else {
               textParts.push(`\n\n[Attached file: ${a.name} (${a.type || "unknown"})]`);
             }
