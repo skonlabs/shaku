@@ -11,6 +11,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { KbHelpProvider, PanelProvider } from "@/lib/ui-context";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
+import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 
 import appCss from "../styles.css?url";
 
@@ -101,6 +102,7 @@ function RootComponent() {
           <PanelProvider>
             <KbHelpProvider>
               <KeyboardShortcuts />
+              <KeyboardShortcutsDialog />
               <Outlet />
               <Toaster richColors closeButton position="top-right" />
             </KbHelpProvider>
