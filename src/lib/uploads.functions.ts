@@ -241,26 +241,89 @@ async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<
 
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
   const client = new Anthropic({ apiKey });
-  const res = await client.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 2048,
-    system:
-      "You are an OCR engine. Read the image and return ONLY the text content visible in it, preserving line breaks and reading order. If the image has no readable text, return a one-line description of what's shown (e.g. 'Photo of a golden retriever in a park'). Do not add commentary, headers, or explanations.",
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: { type: "base64", media_type: mediaType, data: b64 },
-          },
-          { type: "text", text: "Extract all text from this image." },
-        ],
-      },
-    ],
-  });
 
-  const block = res.content[0];
-  const text = block && block.type === "text" ? block.text.trim() : "";
-  return text || "(No readable text found in the image.)";
+  // Try OCR with a 60s timeout; on AbortError or 5xx, retry once with backoff.
+  const TIMEOUT_MS = 60_000;
+  const attempt = async (): Promise<string> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const res = await client.messages.create(
+        {
+          model: "claude-haiku-4-5",
+          max_tokens: 2048,
+          system:
+            "You are an OCR engine. Read the image and return ONLY the text content visible in it, preserving line breaks and reading order. Do NOT add commentary, headers, code fences, or explanations. If the image has no readable text, return a single short description line of what is shown (e.g. 'Photo of a golden retriever in a park').",
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "image", source: { type: "base64", media_type: mediaType, data: b64 } },
+                { type: "text", text: "Extract all text from this image." },
+              ],
+            },
+          ],
+        },
+        { signal: ctrl.signal },
+      );
+      const block = res.content[0];
+      return block && block.type === "text" ? block.text : "";
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  let raw = "";
+  try {
+    raw = await attempt();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const retriable =
+      msg.includes("aborted") ||
+      msg.includes("timeout") ||
+      msg.includes("ECONNRESET") ||
+      msg.includes("fetch failed") ||
+      /\b(5\d\d)\b/.test(msg);
+    if (!retriable) throw err;
+    console.warn("[ocrImage] retry after failure:", msg);
+    await new Promise((r) => setTimeout(r, 1500));
+    raw = await attempt();
+  }
+
+  const cleaned = postProcessOcr(raw);
+  return cleaned || "(No readable text found in the image.)";
 }
+
+/**
+ * Normalize OCR output: strip code fences, collapse weird whitespace, fix
+ * common scan artifacts, and preserve real paragraph breaks.
+ */
+function postProcessOcr(text: string): string {
+  if (!text) return "";
+  let t = text.replace(/\r\n?/g, "\n");
+
+  // Drop a wrapping ```...``` fence the model occasionally adds
+  t = t.replace(/^\s*```[a-zA-Z]*\n([\s\S]*?)\n```\s*$/m, "$1");
+
+  // Common scan-noise / OCR garbage characters
+  t = t.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ""); // control chars
+  t = t.replace(/[\uFFFD]+/g, ""); // replacement char
+  // Lines that are only punctuation/symbols (e.g. "~~~", "...", "----") → drop
+  t = t
+    .split("\n")
+    .filter((line) => !/^[\s\W_]{2,}$/.test(line.trim()) || line.trim().length === 0)
+    .join("\n");
+
+  // Collapse runs of spaces/tabs but keep newlines
+  t = t.replace(/[ \t]+/g, " ");
+  // Trim each line
+  t = t
+    .split("\n")
+    .map((l) => l.trim())
+    .join("\n");
+  // Collapse 3+ blank lines into 2 (paragraph break)
+  t = t.replace(/\n{3,}/g, "\n\n");
+
+  return t.trim();
+}
+
