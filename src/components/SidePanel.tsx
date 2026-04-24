@@ -438,3 +438,80 @@ function AccountPanel() {
     </div>
   );
 }
+
+function DocumentPanel() {
+  const { document: doc } = usePanel();
+  const [copied, setCopied] = useState(false);
+
+  if (!doc) {
+    return <div className="p-4 text-xs text-muted-foreground">No document selected.</div>;
+  }
+
+  const isMarkdown =
+    !doc.mime ||
+    doc.mime.startsWith("text/markdown") ||
+    /\.(md|markdown)$/i.test(doc.title);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(doc.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* noop */
+    }
+  };
+
+  const onDownload = () => {
+    const ext = isMarkdown ? "md" : "txt";
+    const safe = doc.title.replace(/[^a-zA-Z0-9._-]/g, "_") || `document.${ext}`;
+    const filename = /\.[a-z0-9]+$/i.test(safe) ? safe : `${safe}.${ext}`;
+    const blob = new Blob([doc.content], {
+      type: doc.mime ?? (isMarkdown ? "text/markdown" : "text/plain"),
+    });
+    const url = URL.createObjectURL(blob);
+    const a = window.document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-1 border-b border-border px-3 py-2">
+        <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs" onClick={onCopy}>
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs" onClick={onDownload}>
+          <Download className="h-3.5 w-3.5" />
+          Download
+        </Button>
+        {doc.url && (
+          <a
+            href={doc.url}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Open original
+          </a>
+        )}
+      </div>
+      <ScrollArea className="flex-1">
+        <div className="px-4 py-3">
+          {isMarkdown ? (
+            <div className="prose prose-sm max-w-none dark:prose-invert">
+              <MessageContent content={doc.content} />
+            </div>
+          ) : (
+            <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-foreground/90">
+              {doc.content}
+            </pre>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
