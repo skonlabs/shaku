@@ -10,7 +10,9 @@ import {
   ArrowDown,
   FileText,
   Sparkles,
+  PanelRightOpen,
 } from "lucide-react";
+import { usePanel } from "@/lib/ui-context";
 import { MessageContent } from "@/components/MessageContent";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -234,6 +236,19 @@ function MessageRow({
 
   // Assistant
   const hasPriorVersion = !!message.metadata?.versions?.[0];
+  const { openDocument } = usePanel();
+  const fullContent = displayContent();
+  const isDocument =
+    !!fullContent &&
+    (fullContent.length > 800 ||
+      /```[\s\S]*?```/.test(fullContent) ||
+      (fullContent.match(/\n#+\s/g)?.length ?? 0) >= 2);
+  const docTitle = (() => {
+    const h = fullContent.match(/^\s*#\s+(.+)/m)?.[1];
+    if (h) return h.trim().slice(0, 80);
+    const firstLine = fullContent.split("\n").find((l) => l.trim().length > 0) ?? "Document";
+    return firstLine.replace(/^[#>*\-\s]+/, "").slice(0, 80) || "Document";
+  })();
 
   return (
     <div className="group flex gap-3">
@@ -243,7 +258,7 @@ function MessageRow({
       <div className="min-w-0 flex-1">
         <div className={cn("text-sm", isStreaming && "streaming-caret")}>
           {message.content ? (
-            <MessageContent content={displayContent()} />
+            <MessageContent content={fullContent} />
           ) : (
             <div className="flex gap-1.5 py-2">
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
@@ -252,6 +267,37 @@ function MessageRow({
             </div>
           )}
         </div>
+
+        {!isStreaming && isDocument && (
+          <button
+            onClick={() =>
+              openDocument({
+                title: docTitle,
+                content: fullContent,
+                mime: "text/markdown",
+              })
+            }
+            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition hover:border-primary/40 hover:bg-accent"
+          >
+            <FileText className="h-3.5 w-3.5 text-primary" />
+            <span className="max-w-[260px] truncate">{docTitle}</span>
+            <span className="text-muted-foreground">
+              · {Math.max(1, Math.round(fullContent.length / 1000))}k chars
+            </span>
+            <PanelRightOpen className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        )}
+
+        {!isStreaming && attachments.length > 0 && (
+          <div className="mt-3">
+            <AttachmentList
+              conversationId={conversationId}
+              messageId={message.id}
+              attachments={attachments as never}
+              align="start"
+            />
+          </div>
+        )}
 
         {/* Follow-up suggestion pills */}
         {!isStreaming && followups.length > 0 && onFollowupClick && (

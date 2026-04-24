@@ -17,21 +17,51 @@ export function useKbHelp(): KbHelpContextValue {
   return ctx;
 }
 
+export interface DocumentPreview {
+  title: string;
+  content: string;
+  mime?: string;
+  url?: string | null;
+}
+
 interface PanelContextValue {
   active: PanelId | null;
   setActive: (p: PanelId | null) => void;
   toggle: (p: PanelId) => void;
+  document: DocumentPreview | null;
+  openDocument: (doc: DocumentPreview) => void;
+  closeDocument: () => void;
 }
-export type PanelId = "chats" | "projects" | "datasources" | "connectors" | "settings" | "account";
+export type PanelId =
+  | "chats"
+  | "projects"
+  | "datasources"
+  | "connectors"
+  | "settings"
+  | "account"
+  | "document";
 const PanelContext = React.createContext<PanelContextValue | null>(null);
 
 export function PanelProvider({ children }: { children: React.ReactNode }) {
   const [active, setActive] = React.useState<PanelId | null>(null);
+  const [document, setDocument] = React.useState<DocumentPreview | null>(null);
   const toggle = React.useCallback((p: PanelId) => {
     setActive((cur) => (cur === p ? null : p));
   }, []);
+  const openDocument = React.useCallback((doc: DocumentPreview) => {
+    setDocument(doc);
+    setActive("document");
+  }, []);
+  const closeDocument = React.useCallback(() => {
+    setDocument(null);
+    setActive((cur) => (cur === "document" ? null : cur));
+  }, []);
   return (
-    <PanelContext.Provider value={{ active, setActive, toggle }}>{children}</PanelContext.Provider>
+    <PanelContext.Provider
+      value={{ active, setActive, toggle, document, openDocument, closeDocument }}
+    >
+      {children}
+    </PanelContext.Provider>
   );
 }
 
