@@ -47,9 +47,8 @@ function NewChatPage() {
   // then stamp the new last_seen_at server-side.
   useEffect(() => {
     if (loading || !user || !profile) return;
-    const last = (profile as unknown as { last_seen_at?: string | null }).last_seen_at;
-    if (last) {
-      const hours = (Date.now() - new Date(last).getTime()) / 36e5;
+    if (profile.last_seen_at) {
+      const hours = (Date.now() - new Date(profile.last_seen_at).getTime()) / 36e5;
       if (hours > 24) setWelcomeBack(true);
     }
     void recordSeen({ data: undefined as never });
