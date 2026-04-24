@@ -22,8 +22,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { editMessageAndTrim, setMessageFeedback } from "@/lib/conversations.functions";
+import {
+  editMessageAndTrim,
+  setMessageFeedback,
+  updateAttachmentOcr,
+} from "@/lib/conversations.functions";
 import type { Message } from "@/integrations/supabase/client";
+import { AttachmentList } from "@/components/AttachmentList";
 
 export interface DisplayMessage {
   id: string;
