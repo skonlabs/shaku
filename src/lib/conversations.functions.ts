@@ -238,3 +238,67 @@ export const recordSeen = createServerFn({ method: "POST" })
       .eq("id", userId);
     return { success: true };
   });
+
+/**
+ * Update a single attachment's `extracted_text` (OCR transcript) on a message.
+ * Used when the user edits the detected text inline in the chat UI.
+ */
+export const updateAttachmentOcr = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    z.object({
+      message_id: z.string().uuid(),
+      attachment_index: z.number().int().min(0).max(20),
+      extracted_text: z.string().max(120_000),
+    }),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { data: msg } = await supabase
+      .from("messages")
+      .select("id, metadata, conversations!inner(user_id)")
+      .eq("id", data.message_id)
+      .single();
+    // @ts-expect-error joined relation
+    if (!msg || msg.conversations.user_id !== userId) throw new Error("Not allowed");
+
+    const meta = (msg.metadata as Record<string, unknown> | null) ?? {};
+    const attachments = Array.isArray(meta.attachments)
+      ? ([...meta.attachments] as Array<Record<string, unknown>>)
+      : [];
+    if (!attachments[data.attachment_index]) throw new Error("Attachment not found.");
+    attachments[data.attachment_index] = {
+      ...attachments[data.attachment_index],
+      extracted_text: data.extracted_text,
+      extraction_error: null,
+      ocr_edited: true,
+    };
+    const newMeta = { ...meta, attachments };
+    const { error } = await supabase
+      .from("messages")
+      .update({ metadata: newMeta })
+      .eq("id", data.message_id);
+    if (error) throw new Error("Couldn't save the edit.");
+    return { success: true };
+  });
+
+/**
+ * Full-text search across the user's messages, including OCR transcripts and
+ * other extracted attachment text. Returns matching conversations with a
+ * snippet from the best-matching message.
+ */
+export const searchMessages = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ query: z.string().min(1).max(200) }))
+  .handler(async ({ context, data }) => {
+    const { supabase } = context;
+    const { data: rows, error } = await supabase.rpc("search_user_messages", {
+      q: data.query,
+      max_results: 30,
+    });
+    if (error) {
+      console.error("[searchMessages]", error);
+      return { results: [] as never[], error: "Search is unavailable right now." };
+    }
+    return { results: rows ?? [], error: null };
+  });
