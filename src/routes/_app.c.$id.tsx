@@ -1,7 +1,7 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { ChatComposer } from "@/components/ChatComposer";
+import { ChatComposer, type Attachment } from "@/components/ChatComposer";
 import { MessageList, type DisplayMessage } from "@/components/MessageList";
 import { getConversation } from "@/lib/conversations.functions";
 import { streamChat } from "@/lib/streamChat";
@@ -25,12 +25,11 @@ function ChatPage() {
     queryFn: () => getConversation({ data: { id } }),
   });
 
-  // Local streaming state on top of server-cached messages
   const [streamingMessages, setStreamingMessages] = useState<DisplayMessage[]>([]);
   const [streamingId, setStreamingId] = useState<string | null>(null);
+  const [rateLimitedUntil, setRateLimitedUntil] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Merge server messages + local streaming additions
   const serverMessages: DisplayMessage[] = (data?.messages ?? []).map((m) => ({
     id: m.id,
     role: m.role as "user" | "assistant",
@@ -40,57 +39,103 @@ function ChatPage() {
   }));
   const messages = [...serverMessages, ...streamingMessages];
 
-  const send = async (text: string) => {
+  const send = async (text: string, attachments: Attachment[] = []) => {
     const tempUserId = `temp-user-${Date.now()}`;
     const tempAsstId = `temp-asst-${Date.now()}`;
     setStreamingMessages([
-      { id: tempUserId, role: "user", content: text },
+      {
+        id: tempUserId,
+        role: "user",
+        content: text,
+        metadata: attachments.length ? { attachments } : undefined,
+      },
       { id: tempAsstId, role: "assistant", content: "", pending: true },
     ]);
     setStreamingId(tempAsstId);
 
-    const controller = await streamChat(id, text, {
-      onUserMessage: (realId) => {
-        setStreamingMessages((cur) =>
-          cur.map((m) => (m.id === tempUserId ? { ...m, id: realId } : m)),
-        );
+    const controller = await streamChat(
+      { conversationId: id, userMessage: text, attachments },
+      {
+        onUserMessage: (realId) => {
+          setStreamingMessages((cur) =>
+            cur.map((m) => (m.id === tempUserId ? { ...m, id: realId } : m)),
+          );
+        },
+        onDelta: (chunk) => {
+          setStreamingMessages((cur) =>
+            cur.map((m) =>
+              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false } : m,
+            ),
+          );
+        },
+        onDone: () => {
+          setStreamingId(null);
+          setStreamingMessages([]);
+          qc.invalidateQueries({ queryKey: ["conversation", id] });
+          qc.invalidateQueries({ queryKey: ["conversations"] });
+        },
+        onError: (msg) => {
+          setStreamingId(null);
+          toast.error(msg);
+          setStreamingMessages((cur) =>
+            cur.map((m) =>
+              m.id === tempAsstId ? { ...m, content: msg, pending: false } : m,
+            ),
+          );
+        },
+        onRateLimit: (resetAt) => setRateLimitedUntil(resetAt),
       },
-      onDelta: (chunk) => {
-        setStreamingMessages((cur) =>
-          cur.map((m) =>
-            m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false } : m,
-          ),
-        );
-      },
-      onDone: () => {
-        setStreamingId(null);
-        setStreamingMessages([]);
-        qc.invalidateQueries({ queryKey: ["conversation", id] });
-        qc.invalidateQueries({ queryKey: ["conversations"] });
-      },
-      onError: (msg) => {
-        setStreamingId(null);
-        toast.error(msg);
-        setStreamingMessages((cur) =>
-          cur.map((m) =>
-            m.id === tempAsstId
-              ? { ...m, content: msg, pending: false }
-              : m,
-          ),
-        );
-      },
-    });
+    );
     abortRef.current = controller;
   };
 
-  // If we arrived here from a "new chat" submission, send the pending first message
+  const regenerate = async () => {
+    const tempAsstId = `temp-asst-${Date.now()}`;
+    // Hide the existing last assistant message optimistically by appending a fresh streaming row
+    setStreamingMessages([
+      { id: tempAsstId, role: "assistant", content: "", pending: true },
+    ]);
+    setStreamingId(tempAsstId);
+    const controller = await streamChat(
+      { conversationId: id, regenerate: true },
+      {
+        onUserMessage: () => {},
+        onDelta: (chunk) => {
+          setStreamingMessages((cur) =>
+            cur.map((m) =>
+              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false } : m,
+            ),
+          );
+        },
+        onDone: () => {
+          setStreamingId(null);
+          setStreamingMessages([]);
+          qc.invalidateQueries({ queryKey: ["conversation", id] });
+        },
+        onError: (msg) => {
+          setStreamingId(null);
+          toast.error(msg);
+          setStreamingMessages([]);
+        },
+      },
+    );
+    abortRef.current = controller;
+  };
+
+  const sendEditedThenRestream = async (_id: string, _content: string) => {
+    // The edit already trimmed subsequent messages server-side. Now regenerate.
+    await qc.invalidateQueries({ queryKey: ["conversation", id] });
+    await regenerate();
+  };
+
+  // Pending first-message handoff from "/"
   useEffect(() => {
     if (isLoading) return;
     try {
       const pending = sessionStorage.getItem(`cortex.pending.${id}`);
       if (pending) {
         sessionStorage.removeItem(`cortex.pending.${id}`);
-        void send(pending);
+        void send(pending, []);
       }
     } catch {
       /* noop */
@@ -105,23 +150,31 @@ function ChatPage() {
       </div>
     );
   }
+  if (!data?.conversation) throw notFound();
 
-  if (!data?.conversation) {
-    throw notFound();
-  }
+  const isRateLimited =
+    rateLimitedUntil !== null && new Date(rateLimitedUntil).getTime() > Date.now();
 
   return (
     <div className="flex h-full flex-col">
-      {messages.length === 0 ? (
-        <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto flex h-full max-w-3xl items-center justify-center px-4 text-center">
+      <div className="flex-1 overflow-hidden">
+        {messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center px-4 text-center">
             <p className="text-muted-foreground">Start the conversation.</p>
           </div>
-        </div>
-      ) : (
-        <MessageList conversationId={id} messages={messages} streamingId={streamingId} />
-      )}
+        ) : (
+          <MessageList
+            conversationId={id}
+            messages={messages}
+            streamingId={streamingId}
+            onRegenerate={regenerate}
+            onEdit={sendEditedThenRestream}
+            onFollowupClick={(t) => void send(t, [])}
+          />
+        )}
+      </div>
       <ChatComposer
+        conversationId={id}
         onSend={send}
         onStop={() => {
           abortRef.current?.abort();
@@ -130,7 +183,18 @@ function ChatPage() {
         isStreaming={streamingId !== null}
         draftKey={`cortex.draft.${id}`}
         autoFocus
+        disabled={isRateLimited}
+        disabledMessage={
+          isRateLimited
+            ? `You've reached your free message limit. Resets ${formatReset(rateLimitedUntil!)}.`
+            : undefined
+        }
       />
     </div>
   );
+}
+
+function formatReset(iso: string) {
+  const mins = Math.max(1, Math.round((new Date(iso).getTime() - Date.now()) / 60000));
+  return `in ${mins} min`;
 }

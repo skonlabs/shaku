@@ -53,7 +53,7 @@ function NewChatPage() {
         isStreaming={startMut.isPending}
         draftKey="cortex.draft.new"
         autoFocus
-        placeholder="Message Cortex…"
+        placeholder="Ask me anything…"
       />
     </div>
   );
