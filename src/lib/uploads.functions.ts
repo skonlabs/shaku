@@ -13,9 +13,9 @@ const MAX_EXTRACTED_CHARS = 120_000; // cap to keep prompt size sane
  *  - PDF                  → unpdf
  *  - DOCX                 → mammoth
  *  - XLSX / XLS / CSV     → xlsx (SheetJS)
- *  - TXT / MD / JSON / code / any text-ish mime → UTF-8 decode
- *  - Audio (mp3/wav/m4a/webm/ogg) → OpenAI Whisper transcription
- *  - Images               → no extraction here (model "sees" them via URL)
+ *  - TXT / MD / JSON / code / xml / html / yaml / log → UTF-8 decode
+ *  - Audio                → OpenAI Whisper transcription
+ *  - Images               → OCR transcript + searchable text
  *  - Other binary         → no extraction; model gets filename only
  */
 export const uploadChatFile = createServerFn({ method: "POST" })
@@ -23,8 +23,8 @@ export const uploadChatFile = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
       conversation_id: z.string().uuid(),
-      name: z.string().min(1).max(255),
-      type: z.string().max(120),
+      name: z.string().trim().min(1).max(255),
+      type: z.string().trim().max(120),
       data_b64: z.string().min(1),
       max_mb: z.number().int().min(1).max(25).optional(),
     }),
@@ -39,37 +39,21 @@ export const uploadChatFile = createServerFn({ method: "POST" })
       throw new Error(`That file is too large. Max ${mb} MB.`);
     }
 
+    const normalizedType = normalizeMimeType(data.name, data.type);
+    const kind = classify(data.name, normalizedType);
     const safeName = data.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-180);
     const path = `${userId}/${data.conversation_id}/${crypto.randomUUID()}-${safeName}`;
 
-    const { error: upErr } = await supabase.storage
-      .from(BUCKET)
-      .upload(path, bytes, {
-        contentType: data.type || "application/octet-stream",
-        upsert: false,
-      });
-    if (upErr) {
-      console.error("[uploadChatFile]", upErr);
-      throw new Error("I couldn't upload that file. Please try again.");
-    }
-
-    const { data: signed, error: signErr } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days
-    if (signErr || !signed) throw new Error("I couldn't prepare the file URL.");
-
-    // ---- Extract text (best-effort; never fail the upload) ----
+    // ---- Extract text first (best-effort; do not block on storage) ----
     let extractedText: string | null = null;
     let extractionError: string | null = null;
-    const kind = classify(data.name, data.type);
     try {
       if (kind === "pdf") extractedText = await extractPdf(bytes);
       else if (kind === "docx") extractedText = await extractDocx(bytes);
       else if (kind === "spreadsheet") extractedText = await extractSpreadsheet(bytes, data.name);
       else if (kind === "text") extractedText = decodeText(bytes);
-      else if (kind === "audio") extractedText = await transcribeAudio(bytes, data.name, data.type);
-      else if (kind === "image") extractedText = await ocrImage(bytes, data.name, data.type);
-      // other → leave null
+      else if (kind === "audio") extractedText = await transcribeAudio(bytes, data.name, normalizedType);
+      else if (kind === "image") extractedText = await ocrImage(bytes, data.name, normalizedType);
     } catch (e) {
       console.error("[uploadChatFile] extraction failed:", data.name, e);
       extractionError = e instanceof Error ? e.message : "Extraction failed";
@@ -81,15 +65,43 @@ export const uploadChatFile = createServerFn({ method: "POST" })
         `\n\n[…truncated; showing first ${MAX_EXTRACTED_CHARS.toLocaleString()} characters of ${extractedText.length.toLocaleString()}.]`;
     }
 
+    // ---- Upload to storage (can fail independently of parsing) ----
+    let signedUrl: string | null = null;
+    let storageError: string | null = null;
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, bytes, {
+      contentType: normalizedType,
+      upsert: false,
+    });
+
+    if (upErr) {
+      console.error("[uploadChatFile]", upErr);
+      storageError = formatStorageError(upErr);
+    } else {
+      const { data: signed, error: signErr } = await supabase.storage
+        .from(BUCKET)
+        .createSignedUrl(path, 60 * 60 * 24 * 7);
+      if (signErr || !signed) {
+        console.error("[uploadChatFile] signed URL failed", signErr);
+        storageError = "The file uploaded, but I couldn't prepare its download link.";
+      } else {
+        signedUrl = signed.signedUrl;
+      }
+    }
+
+    if (!signedUrl && !extractedText && !extractionError) {
+      throw new Error(storageError ?? "I couldn't upload that file. Please try again.");
+    }
+
     return {
       name: data.name,
       size: bytes.byteLength,
-      type: data.type,
-      url: signed.signedUrl,
-      path,
+      type: normalizedType,
+      url: signedUrl,
+      path: signedUrl ? path : null,
       kind,
       extracted_text: extractedText,
       extraction_error: extractionError,
+      storage_error: storageError,
     };
   });
 
@@ -104,8 +116,9 @@ function classify(name: string, mime: string): Kind {
   if (
     m === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     n.endsWith(".docx")
-  )
+  ) {
     return "docx";
+  }
   if (
     n.endsWith(".xlsx") ||
     n.endsWith(".xls") ||
@@ -113,22 +126,60 @@ function classify(name: string, mime: string): Kind {
     m === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
     m === "application/vnd.ms-excel" ||
     m === "text/csv"
-  )
+  ) {
     return "spreadsheet";
-  if (m.startsWith("image/")) return "image";
-  if (m.startsWith("audio/") || /\.(mp3|wav|m4a|webm|ogg|flac|aac)$/.test(n)) return "audio";
+  }
+  if (m.startsWith("image/") || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(n)) return "image";
+  if (m.startsWith("audio/") || /\.(mp3|wav|m4a|webm|ogg|flac|aac)$/i.test(n)) return "audio";
   if (
     m.startsWith("text/") ||
     m === "application/json" ||
     m === "application/xml" ||
     m === "application/javascript" ||
     m === "application/typescript" ||
-    /\.(txt|md|markdown|json|jsonl|xml|html?|css|js|jsx|ts|tsx|py|rb|go|rs|java|c|h|cpp|hpp|cs|php|sh|yaml|yml|toml|ini|env|sql|log)$/.test(
+    /\.(txt|md|markdown|json|jsonl|xml|html?|css|js|jsx|ts|tsx|py|rb|go|rs|java|c|h|cpp|hpp|cs|php|sh|yaml|yml|toml|ini|env|sql|log)$/i.test(
       n,
     )
-  )
+  ) {
     return "text";
+  }
   return "other";
+}
+
+function normalizeMimeType(name: string, mime: string): string {
+  const lower = name.toLowerCase();
+  const clean = (mime || "").trim().toLowerCase();
+  if (clean && clean !== "application/octet-stream") return clean;
+
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".docx")) {
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  }
+  if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
+  if (lower.endsWith(".csv")) return "text/csv";
+  if (lower.endsWith(".json")) return "application/json";
+  if (lower.endsWith(".xml")) return "application/xml";
+  if (lower.endsWith(".md") || lower.endsWith(".txt") || lower.endsWith(".log")) return "text/plain";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html";
+  if (lower.endsWith(".css")) return "text/css";
+  if (lower.endsWith(".js")) return "application/javascript";
+  if (lower.endsWith(".ts") || lower.endsWith(".tsx") || lower.endsWith(".jsx")) return "text/plain";
+  if (lower.endsWith(".yaml") || lower.endsWith(".yml") || lower.endsWith(".toml") || lower.endsWith(".ini") || lower.endsWith(".env")) {
+    return "text/plain";
+  }
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".heic")) return "image/heic";
+  if (lower.endsWith(".heif")) return "image/heif";
+  if (lower.endsWith(".mp3")) return "audio/mpeg";
+  if (lower.endsWith(".wav")) return "audio/wav";
+  if (lower.endsWith(".m4a")) return "audio/mp4";
+  if (lower.endsWith(".ogg")) return "audio/ogg";
+  if (lower.endsWith(".webm")) return "audio/webm";
+  return "application/octet-stream";
 }
 
 function decodeBase64(b64: string): Uint8Array {
@@ -152,7 +203,6 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
 
 async function extractDocx(bytes: Uint8Array): Promise<string> {
   const mammoth = await import("mammoth");
-  // mammoth wants an ArrayBuffer
   const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   const result = await mammoth.extractRawText({ arrayBuffer: ab as ArrayBuffer });
   return result.value.trim();
@@ -173,25 +223,17 @@ async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<stri
   return parts.join("\n\n");
 }
 
-async function transcribeAudio(
-  bytes: Uint8Array,
-  name: string,
-  mime: string,
-): Promise<string> {
+async function transcribeAudio(bytes: Uint8Array, name: string, mime: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    throw new Error("Audio transcription unavailable (OPENAI_API_KEY not set).");
+    throw new Error("Audio transcription unavailable right now.");
   }
   const form = new FormData();
   const ab = bytes.buffer.slice(
     bytes.byteOffset,
     bytes.byteOffset + bytes.byteLength,
   ) as ArrayBuffer;
-  form.append(
-    "file",
-    new Blob([ab], { type: mime || "audio/mpeg" }),
-    name || "audio.mp3",
-  );
+  form.append("file", new Blob([ab], { type: mime || "audio/mpeg" }), name || "audio.mp3");
   form.append("model", "whisper-1");
   form.append("response_format", "text");
   const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
@@ -201,20 +243,14 @@ async function transcribeAudio(
   });
   if (!res.ok) {
     const t = await res.text().catch(() => "");
-    throw new Error(`Whisper failed (${res.status}): ${t.slice(0, 200)}`);
+    throw new Error(`Audio transcription failed (${res.status}): ${t.slice(0, 200)}`);
   }
   return (await res.text()).trim();
 }
 
-/**
- * OCR an image using Claude vision. Produces a searchable transcript so the
- * image's text content is stored on the message metadata + injected into the
- * assistant's prompt context. Supports PNG, JPEG, GIF, WEBP. HEIC is not
- * directly supported by Anthropic vision — we surface a friendly notice.
- */
 async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("Image OCR unavailable (ANTHROPIC_API_KEY not set).");
+  if (!apiKey) throw new Error("Image OCR unavailable right now.");
 
   const lowerName = name.toLowerCase();
   const lowerMime = (mime || "").toLowerCase();
@@ -227,14 +263,11 @@ async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<
     return "(HEIC images aren't supported for OCR yet — please convert to JPG or PNG and re-upload.)";
   }
 
-  // Map common image mimes to Anthropic-accepted media types
   let mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" = "image/jpeg";
   if (lowerMime === "image/png" || lowerName.endsWith(".png")) mediaType = "image/png";
   else if (lowerMime === "image/gif" || lowerName.endsWith(".gif")) mediaType = "image/gif";
   else if (lowerMime === "image/webp" || lowerName.endsWith(".webp")) mediaType = "image/webp";
-  else mediaType = "image/jpeg";
 
-  // base64 (chunked to avoid call-stack overflow on large arrays)
   let bin = "";
   const CHUNK = 0x8000;
   for (let i = 0; i < bytes.length; i += CHUNK) {
@@ -245,7 +278,6 @@ async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
   const client = new Anthropic({ apiKey });
 
-  // Try OCR with a 60s timeout; on AbortError or 5xx, retry once with backoff.
   const TIMEOUT_MS = 60_000;
   const attempt = async (): Promise<string> => {
     const ctrl = new AbortController();
@@ -256,7 +288,7 @@ async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<
           model: "claude-haiku-4-5",
           max_tokens: 2048,
           system:
-            "You are an OCR engine. Read the image and return ONLY the text content visible in it, preserving line breaks and reading order. Do NOT add commentary, headers, code fences, or explanations. If the image has no readable text, return a single short description line of what is shown (e.g. 'Photo of a golden retriever in a park').",
+            "You are an OCR engine. Read the image and return ONLY the text content visible in it, preserving line breaks and reading order. Do NOT add commentary, headers, code fences, or explanations. If the image has no readable text, return a single short description line of what is shown.",
           messages: [
             {
               role: "user",
@@ -297,36 +329,36 @@ async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<
   return cleaned || "(No readable text found in the image.)";
 }
 
-/**
- * Normalize OCR output: strip code fences, collapse weird whitespace, fix
- * common scan artifacts, and preserve real paragraph breaks.
- */
 function postProcessOcr(text: string): string {
   if (!text) return "";
   let t = text.replace(/\r\n?/g, "\n");
-
-  // Drop a wrapping ```...``` fence the model occasionally adds
   t = t.replace(/^\s*```[a-zA-Z]*\n([\s\S]*?)\n```\s*$/m, "$1");
-
-  // Common scan-noise / OCR garbage characters
-  t = t.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ""); // control chars
-  t = t.replace(/[\uFFFD]+/g, ""); // replacement char
-  // Lines that are only punctuation/symbols (e.g. "~~~", "...", "----") → drop
+  t = t.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+  t = t.replace(/[\uFFFD]+/g, "");
   t = t
     .split("\n")
     .filter((line) => !/^[\s\W_]{2,}$/.test(line.trim()) || line.trim().length === 0)
     .join("\n");
-
-  // Collapse runs of spaces/tabs but keep newlines
   t = t.replace(/[ \t]+/g, " ");
-  // Trim each line
   t = t
     .split("\n")
     .map((l) => l.trim())
     .join("\n");
-  // Collapse 3+ blank lines into 2 (paragraph break)
   t = t.replace(/\n{3,}/g, "\n\n");
-
   return t.trim();
+}
+
+function formatStorageError(error: { message?: string; statusCode?: string }): string {
+  const msg = (error.message || "").toLowerCase();
+  if (msg.includes("row-level security") || msg.includes("violates row-level security policy")) {
+    return "File uploads are blocked by storage permissions right now.";
+  }
+  if (msg.includes("mime") || msg.includes("content type")) {
+    return "This file type isn't allowed by the storage bucket settings.";
+  }
+  if (msg.includes("size") || msg.includes("too large")) {
+    return "That file exceeds the storage bucket size limit.";
+  }
+  return "I couldn't upload that file right now.";
 }
 
