@@ -350,6 +350,7 @@ function ComingSoon({ label }: { label: string }) {
 
 function SettingsPanel() {
   const { theme, setTheme } = useTheme();
+  const [maxMb, setMaxMb] = useUploadMaxMb();
   return (
     <div className="space-y-6 px-4 py-2">
       <div>
@@ -381,7 +382,31 @@ function SettingsPanel() {
           })}
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">More settings coming soon.</p>
+      <div>
+        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Uploads
+        </p>
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span>Max file size</span>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={1}
+              max={HARD_UPLOAD_MAX_MB}
+              value={maxMb}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isFinite(n)) setMaxMb(n);
+              }}
+              className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm outline-none focus:border-ring/60"
+            />
+            <span className="text-xs text-muted-foreground">MB</span>
+          </div>
+        </label>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Per-file limit, 1–{HARD_UPLOAD_MAX_MB} MB. Default 1 MB.
+        </p>
+      </div>
     </div>
   );
 }
