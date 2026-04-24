@@ -214,15 +214,14 @@ export const Route = createFileRoute("/api/chat/stream")({
 
         let history = historyAll ?? [];
 
-        // For regenerate: drop trailing assistant messages so we re-prompt from the user turn
+        // For regenerate: drop trailing assistant messages so we re-prompt from the user turn.
+        // Preserve the prior assistant reply's content as a version on the NEW reply.
+        let priorVersion: { content: string; created_at: string } | null = null;
         if (body.regenerate) {
           while (history.length > 0 && history[history.length - 1].role === "assistant") {
             const last = history[history.length - 1];
-            // Soft-delete the prior assistant reply (preserve as version)
-            await supabase
-              .from("messages")
-              .update({ is_active: false })
-              .eq("id", last.id);
+            if (!priorVersion) priorVersion = { content: last.content, created_at: last.created_at };
+            await supabase.from("messages").update({ is_active: false }).eq("id", last.id);
             history.pop();
           }
           if (history.length === 0 || history[history.length - 1].role !== "user") {
@@ -263,14 +262,17 @@ export const Route = createFileRoute("/api/chat/stream")({
             // Parse out followups + visible content
             const { visible, followups } = splitFollowups(assistantText);
 
-            // Persist assistant message (active)
+            // Persist assistant message (active). Carry prior version for "Previous response" toggle.
+            const metadata: Record<string, unknown> = {};
+            if (followups.length) metadata.follow_ups = followups;
+            if (priorVersion) metadata.versions = [priorVersion];
             const asst = await supabase
               .from("messages")
               .insert({
                 conversation_id: convo.id,
                 role: "assistant",
                 content: visible,
-                metadata: followups.length ? { follow_ups: followups } : {},
+                metadata,
               })
               .select("id, created_at")
               .single();
