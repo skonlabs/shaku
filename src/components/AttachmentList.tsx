@@ -32,20 +32,10 @@ interface Props {
   align?: "start" | "end";
 }
 
-export function AttachmentList({
-  conversationId,
-  messageId,
-  attachments,
-  align = "end",
-}: Props) {
+export function AttachmentList({ conversationId, messageId, attachments, align = "end" }: Props) {
   if (attachments.length === 0) return null;
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-1.5",
-        align === "end" ? "items-end" : "items-start",
-      )}
-    >
+    <div className={cn("flex flex-col gap-1.5", align === "end" ? "items-end" : "items-start")}>
       {attachments.map((a, i) => (
         <AttachmentRow
           key={`${messageId}-${i}`}
@@ -71,9 +61,8 @@ function AttachmentRow({
   attachment: AttachmentLike;
 }) {
   const qc = useQueryClient();
-  const isImage = (a.kind === "image") || (a.type ?? "").startsWith("image/");
-  const hasTranscript =
-    typeof a.extracted_text === "string" && a.extracted_text.trim().length > 0;
+  const isImage = a.kind === "image" || (a.type ?? "").startsWith("image/");
+  const hasTranscript = typeof a.extracted_text === "string" && a.extracted_text.trim().length > 0;
   const isTempMessage = messageId.startsWith("temp-");
 
   // Default: expand image transcripts when present (so users immediately see/review).
@@ -124,11 +113,7 @@ function AttachmentRow({
             aria-expanded={open}
             aria-label={open ? "Hide transcript" : "Show transcript"}
           >
-            {open ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
+            {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
             {isImage ? "Transcript" : "Preview"}
           </button>
         )}
@@ -137,12 +122,7 @@ function AttachmentRow({
       {/* Image thumbnail */}
       {isImage && (
         <a href={a.url} target="_blank" rel="noreferrer" className="block">
-          <img
-            src={a.url}
-            alt={a.name}
-            className="max-h-56 w-full object-cover"
-            loading="lazy"
-          />
+          <img src={a.url} alt={a.name} className="max-h-56 w-full object-cover" loading="lazy" />
         </a>
       )}
 
@@ -170,11 +150,7 @@ function AttachmentRow({
                 >
                   <X className="mr-1 h-3 w-3" /> Cancel
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() => mut.mutate(draft)}
-                  disabled={mut.isPending}
-                >
+                <Button size="sm" onClick={() => mut.mutate(draft)} disabled={mut.isPending}>
                   <Check className="mr-1 h-3 w-3" /> Save
                 </Button>
               </div>

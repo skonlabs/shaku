@@ -132,7 +132,9 @@ export function ChatComposer({
         toast.error(`${file.name} is too large (max 25 MB).`);
         continue;
       }
-      const isImage = (file.type || "").startsWith("image/") || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(file.name);
+      const isImage =
+        (file.type || "").startsWith("image/") ||
+        /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(file.name);
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const initialStage: PendingUpload["stage"] = isImage ? "uploading" : "uploading";
       setPending((cur) => [
@@ -280,7 +282,7 @@ export function ChatComposer({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKey}
-          placeholder={disabled ? disabledMessage ?? placeholder : placeholder}
+          placeholder={disabled ? (disabledMessage ?? placeholder) : placeholder}
           disabled={disabled}
           className="min-h-[24px] flex-1 resize-none border-0 bg-transparent px-1 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
           aria-label="Message"
