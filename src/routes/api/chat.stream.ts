@@ -286,23 +286,49 @@ export const Route = createFileRoute("/api/chat/stream")({
           let assistantText = "";
           let streamError: unknown = null;
           let stopReason: string | null = null;
-          try {
-            const claudeStream = anthropic.messages.stream({
-              model: "claude-sonnet-4-5",
-              max_tokens: 8192,
-              system: SYSTEM_PROMPT,
-              messages: claudeMessages,
-            });
+          // Claude Sonnet 4.5 supports up to 64K output tokens. Use the full
+          // ceiling so we don't truncate long answers (e.g. summarizing big
+          // attachments). If we still hit max_tokens, auto-continue up to N
+          // times so the user always receives a complete reply.
+          const PER_TURN_MAX_TOKENS = 16_000;
+          const MAX_AUTO_CONTINUES = 3;
+          const turnMessages = [...claudeMessages];
 
-            for await (const event of claudeStream) {
-              if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-                assistantText += event.delta.text;
-                // Strip the followup tag from streamed deltas so user doesn't see it
-                const visible = stripFollowupsTagPartial(event.delta.text, assistantText);
-                if (visible) send("delta", { text: visible });
-              } else if (event.type === "message_delta") {
-                stopReason = event.delta.stop_reason ?? stopReason;
+          try {
+            for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
+              const claudeStream = anthropic.messages.stream({
+                model: "claude-sonnet-4-5",
+                max_tokens: PER_TURN_MAX_TOKENS,
+                system: SYSTEM_PROMPT,
+                messages: turnMessages,
+              });
+
+              let turnText = "";
+              stopReason = null;
+              for await (const event of claudeStream) {
+                if (
+                  event.type === "content_block_delta" &&
+                  event.delta.type === "text_delta"
+                ) {
+                  turnText += event.delta.text;
+                  assistantText += event.delta.text;
+                  const visible = stripFollowupsTagPartial(event.delta.text, assistantText);
+                  if (visible) send("delta", { text: visible });
+                } else if (event.type === "message_delta") {
+                  stopReason = event.delta.stop_reason ?? stopReason;
+                }
               }
+
+              if (stopReason !== "max_tokens" || turn === MAX_AUTO_CONTINUES) break;
+
+              // Auto-continue: feed the partial assistant turn back and ask it
+              // to keep going from exactly where it stopped.
+              turnMessages.push({ role: "assistant", content: turnText });
+              turnMessages.push({
+                role: "user",
+                content:
+                  "Continue from exactly where you stopped. Do not repeat anything you already wrote. Do not add a preface.",
+              });
             }
           } catch (err) {
             streamError = err;
@@ -377,14 +403,10 @@ export const Route = createFileRoute("/api/chat/stream")({
           if (streamError) {
             send("error", { message: "I ran into a problem. Please try again." });
           } else {
-            const finalFollowups =
-              stopReason === "max_tokens"
-                ? [...followups, "Continue from where you stopped."].slice(0, 3)
-                : followups;
             send("done", {
               assistant_message_id: assistantId,
               created_at: assistantCreatedAt,
-              followups: finalFollowups,
+              followups,
             });
           }
         });
