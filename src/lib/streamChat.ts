@@ -111,7 +111,7 @@ export async function streamChat(req: StreamRequest, cb: StreamCallbacks): Promi
         return;
       } catch (err) {
         if ((err as Error).name === "AbortError") {
-          cb.onDone({});
+          // User pressed Stop — don't fire onDone (which would clear UI). Just exit.
           return;
         }
         // Don't retry once we've started receiving tokens

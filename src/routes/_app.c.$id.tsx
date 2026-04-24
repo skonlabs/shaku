@@ -182,8 +182,12 @@ function ChatPage() {
         conversationId={id}
         onSend={send}
         onStop={() => {
+          // Preserve partial assistant text in the UI; just stop the network/stream.
           abortRef.current?.abort();
           setStreamingId(null);
+          setStreamingMessages((cur) =>
+            cur.map((m) => (m.pending ? { ...m, pending: false } : m)),
+          );
         }}
         isStreaming={streamingId !== null}
         draftKey={`cortex.draft.${id}`}
