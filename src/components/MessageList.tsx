@@ -179,6 +179,8 @@ function MessageRow({
   };
 
   if (isUser) {
+    const isPlaceholder =
+      message.content.trim() === "(attachment)" && attachments.length > 0;
     return (
       <div className="group flex flex-col items-end gap-1.5">
         {editing ? (
@@ -204,9 +206,11 @@ function MessageRow({
           </div>
         ) : (
           <div className="max-w-[85%] space-y-1.5">
-            <div className="rounded-2xl bg-bubble px-4 py-2.5 text-sm text-bubble-foreground">
-              <div className="whitespace-pre-wrap">{message.content}</div>
-            </div>
+            {!isPlaceholder && (
+              <div className="rounded-2xl bg-bubble px-4 py-2.5 text-sm text-bubble-foreground">
+                <div className="whitespace-pre-wrap">{message.content}</div>
+              </div>
+            )}
             {attachments.length > 0 && (
               <AttachmentList
                 conversationId={conversationId}
