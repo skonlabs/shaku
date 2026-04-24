@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { checkRateLimit } from "@/lib/utils/rate-limit";
 
 export const listConversations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -167,7 +168,7 @@ export const setMessageFeedback = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: msg } = await supabase
       .from("messages")
-      .select("id, metadata, conversations!inner(user_id)")
+      .select("id, conversation_id, metadata, conversations!inner(user_id)")
       .eq("id", data.id)
       .single();
     // @ts-expect-error joined relation
@@ -177,8 +178,20 @@ export const setMessageFeedback = createServerFn({ method: "POST" })
       ...((msg.metadata as Record<string, unknown> | null) ?? {}),
       feedback: { rating: data.rating, reasons: data.reasons, note: data.note },
     };
-    const { error } = await supabase.from("messages").update({ metadata }).eq("id", data.id);
-    if (error) throw new Error("Couldn't save feedback.");
+
+    // Write to both messages.metadata (Sprint 1) and feedback_events table (Sprint 3)
+    const [updateResult] = await Promise.all([
+      supabase.from("messages").update({ metadata }).eq("id", data.id),
+      supabase.from("feedback_events").insert({
+        user_id: userId,
+        message_id: data.id,
+        conversation_id: msg.conversation_id,
+        feedback_type: data.rating === "up" ? "thumbs_up" : "thumbs_down",
+        reason: data.reasons?.join(", ") ?? null,
+        free_text: data.note ?? null,
+      }),
+    ]);
+    if (updateResult.error) throw new Error("Couldn't save feedback.");
     return { success: true };
   });
 
@@ -186,31 +199,11 @@ export const getRateLimitStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const { count } = await supabase
-      .from("messages")
-      .select("id, conversations!inner(user_id)", { count: "exact", head: true })
-      .eq("role", "user")
-      .eq("conversations.user_id", userId)
-      .gte("created_at", oneHourAgo);
-
-    let resetAt: string | null = null;
-    if ((count ?? 0) > 0) {
-      const { data: oldest } = await supabase
-        .from("messages")
-        .select("created_at, conversations!inner(user_id)")
-        .eq("role", "user")
-        .eq("conversations.user_id", userId)
-        .gte("created_at", oneHourAgo)
-        .order("created_at", { ascending: true })
-        .limit(1);
-      if (oldest?.[0]?.created_at) {
-        resetAt = new Date(
-          new Date(oldest[0].created_at).getTime() + 60 * 60 * 1000,
-        ).toISOString();
-      }
-    }
-    return { used: count ?? 0, limit: 20, reset_at: resetAt };
+    const { data: userRow } = await supabase.from("users").select("plan").eq("id", userId).single();
+    const plan = userRow?.plan ?? "free";
+    const rl = await checkRateLimit(userId, plan, supabase);
+    const used = rl.limit - rl.remaining;
+    return { used, limit: rl.limit, reset_at: rl.resetAt, plan };
   });
 
 export const completeOnboarding = createServerFn({ method: "POST" })

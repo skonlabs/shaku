@@ -2,13 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { checkRateLimit } from "@/lib/utils/rate-limit";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
 const SUPABASE_PUBLISHABLE_KEY =
   process.env.SUPABASE_PUBLISHABLE_KEY ??
   (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
 
-const FREE_MSGS_PER_HOUR = 20;
 const ACK_RESPONSES = [
   "You're welcome! Let me know if you need anything else.",
   "Anytime! Happy to help.",
@@ -124,32 +124,23 @@ export const Route = createFileRoute("/api/chat/stream")({
           .maybeSingle();
         if (!convo) return jsonError("Conversation not found", 404);
 
-        // ---- Rate limit (free: 20 msg/hr) ----
+        // ---- Rate limit (free: 20 msg/hr, pro: 30 msg/min) ----
         if (!body.regenerate) {
-          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-          const { count } = await supabase
-            .from("messages")
-            .select("id, conversations!inner(user_id)", { count: "exact", head: true })
-            .eq("role", "user")
-            .eq("conversations.user_id", userId)
-            .gte("created_at", oneHourAgo);
-          if ((count ?? 0) >= FREE_MSGS_PER_HOUR) {
-            const { data: oldest } = await supabase
-              .from("messages")
-              .select("created_at, conversations!inner(user_id)")
-              .eq("role", "user")
-              .eq("conversations.user_id", userId)
-              .gte("created_at", oneHourAgo)
-              .order("created_at", { ascending: true })
-              .limit(1);
-            const resetAt = oldest?.[0]?.created_at
-              ? new Date(new Date(oldest[0].created_at).getTime() + 60 * 60 * 1000).toISOString()
-              : new Date(Date.now() + 60 * 60 * 1000).toISOString();
+          const { data: userRow } = await supabase
+            .from("users")
+            .select("plan")
+            .eq("id", userId)
+            .single();
+          const plan = userRow?.plan ?? "free";
+          const rl = await checkRateLimit(userId, plan, supabase);
+          if (!rl.allowed) {
+            const window = plan === "pro" ? "minute" : "hour";
             return new Response(
               JSON.stringify({
                 error: "rate_limited",
-                message: `You've used all ${FREE_MSGS_PER_HOUR} messages this hour.`,
-                reset_at: resetAt,
+                message: `You've used all ${rl.limit} messages this ${window}.`,
+                reset_at: rl.resetAt,
+                remaining: 0,
               }),
               { status: 429, headers: { "Content-Type": "application/json" } },
             );
