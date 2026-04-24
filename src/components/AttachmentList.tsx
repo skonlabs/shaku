@@ -114,6 +114,13 @@ function AttachmentRow({
           >
             {a.name}
           </a>
+        ) : hasTranscript ? (
+          <button
+            onClick={openInPanel}
+            className="max-w-[180px] truncate text-left font-medium text-foreground hover:underline"
+          >
+            {a.name}
+          </button>
         ) : (
           <span className="max-w-[180px] truncate font-medium text-foreground">{a.name}</span>
         )}
@@ -123,17 +130,30 @@ function AttachmentRow({
             edited
           </span>
         )}
-        {(hasTranscript || a.extraction_error || a.storage_error) && (
-          <button
-            onClick={() => setOpen((o) => !o)}
-            className="ml-auto flex items-center gap-0.5 rounded px-1 py-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
-            aria-expanded={open}
-            aria-label={open ? "Hide transcript" : "Show transcript"}
-          >
-            {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            {isImage ? "Transcript" : "Preview"}
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-0.5">
+          {hasTranscript && (
+            <button
+              onClick={openInPanel}
+              className="flex items-center gap-1 rounded px-1 py-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              aria-label="Open in side panel"
+              title="Open in side panel"
+            >
+              <PanelRightOpen className="h-3 w-3" />
+              Open
+            </button>
+          )}
+          {(hasTranscript || a.extraction_error || a.storage_error) && (
+            <button
+              onClick={() => setOpen((o) => !o)}
+              className="flex items-center gap-0.5 rounded px-1 py-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              aria-expanded={open}
+              aria-label={open ? "Hide transcript" : "Show transcript"}
+            >
+              {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {isImage ? "Transcript" : "Preview"}
+            </button>
+          )}
+        </div>
       </div>
 
       {isImage && a.url && (
