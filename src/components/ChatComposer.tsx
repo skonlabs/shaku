@@ -52,10 +52,11 @@ export function ChatComposer({
 }: Props) {
   const [value, setValue] = useState(initialValue ?? "");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [uploading, setUploading] = useState<number>(0); // count of in-flight uploads
+  const [pending, setPending] = useState<PendingUpload[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploading = pending.length;
 
   // Hydrate draft on mount only
   useEffect(() => {
