@@ -36,7 +36,7 @@ import {
 } from "@/lib/conversations.functions";
 
 export function SidePanel() {
-  const { active, setActive } = usePanel();
+  const { active, setActive, document } = usePanel();
 
   // Close on Esc handled globally; keep panel mounted so animations work
   useEffect(() => {
@@ -50,14 +50,22 @@ export function SidePanel() {
 
   if (!active) return null;
 
+  const isDoc = active === "document";
   return (
-    <div className="z-20 flex h-svh w-[300px] shrink-0 flex-col border-r border-border bg-card">
-      <div className="flex items-center justify-between px-4 pb-2 pt-3">
-        <h2 className="text-sm font-semibold capitalize">{labelFor(active)}</h2>
+    <div
+      className={cn(
+        "z-20 flex h-svh shrink-0 flex-col border-r border-border bg-card",
+        isDoc ? "w-[480px]" : "w-[300px]",
+      )}
+    >
+      <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-3">
+        <h2 className="truncate text-sm font-semibold capitalize">
+          {isDoc ? (document?.title ?? "Document") : labelFor(active)}
+        </h2>
         <button
           onClick={() => setActive(null)}
           aria-label="Close panel"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground"
         >
           <X className="h-4 w-4" />
         </button>
@@ -69,6 +77,7 @@ export function SidePanel() {
         {active === "connectors" && <ComingSoon label="Connectors" />}
         {active === "settings" && <SettingsPanel />}
         {active === "account" && <AccountPanel />}
+        {active === "document" && <DocumentPanel />}
       </div>
     </div>
   );
