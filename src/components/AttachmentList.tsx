@@ -8,11 +8,13 @@ import {
   Pencil,
   Check,
   X,
+  PanelRightOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { updateAttachmentOcr } from "@/lib/conversations.functions";
+import { usePanel } from "@/lib/ui-context";
 
 export interface AttachmentLike {
   name: string;
