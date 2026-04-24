@@ -500,7 +500,7 @@ function DocumentPanel() {
     const ext = isMarkdown ? "md" : "txt";
     const safe = doc.title.replace(/[^a-zA-Z0-9._-]/g, "_") || `document.${ext}`;
     const filename = /\.[a-z0-9]+$/i.test(safe) ? safe : `${safe}.${ext}`;
-    const blob = new Blob([doc.content], {
+    const blob = new Blob([content], {
       type: doc.mime ?? (isMarkdown ? "text/markdown" : "text/plain"),
     });
     const url = URL.createObjectURL(blob);
@@ -514,11 +514,23 @@ function DocumentPanel() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 border-b border-border px-3 py-2">
-        <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs" onClick={onCopy}>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1.5 text-xs"
+          onClick={onCopy}
+          disabled={!content}
+        >
           {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           {copied ? "Copied" : "Copy"}
         </Button>
-        <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs" onClick={onDownload}>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1.5 text-xs"
+          onClick={onDownload}
+          disabled={!content}
+        >
           <Download className="h-3.5 w-3.5" />
           Download
         </Button>
@@ -535,13 +547,19 @@ function DocumentPanel() {
       </div>
       <ScrollArea className="flex-1">
         <div className="px-4 py-3">
-          {isMarkdown ? (
+          {fetching && !content ? (
+            <p className="text-xs text-muted-foreground">Loading document…</p>
+          ) : fetchError && !content ? (
+            <p className="text-xs text-destructive">{fetchError}</p>
+          ) : !content ? (
+            <p className="text-xs text-muted-foreground">No preview available.</p>
+          ) : isMarkdown ? (
             <div className="prose prose-sm max-w-none dark:prose-invert">
-              <MessageContent content={doc.content} />
+              <MessageContent content={content} />
             </div>
           ) : (
             <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-foreground/90">
-              {doc.content}
+              {content}
             </pre>
           )}
         </div>
