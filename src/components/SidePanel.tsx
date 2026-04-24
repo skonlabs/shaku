@@ -12,6 +12,9 @@ import {
   Sun,
   Monitor,
   Search,
+  Download,
+  Copy,
+  Check,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
