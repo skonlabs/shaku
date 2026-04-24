@@ -16,6 +16,7 @@ import {
 import { usePanel } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
+import { HARD_UPLOAD_MAX_MB, useUploadMaxMb } from "@/lib/upload-settings";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
