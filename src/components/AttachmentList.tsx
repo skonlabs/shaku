@@ -8,11 +8,13 @@ import {
   Pencil,
   Check,
   X,
+  PanelRightOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { updateAttachmentOcr } from "@/lib/conversations.functions";
+import { usePanel } from "@/lib/ui-context";
 
 export interface AttachmentLike {
   name: string;
@@ -63,9 +65,18 @@ function AttachmentRow({
   attachment: AttachmentLike;
 }) {
   const qc = useQueryClient();
+  const { openDocument } = usePanel();
   const isImage = a.kind === "image" || (a.type ?? "").startsWith("image/");
   const hasTranscript = typeof a.extracted_text === "string" && a.extracted_text.trim().length > 0;
   const isTempMessage = messageId.startsWith("temp-");
+
+  const openInPanel = () =>
+    openDocument({
+      title: a.name,
+      content: a.extracted_text ?? "",
+      mime: a.type || "text/plain",
+      url: a.url,
+    });
 
   // Default: expand image transcripts when present (so users immediately see/review).
   const [open, setOpen] = useState<boolean>(isImage && hasTranscript);
@@ -103,6 +114,13 @@ function AttachmentRow({
           >
             {a.name}
           </a>
+        ) : hasTranscript ? (
+          <button
+            onClick={openInPanel}
+            className="max-w-[180px] truncate text-left font-medium text-foreground hover:underline"
+          >
+            {a.name}
+          </button>
         ) : (
           <span className="max-w-[180px] truncate font-medium text-foreground">{a.name}</span>
         )}
@@ -112,17 +130,30 @@ function AttachmentRow({
             edited
           </span>
         )}
-        {(hasTranscript || a.extraction_error || a.storage_error) && (
-          <button
-            onClick={() => setOpen((o) => !o)}
-            className="ml-auto flex items-center gap-0.5 rounded px-1 py-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
-            aria-expanded={open}
-            aria-label={open ? "Hide transcript" : "Show transcript"}
-          >
-            {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            {isImage ? "Transcript" : "Preview"}
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-0.5">
+          {hasTranscript && (
+            <button
+              onClick={openInPanel}
+              className="flex items-center gap-1 rounded px-1 py-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              aria-label="Open in side panel"
+              title="Open in side panel"
+            >
+              <PanelRightOpen className="h-3 w-3" />
+              Open
+            </button>
+          )}
+          {(hasTranscript || a.extraction_error || a.storage_error) && (
+            <button
+              onClick={() => setOpen((o) => !o)}
+              className="flex items-center gap-0.5 rounded px-1 py-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              aria-expanded={open}
+              aria-label={open ? "Hide transcript" : "Show transcript"}
+            >
+              {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {isImage ? "Transcript" : "Preview"}
+            </button>
+          )}
+        </div>
       </div>
 
       {isImage && a.url && (
