@@ -9,16 +9,21 @@ export const Route = createFileRoute("/_app")({
 });
 
 function AppLayout() {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading) return;
+    if (!user) {
       void navigate({ to: "/login" });
+      return;
     }
-  }, [loading, user, navigate]);
+    if (profile && !profile.has_completed_onboarding) {
+      void navigate({ to: "/onboarding" });
+    }
+  }, [loading, user, profile, navigate]);
 
-  if (loading || !user) {
+  if (loading || !user || (profile && !profile.has_completed_onboarding)) {
     return (
       <div className="flex min-h-svh items-center justify-center bg-background">
         <div className="text-sm text-muted-foreground">Loading…</div>
@@ -36,3 +41,4 @@ function AppLayout() {
     </div>
   );
 }
+
