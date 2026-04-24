@@ -284,6 +284,7 @@ export const Route = createFileRoute("/api/chat/stream")({
           if (userMsg) send("user_message", userMsg);
 
           let assistantText = "";
+          let streamError: unknown = null;
           try {
             const claudeStream = anthropic.messages.stream({
               model: "claude-sonnet-4-5",
@@ -300,14 +301,22 @@ export const Route = createFileRoute("/api/chat/stream")({
                 if (visible) send("delta", { text: visible });
               }
             }
+          } catch (err) {
+            streamError = err;
+            console.error("[chat.stream] anthropic stream error", err);
+          }
 
-            // Parse out followups + visible content
-            const { visible, followups } = splitFollowups(assistantText);
-
-            // Persist assistant message (active). Carry prior version for "Previous response" toggle.
+          // ALWAYS try to persist whatever we received, even if the client
+          // disconnected or the upstream errored. This prevents the
+          // assistant reply from vanishing on refetch.
+          const { visible, followups } = splitFollowups(assistantText);
+          let assistantId: string | null = null;
+          let assistantCreatedAt: string | null = null;
+          if (visible.trim().length > 0) {
             const metadata: Record<string, unknown> = {};
             if (followups.length) metadata.follow_ups = followups;
             if (priorVersion) metadata.versions = [priorVersion];
+            if (streamError) metadata.partial = true;
             const asst = await supabase
               .from("messages")
               .insert({
@@ -318,50 +327,57 @@ export const Route = createFileRoute("/api/chat/stream")({
               })
               .select("id, created_at")
               .single();
-
-            // Auto-title via Haiku for the first exchange (async — doesn't block)
-            if (!convo.title && claudeMessages.length >= 1) {
-              void (async () => {
-                try {
-                  const titleRes = await anthropic.messages.create({
-                    model: "claude-haiku-4-5",
-                    max_tokens: 32,
-                    system: TITLE_PROMPT,
-                    messages: [
-                      {
-                        role: "user",
-                        content: `User: ${claudeMessages[0]?.content ?? ""}\n\nAssistant: ${visible.slice(0, 400)}`,
-                      },
-                    ],
-                  });
-                  const block = titleRes.content[0];
-                  const text =
-                    block && block.type === "text" ? block.text.trim().slice(0, 80) : null;
-                  if (text) {
-                    await supabase
-                      .from("conversations")
-                      .update({ title: text })
-                      .eq("id", convo.id);
-                  }
-                } catch (e) {
-                  console.error("[chat.stream] title gen", e);
-                }
-              })();
+            if (asst.error) {
+              console.error("[chat.stream] insert assistant message", asst.error);
+            } else {
+              assistantId = asst.data?.id ?? null;
+              assistantCreatedAt = asst.data?.created_at ?? null;
             }
+          }
 
-            await supabase
-              .from("conversations")
-              .update({ updated_at: new Date().toISOString() })
-              .eq("id", convo.id);
+          // Auto-title via Haiku for the first exchange (async — doesn't block)
+          if (!convo.title && claudeMessages.length >= 1 && visible.trim().length > 0) {
+            void (async () => {
+              try {
+                const titleRes = await anthropic.messages.create({
+                  model: "claude-haiku-4-5",
+                  max_tokens: 32,
+                  system: TITLE_PROMPT,
+                  messages: [
+                    {
+                      role: "user",
+                      content: `User: ${claudeMessages[0]?.content ?? ""}\n\nAssistant: ${visible.slice(0, 400)}`,
+                    },
+                  ],
+                });
+                const block = titleRes.content[0];
+                const text =
+                  block && block.type === "text" ? block.text.trim().slice(0, 80) : null;
+                if (text) {
+                  await supabase
+                    .from("conversations")
+                    .update({ title: text })
+                    .eq("id", convo.id);
+                }
+              } catch (e) {
+                console.error("[chat.stream] title gen", e);
+              }
+            })();
+          }
 
+          await supabase
+            .from("conversations")
+            .update({ updated_at: new Date().toISOString() })
+            .eq("id", convo.id);
+
+          if (streamError) {
+            send("error", { message: "I ran into a problem. Please try again." });
+          } else {
             send("done", {
-              assistant_message_id: asst.data?.id,
-              created_at: asst.data?.created_at,
+              assistant_message_id: assistantId,
+              created_at: assistantCreatedAt,
               followups,
             });
-          } catch (err) {
-            console.error("[chat.stream] error", err);
-            send("error", { message: "I ran into a problem. Please try again." });
           }
         });
       },
