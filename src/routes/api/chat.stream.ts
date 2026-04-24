@@ -58,6 +58,9 @@ const BodySchema = z.object({
         url: z.string().url(),
         size: z.number().nonnegative(),
         type: z.string().max(120),
+        kind: z.string().max(20).optional(),
+        extracted_text: z.string().nullable().optional(),
+        extraction_error: z.string().nullable().optional(),
       }),
     )
     .max(10)
@@ -231,7 +234,42 @@ export const Route = createFileRoute("/api/chat/stream")({
 
         const claudeMessages = history
           .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+          .map((m) => ({ role: m.role as "user" | "assistant", content: m.content as unknown as string }));
+
+        // If the latest user turn has attachments, expand it into multimodal content
+        // (image blocks for images, inline text for everything else we extracted).
+        const lastIdx = claudeMessages.length - 1;
+        if (lastIdx >= 0 && claudeMessages[lastIdx].role === "user" && body.attachments?.length) {
+          const blocks: Anthropic.MessageParam["content"] = [];
+          const textParts: string[] = [];
+          const baseText =
+            (typeof claudeMessages[lastIdx].content === "string"
+              ? claudeMessages[lastIdx].content
+              : "") || "";
+          if (baseText.trim()) textParts.push(baseText);
+
+          for (const a of body.attachments) {
+            if (a.kind === "image" || (a.type ?? "").startsWith("image/")) {
+              blocks.push({
+                type: "image",
+                source: { type: "url", url: a.url },
+              });
+            } else if (a.extracted_text && a.extracted_text.trim()) {
+              textParts.push(
+                `\n\n--- Attached file: ${a.name} (${a.type || "unknown"}) ---\n${a.extracted_text}\n--- end of ${a.name} ---`,
+              );
+            } else if (a.extraction_error) {
+              textParts.push(
+                `\n\n[Attached "${a.name}" could not be parsed: ${a.extraction_error}]`,
+              );
+            } else {
+              textParts.push(`\n\n[Attached file: ${a.name} (${a.type || "unknown"})]`);
+            }
+          }
+          blocks.unshift({ type: "text", text: textParts.join("") || "(see attachments)" });
+          // @ts-expect-error multimodal content typed loosely above
+          claudeMessages[lastIdx].content = blocks;
+        }
 
         // ---- Stream from Anthropic ----
         const apiKey = process.env.ANTHROPIC_API_KEY;
