@@ -1,0 +1,7 @@
+# Runtime (all optional — middleware works without any of these)
+tiktoken>=0.7.0          # Accurate token counting for OpenAI/Anthropic models
+                         # Falls back to char/4 approximation if not installed
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
