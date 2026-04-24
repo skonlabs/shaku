@@ -8,6 +8,7 @@ import { RateLimitBanner } from "@/components/RateLimitBanner";
 import {
   createConversation,
   listConversations,
+  recordSeen,
 } from "@/lib/conversations.functions";
 import { toast } from "sonner";
 
@@ -42,19 +43,17 @@ function NewChatPage() {
   const suggestions = useMemo(pickThree, []);
   const [welcomeBack, setWelcomeBack] = useState(false);
 
-  // Welcome-back: >24h since last visit (localStorage source of truth)
+  // Welcome-back: derive from profile.last_seen_at (DB source of truth),
+  // then stamp the new last_seen_at server-side.
   useEffect(() => {
-    try {
-      const prev = localStorage.getItem(SEEN_KEY);
-      if (prev) {
-        const hours = (Date.now() - new Date(prev).getTime()) / 36e5;
-        if (hours > 24) setWelcomeBack(true);
-      }
-      localStorage.setItem(SEEN_KEY, new Date().toISOString());
-    } catch {
-      /* noop */
+    if (loading || !user || !profile) return;
+    const last = (profile as unknown as { last_seen_at?: string | null }).last_seen_at;
+    if (last) {
+      const hours = (Date.now() - new Date(last).getTime()) / 36e5;
+      if (hours > 24) setWelcomeBack(true);
     }
-  }, []);
+    void recordSeen({ data: undefined as never });
+  }, [loading, user, profile]);
 
   // Last conversation (offered, not auto-redirected, to respect explicit "/" navigation)
   const { data: convoList } = useQuery({
