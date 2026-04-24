@@ -211,28 +211,18 @@ export function ChatComposer({
       )}
 
       {(attachments.length > 0 || pending.length > 0) && (
-        <div className="mb-2 flex flex-wrap gap-1.5">
+        <div className="mb-2 flex flex-col gap-1.5">
           {attachments.map((a, i) => (
-            <div
+            <ComposerAttachmentPreview
               key={i}
-              className="flex items-center gap-2 rounded-lg border border-border bg-card px-2 py-1.5 text-xs"
-            >
-              <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="max-w-[180px] truncate font-medium">{a.name}</span>
-              <span className="text-muted-foreground">{formatBytes(a.size)}</span>
-              <button
-                onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
-                aria-label="Remove attachment"
-                className="ml-0.5 text-muted-foreground transition hover:text-foreground"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
+              attachment={a}
+              onRemove={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
+            />
           ))}
           {pending.map((p) => (
             <div
               key={p.id}
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-muted-foreground"
+              className="flex items-center gap-1.5 self-start rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-muted-foreground"
             >
               {p.stage === "ocr" ? (
                 <ScanLine className="h-3.5 w-3.5 animate-pulse text-primary" />
