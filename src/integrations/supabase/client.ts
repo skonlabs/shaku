@@ -27,6 +27,7 @@ export type Profile = {
   memory_enabled: boolean;
   has_completed_onboarding: boolean;
   pii_preferences: Record<string, string>;
+  last_seen_at: string | null;
 };
 
 export type Conversation = {

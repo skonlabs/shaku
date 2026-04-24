@@ -25,7 +25,7 @@ const SUGGESTIONS = [
   "Write a short, friendly intro message",
 ];
 
-const SEEN_KEY = "cortex.lastSeenAt";
+
 
 function pickThree(): string[] {
   const arr = [...SUGGESTIONS];
