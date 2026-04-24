@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, Square, Paperclip, X, FileText, Loader2 } from "lucide-react";
+import { ArrowUp, Square, Paperclip, X, FileText, Loader2, ScanLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { uploadChatFile } from "@/lib/uploads.functions";
@@ -9,7 +9,19 @@ export interface Attachment {
   url: string;
   size: number;
   type: string;
+  kind?: string;
+  extracted_text?: string | null;
+  extraction_error?: string | null;
 }
+
+type PendingUpload = {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  isImage: boolean;
+  stage: "uploading" | "ocr" | "parsing";
+};
 
 interface Props {
   conversationId?: string; // required to enable upload
