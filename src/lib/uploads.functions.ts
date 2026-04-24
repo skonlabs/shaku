@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+const HARD_MAX_BYTES = 25 * 1024 * 1024; // 25 MB ceiling
 const BUCKET = "chat-uploads";
 const MAX_EXTRACTED_CHARS = 120_000; // cap to keep prompt size sane
 
