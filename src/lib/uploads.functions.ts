@@ -179,9 +179,13 @@ async function transcribeAudio(
     throw new Error("Audio transcription unavailable (OPENAI_API_KEY not set).");
   }
   const form = new FormData();
+  const ab = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
   form.append(
     "file",
-    new Blob([bytes], { type: mime || "audio/mpeg" }),
+    new Blob([ab], { type: mime || "audio/mpeg" }),
     name || "audio.mp3",
   );
   form.append("model", "whisper-1");
