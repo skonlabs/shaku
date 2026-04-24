@@ -58,6 +58,9 @@ const BodySchema = z.object({
         url: z.string().url(),
         size: z.number().nonnegative(),
         type: z.string().max(120),
+        kind: z.string().max(20).optional(),
+        extracted_text: z.string().nullable().optional(),
+        extraction_error: z.string().nullable().optional(),
       }),
     )
     .max(10)
