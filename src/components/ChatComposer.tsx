@@ -327,3 +327,72 @@ function formatBytes(b: number) {
   if (b < 1024 * 1024) return `${Math.round(b / 1024)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
+
+function ComposerAttachmentPreview({
+  attachment: a,
+  onRemove,
+}: {
+  attachment: Attachment;
+  onRemove: () => void;
+}) {
+  const isImage = a.kind === "image" || (a.type ?? "").startsWith("image/");
+  const hasText = !!a.extracted_text && a.extracted_text.trim().length > 0;
+  const hasError = !!a.extraction_error;
+  const [open, setOpen] = useState(hasError);
+
+  const status = hasError
+    ? { label: "Extraction failed", tone: "text-destructive", Icon: AlertTriangle }
+    : hasText
+      ? {
+          label: isImage ? `OCR · ${a.extracted_text!.length.toLocaleString()} chars` : `Parsed · ${a.extracted_text!.length.toLocaleString()} chars`,
+          tone: "text-emerald-600 dark:text-emerald-400",
+          Icon: CheckCircle2,
+        }
+      : { label: isImage ? "Image" : "No text extracted", tone: "text-muted-foreground", Icon: FileText };
+
+  return (
+    <div className="self-start w-full max-w-[520px] overflow-hidden rounded-lg border border-border bg-card text-xs">
+      <div className="flex items-center gap-2 px-2 py-1.5">
+        <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className="max-w-[200px] truncate font-medium">{a.name}</span>
+        <span className="text-muted-foreground">{formatBytes(a.size)}</span>
+        <span className={cn("flex items-center gap-1", status.tone)}>
+          <status.Icon className="h-3 w-3" />
+          {status.label}
+        </span>
+        {(hasText || hasError) && (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="ml-auto flex items-center gap-0.5 rounded px-1 py-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+            aria-expanded={open}
+          >
+            {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            Preview
+          </button>
+        )}
+        <button
+          onClick={onRemove}
+          aria-label="Remove attachment"
+          className={cn("text-muted-foreground transition hover:text-foreground", !(hasText || hasError) && "ml-auto")}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+      {open && (
+        <div className="border-t border-border bg-background/40 p-2">
+          {hasError && !hasText ? (
+            <p className="text-xs text-destructive">{a.extraction_error}</p>
+          ) : (
+            <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-foreground/90">
+              {a.extracted_text}
+            </pre>
+          )}
+          {a.storage_error && (
+            <p className="mt-2 text-[11px] text-muted-foreground">{a.storage_error}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
