@@ -37,6 +37,7 @@ import {
   deleteConversation,
   searchMessages,
 } from "@/lib/conversations.functions";
+import { MessageContent } from "@/components/MessageContent";
 
 export function SidePanel() {
   const { active, setActive, document } = usePanel();
