@@ -12,7 +12,7 @@ export interface StreamRequest {
   conversationId: string;
   userMessage?: string;
   regenerate?: boolean;
-  attachments?: Array<{ name: string; url: string; size: number; type: string }>;
+  attachments?: Array<{ name: string; url: string | null; size: number; type: string }>;
 }
 
 /**
