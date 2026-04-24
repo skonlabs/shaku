@@ -292,7 +292,11 @@ export const Route = createFileRoute("/api/chat/stream")({
           // times so the user always receives a complete reply.
           const PER_TURN_MAX_TOKENS = 16_000;
           const MAX_AUTO_CONTINUES = 3;
+          // Overlap window we ask the model to echo so we can detect & strip
+          // accidental repetition at the seam between turns.
+          const OVERLAP_CHARS = 240;
           const turnMessages = [...claudeMessages];
+          let hitFinalCap = false;
 
           try {
             for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
@@ -304,30 +308,74 @@ export const Route = createFileRoute("/api/chat/stream")({
               });
 
               let turnText = "";
+              // For continuation turns, the model may re-emit some of the prior
+              // tail before continuing. Buffer the start of the turn until we
+              // either find the overlap and strip it, or decide there isn't one.
+              const isContinuation = turn > 0;
+              const priorTail = isContinuation
+                ? assistantText.slice(-OVERLAP_CHARS)
+                : "";
+              let dedupResolved = !isContinuation;
+              let dedupBuffer = "";
+              const DEDUP_SCAN_BUDGET = OVERLAP_CHARS * 3;
+
               stopReason = null;
               for await (const event of claudeStream) {
                 if (
                   event.type === "content_block_delta" &&
                   event.delta.type === "text_delta"
                 ) {
-                  turnText += event.delta.text;
-                  assistantText += event.delta.text;
-                  const visible = stripFollowupsTagPartial(event.delta.text, assistantText);
+                  const chunk = event.delta.text;
+                  turnText += chunk;
+
+                  let emit = chunk;
+                  if (!dedupResolved) {
+                    dedupBuffer += chunk;
+                    const stripped = stripOverlapPrefix(dedupBuffer, priorTail);
+                    if (stripped !== null) {
+                      // Found & removed the overlap — flush remainder.
+                      emit = stripped;
+                      dedupResolved = true;
+                    } else if (dedupBuffer.length >= DEDUP_SCAN_BUDGET) {
+                      // No overlap detected within budget — flush as-is.
+                      emit = dedupBuffer;
+                      dedupResolved = true;
+                    } else {
+                      // Keep buffering silently.
+                      continue;
+                    }
+                  }
+
+                  assistantText += emit;
+                  const visible = stripFollowupsTagPartial(emit, assistantText);
                   if (visible) send("delta", { text: visible });
                 } else if (event.type === "message_delta") {
                   stopReason = event.delta.stop_reason ?? stopReason;
                 }
               }
 
-              if (stopReason !== "max_tokens" || turn === MAX_AUTO_CONTINUES) break;
+              // Flush any remaining buffered text if the turn ended mid-dedup.
+              if (!dedupResolved && dedupBuffer.length > 0) {
+                assistantText += dedupBuffer;
+                const visible = stripFollowupsTagPartial(dedupBuffer, assistantText);
+                if (visible) send("delta", { text: visible });
+              }
+
+              if (stopReason !== "max_tokens") break;
+              if (turn === MAX_AUTO_CONTINUES) {
+                hitFinalCap = true;
+                break;
+              }
 
               // Auto-continue: feed the partial assistant turn back and ask it
-              // to keep going from exactly where it stopped.
+              // to keep going from exactly where it stopped, echoing a short
+              // overlap so we can dedupe deterministically.
               turnMessages.push({ role: "assistant", content: turnText });
+              const tail = assistantText.slice(-OVERLAP_CHARS);
               turnMessages.push({
                 role: "user",
                 content:
-                  "Continue from exactly where you stopped. Do not repeat anything you already wrote. Do not add a preface.",
+                  `Continue exactly from where you stopped. Begin your reply by repeating verbatim these final characters of your previous message, then continue seamlessly:\n\n"""${tail}"""\n\nDo not add any preface, apology, or commentary.`,
               });
             }
           } catch (err) {
