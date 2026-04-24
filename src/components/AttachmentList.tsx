@@ -1,20 +1,10 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   FileText,
   Image as ImageIcon,
-  ChevronDown,
-  ChevronRight,
-  Pencil,
-  Check,
-  X,
   Eye,
   Download,
 } from "lucide-react";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { updateAttachmentOcr } from "@/lib/conversations.functions";
 import { usePanel } from "@/lib/ui-context";
 
 export interface AttachmentLike {
