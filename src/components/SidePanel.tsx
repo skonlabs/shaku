@@ -443,10 +443,43 @@ function AccountPanel() {
 function DocumentPanel() {
   const { document: doc } = usePanel();
   const [copied, setCopied] = useState(false);
+  const [fetched, setFetched] = useState<{ url: string; content: string } | null>(null);
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const initialContent = doc?.content ?? "";
+  const needsFetch = !!doc && !initialContent.trim() && !!doc.url;
+
+  useEffect(() => {
+    if (!needsFetch || !doc?.url) return;
+    if (fetched?.url === doc.url) return;
+    let cancelled = false;
+    setFetching(true);
+    setFetchError(null);
+    fetch(doc.url)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      })
+      .then((text) => {
+        if (!cancelled) setFetched({ url: doc.url!, content: text });
+      })
+      .catch((e) => {
+        if (!cancelled) setFetchError(e?.message || "Couldn't load document");
+      })
+      .finally(() => {
+        if (!cancelled) setFetching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsFetch, doc?.url, fetched?.url]);
 
   if (!doc) {
     return <div className="p-4 text-xs text-muted-foreground">No document selected.</div>;
   }
+
+  const content = initialContent.trim() ? initialContent : (fetched?.content ?? "");
 
   const isMarkdown =
     !doc.mime ||
@@ -455,7 +488,7 @@ function DocumentPanel() {
 
   const onCopy = async () => {
     try {
-      await navigator.clipboard.writeText(doc.content);
+      await navigator.clipboard.writeText(content);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -467,7 +500,7 @@ function DocumentPanel() {
     const ext = isMarkdown ? "md" : "txt";
     const safe = doc.title.replace(/[^a-zA-Z0-9._-]/g, "_") || `document.${ext}`;
     const filename = /\.[a-z0-9]+$/i.test(safe) ? safe : `${safe}.${ext}`;
-    const blob = new Blob([doc.content], {
+    const blob = new Blob([content], {
       type: doc.mime ?? (isMarkdown ? "text/markdown" : "text/plain"),
     });
     const url = URL.createObjectURL(blob);
@@ -481,11 +514,23 @@ function DocumentPanel() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 border-b border-border px-3 py-2">
-        <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs" onClick={onCopy}>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1.5 text-xs"
+          onClick={onCopy}
+          disabled={!content}
+        >
           {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           {copied ? "Copied" : "Copy"}
         </Button>
-        <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs" onClick={onDownload}>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1.5 text-xs"
+          onClick={onDownload}
+          disabled={!content}
+        >
           <Download className="h-3.5 w-3.5" />
           Download
         </Button>
@@ -502,13 +547,19 @@ function DocumentPanel() {
       </div>
       <ScrollArea className="flex-1">
         <div className="px-4 py-3">
-          {isMarkdown ? (
+          {fetching && !content ? (
+            <p className="text-xs text-muted-foreground">Loading document…</p>
+          ) : fetchError && !content ? (
+            <p className="text-xs text-destructive">{fetchError}</p>
+          ) : !content ? (
+            <p className="text-xs text-muted-foreground">No preview available.</p>
+          ) : isMarkdown ? (
             <div className="prose prose-sm max-w-none dark:prose-invert">
-              <MessageContent content={doc.content} />
+              <MessageContent content={content} />
             </div>
           ) : (
             <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-foreground/90">
-              {doc.content}
+              {content}
             </pre>
           )}
         </div>
