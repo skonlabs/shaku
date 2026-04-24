@@ -65,9 +65,18 @@ function AttachmentRow({
   attachment: AttachmentLike;
 }) {
   const qc = useQueryClient();
+  const { openDocument } = usePanel();
   const isImage = a.kind === "image" || (a.type ?? "").startsWith("image/");
   const hasTranscript = typeof a.extracted_text === "string" && a.extracted_text.trim().length > 0;
   const isTempMessage = messageId.startsWith("temp-");
+
+  const openInPanel = () =>
+    openDocument({
+      title: a.name,
+      content: a.extracted_text ?? "",
+      mime: a.type || "text/plain",
+      url: a.url,
+    });
 
   // Default: expand image transcripts when present (so users immediately see/review).
   const [open, setOpen] = useState<boolean>(isImage && hasTranscript);
