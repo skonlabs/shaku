@@ -292,7 +292,11 @@ export const Route = createFileRoute("/api/chat/stream")({
           // times so the user always receives a complete reply.
           const PER_TURN_MAX_TOKENS = 16_000;
           const MAX_AUTO_CONTINUES = 3;
+          // Overlap window we ask the model to echo so we can detect & strip
+          // accidental repetition at the seam between turns.
+          const OVERLAP_CHARS = 240;
           const turnMessages = [...claudeMessages];
+          let hitFinalCap = false;
 
           try {
             for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
@@ -304,30 +308,74 @@ export const Route = createFileRoute("/api/chat/stream")({
               });
 
               let turnText = "";
+              // For continuation turns, the model may re-emit some of the prior
+              // tail before continuing. Buffer the start of the turn until we
+              // either find the overlap and strip it, or decide there isn't one.
+              const isContinuation = turn > 0;
+              const priorTail = isContinuation
+                ? assistantText.slice(-OVERLAP_CHARS)
+                : "";
+              let dedupResolved = !isContinuation;
+              let dedupBuffer = "";
+              const DEDUP_SCAN_BUDGET = OVERLAP_CHARS * 3;
+
               stopReason = null;
               for await (const event of claudeStream) {
                 if (
                   event.type === "content_block_delta" &&
                   event.delta.type === "text_delta"
                 ) {
-                  turnText += event.delta.text;
-                  assistantText += event.delta.text;
-                  const visible = stripFollowupsTagPartial(event.delta.text, assistantText);
+                  const chunk = event.delta.text;
+                  turnText += chunk;
+
+                  let emit = chunk;
+                  if (!dedupResolved) {
+                    dedupBuffer += chunk;
+                    const stripped = stripOverlapPrefix(dedupBuffer, priorTail);
+                    if (stripped !== null) {
+                      // Found & removed the overlap — flush remainder.
+                      emit = stripped;
+                      dedupResolved = true;
+                    } else if (dedupBuffer.length >= DEDUP_SCAN_BUDGET) {
+                      // No overlap detected within budget — flush as-is.
+                      emit = dedupBuffer;
+                      dedupResolved = true;
+                    } else {
+                      // Keep buffering silently.
+                      continue;
+                    }
+                  }
+
+                  assistantText += emit;
+                  const visible = stripFollowupsTagPartial(emit, assistantText);
                   if (visible) send("delta", { text: visible });
                 } else if (event.type === "message_delta") {
                   stopReason = event.delta.stop_reason ?? stopReason;
                 }
               }
 
-              if (stopReason !== "max_tokens" || turn === MAX_AUTO_CONTINUES) break;
+              // Flush any remaining buffered text if the turn ended mid-dedup.
+              if (!dedupResolved && dedupBuffer.length > 0) {
+                assistantText += dedupBuffer;
+                const visible = stripFollowupsTagPartial(dedupBuffer, assistantText);
+                if (visible) send("delta", { text: visible });
+              }
+
+              if (stopReason !== "max_tokens") break;
+              if (turn === MAX_AUTO_CONTINUES) {
+                hitFinalCap = true;
+                break;
+              }
 
               // Auto-continue: feed the partial assistant turn back and ask it
-              // to keep going from exactly where it stopped.
+              // to keep going from exactly where it stopped, echoing a short
+              // overlap so we can dedupe deterministically.
               turnMessages.push({ role: "assistant", content: turnText });
+              const tail = assistantText.slice(-OVERLAP_CHARS);
               turnMessages.push({
                 role: "user",
                 content:
-                  "Continue from exactly where you stopped. Do not repeat anything you already wrote. Do not add a preface.",
+                  `Continue exactly from where you stopped. Begin your reply by repeating verbatim these final characters of your previous message, then continue seamlessly:\n\n"""${tail}"""\n\nDo not add any preface, apology, or commentary.`,
               });
             }
           } catch (err) {
@@ -339,6 +387,16 @@ export const Route = createFileRoute("/api/chat/stream")({
           // disconnected or the upstream errored. This prevents the
           // assistant reply from vanishing on refetch.
           const { visible, followups } = splitFollowups(assistantText);
+          // If we exhausted all auto-continues and the model still wanted more
+          // tokens, surface a "Continue generating" follow-up so the user can
+          // resume on demand.
+          if (hitFinalCap) {
+            const cont = "Continue generating";
+            if (!followups.some((f) => f.toLowerCase().includes("continue"))) {
+              followups.unshift(cont);
+              if (followups.length > 3) followups.length = 3;
+            }
+          }
           let assistantId: string | null = null;
           let assistantCreatedAt: string | null = null;
           if (visible.trim().length > 0) {
@@ -346,7 +404,7 @@ export const Route = createFileRoute("/api/chat/stream")({
             if (followups.length) metadata.follow_ups = followups;
             if (priorVersion) metadata.versions = [priorVersion];
             if (streamError) metadata.partial = true;
-            if (stopReason === "max_tokens") metadata.truncated = true;
+            if (hitFinalCap) metadata.truncated = true;
             const asst = await supabase
               .from("messages")
               .insert({
@@ -416,6 +474,31 @@ export const Route = createFileRoute("/api/chat/stream")({
 });
 
 // ---------- helpers ----------
+
+/** If `buffer` begins with the tail of `priorTail` (allowing minor leading
+ * noise), strip that overlap and return the remainder. Returns null if we
+ * can't yet decide and the caller should keep buffering. Requires at least
+ * MIN_OVERLAP chars of match to avoid truncating genuine new content.
+ */
+function stripOverlapPrefix(buffer: string, priorTail: string): string | null {
+  if (!priorTail) return buffer;
+  const MIN_OVERLAP = 24;
+  const leadMatch = buffer.match(/^[\s"'`>\-*]{0,8}/);
+  const leadLen = leadMatch ? leadMatch[0].length : 0;
+  const body = buffer.slice(leadLen);
+  const maxLen = Math.min(priorTail.length, body.length);
+  for (let len = maxLen; len >= MIN_OVERLAP; len--) {
+    const tailSlice = priorTail.slice(priorTail.length - len);
+    if (body.startsWith(tailSlice)) {
+      return body.slice(len);
+    }
+  }
+  // If buffer already exceeds priorTail by a comfortable margin with no match,
+  // give up and emit as-is. Otherwise wait for more.
+  if (body.length >= priorTail.length + MIN_OVERLAP) return buffer;
+  return null;
+}
+
 
 function jsonError(error: string, status: number) {
   return new Response(JSON.stringify({ error }), {
