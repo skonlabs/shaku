@@ -285,10 +285,11 @@ export const Route = createFileRoute("/api/chat/stream")({
 
           let assistantText = "";
           let streamError: unknown = null;
+          let stopReason: string | null = null;
           try {
             const claudeStream = anthropic.messages.stream({
               model: "claude-sonnet-4-5",
-              max_tokens: 4096,
+              max_tokens: 8192,
               system: SYSTEM_PROMPT,
               messages: claudeMessages,
             });
@@ -299,6 +300,8 @@ export const Route = createFileRoute("/api/chat/stream")({
                 // Strip the followup tag from streamed deltas so user doesn't see it
                 const visible = stripFollowupsTagPartial(event.delta.text, assistantText);
                 if (visible) send("delta", { text: visible });
+              } else if (event.type === "message_delta") {
+                stopReason = event.delta.stop_reason ?? stopReason;
               }
             }
           } catch (err) {
@@ -317,6 +320,7 @@ export const Route = createFileRoute("/api/chat/stream")({
             if (followups.length) metadata.follow_ups = followups;
             if (priorVersion) metadata.versions = [priorVersion];
             if (streamError) metadata.partial = true;
+            if (stopReason === "max_tokens") metadata.truncated = true;
             const asst = await supabase
               .from("messages")
               .insert({
@@ -373,10 +377,14 @@ export const Route = createFileRoute("/api/chat/stream")({
           if (streamError) {
             send("error", { message: "I ran into a problem. Please try again." });
           } else {
+            const finalFollowups =
+              stopReason === "max_tokens"
+                ? [...followups, "Continue from where you stopped."].slice(0, 3)
+                : followups;
             send("done", {
               assistant_message_id: assistantId,
               created_at: assistantCreatedAt,
-              followups,
+              followups: finalFollowups,
             });
           }
         });
