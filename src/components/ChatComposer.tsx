@@ -129,9 +129,10 @@ export function ChatComposer({
 
   const handleFiles = async (files: File[]) => {
     if (!conversationId) return;
+    const maxBytes = maxMb * 1024 * 1024;
     for (const file of files) {
-      if (file.size > 25 * 1024 * 1024) {
-        toast.error(`${file.name} is too large (max 25 MB).`);
+      if (file.size > maxBytes) {
+        toast.error(`${file.name} is too large (max ${maxMb} MB — change in Settings).`);
         continue;
       }
       const isImage =
