@@ -132,9 +132,20 @@ export function ChatComposer({
         toast.error(`${file.name} is too large (max 25 MB).`);
         continue;
       }
-      setUploading((n) => n + 1);
+      const isImage = (file.type || "").startsWith("image/") || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(file.name);
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const initialStage: PendingUpload["stage"] = isImage ? "uploading" : "uploading";
+      setPending((cur) => [
+        ...cur,
+        { id, name: file.name, size: file.size, type: file.type, isImage, stage: initialStage },
+      ]);
       try {
         const data_b64 = await fileToBase64(file);
+        // Once bytes are encoded, the server-side OCR / parsing kicks in.
+        // Switch the indicator to a clearer "Reading…" stage.
+        setPending((cur) =>
+          cur.map((p) => (p.id === id ? { ...p, stage: isImage ? "ocr" : "parsing" } : p)),
+        );
         const result = await uploadChatFile({
           data: {
             conversation_id: conversationId,
@@ -148,7 +159,7 @@ export function ChatComposer({
         console.error(err);
         toast.error(`Couldn't upload ${file.name}.`);
       } finally {
-        setUploading((n) => n - 1);
+        setPending((cur) => cur.filter((p) => p.id !== id));
       }
     }
   };
