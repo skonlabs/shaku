@@ -13,17 +13,18 @@ import {
 } from "lucide-react";
 import { MessageContent } from "@/components/MessageContent";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { editMessageAndTrim, setMessageFeedback } from "@/lib/conversations.functions";
+import {
+  editMessageAndTrim,
+  setMessageFeedback,
+  updateAttachmentOcr,
+} from "@/lib/conversations.functions";
 import type { Message } from "@/integrations/supabase/client";
+import { AttachmentList } from "@/components/AttachmentList";
 
 export interface DisplayMessage {
   id: string;
@@ -205,20 +206,12 @@ function MessageRow({
               <div className="whitespace-pre-wrap">{message.content}</div>
             </div>
             {attachments.length > 0 && (
-              <div className="flex flex-wrap justify-end gap-1">
-                {attachments.map((a, i) => (
-                  <a
-                    key={i}
-                    href={a.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs hover:bg-accent"
-                  >
-                    <FileText className="h-3 w-3 text-muted-foreground" />
-                    <span className="max-w-[140px] truncate">{a.name}</span>
-                  </a>
-                ))}
-              </div>
+              <AttachmentList
+                conversationId={conversationId}
+                messageId={message.id}
+                attachments={attachments as never}
+                align="end"
+              />
             )}
           </div>
         )}

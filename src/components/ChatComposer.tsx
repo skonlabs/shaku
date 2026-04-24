@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, Square, Paperclip, X, FileText, Loader2 } from "lucide-react";
+import { ArrowUp, Square, Paperclip, X, FileText, Loader2, ScanLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { uploadChatFile } from "@/lib/uploads.functions";
@@ -9,7 +9,19 @@ export interface Attachment {
   url: string;
   size: number;
   type: string;
+  kind?: string;
+  extracted_text?: string | null;
+  extraction_error?: string | null;
 }
+
+type PendingUpload = {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  isImage: boolean;
+  stage: "uploading" | "ocr" | "parsing";
+};
 
 interface Props {
   conversationId?: string; // required to enable upload
@@ -40,10 +52,11 @@ export function ChatComposer({
 }: Props) {
   const [value, setValue] = useState(initialValue ?? "");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [uploading, setUploading] = useState<number>(0); // count of in-flight uploads
+  const [pending, setPending] = useState<PendingUpload[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploading = pending.length;
 
   // Hydrate draft on mount only
   useEffect(() => {
@@ -119,9 +132,22 @@ export function ChatComposer({
         toast.error(`${file.name} is too large (max 25 MB).`);
         continue;
       }
-      setUploading((n) => n + 1);
+      const isImage =
+        (file.type || "").startsWith("image/") ||
+        /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(file.name);
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const initialStage: PendingUpload["stage"] = isImage ? "uploading" : "uploading";
+      setPending((cur) => [
+        ...cur,
+        { id, name: file.name, size: file.size, type: file.type, isImage, stage: initialStage },
+      ]);
       try {
         const data_b64 = await fileToBase64(file);
+        // Once bytes are encoded, the server-side OCR / parsing kicks in.
+        // Switch the indicator to a clearer "Reading…" stage.
+        setPending((cur) =>
+          cur.map((p) => (p.id === id ? { ...p, stage: isImage ? "ocr" : "parsing" } : p)),
+        );
         const result = await uploadChatFile({
           data: {
             conversation_id: conversationId,
@@ -135,7 +161,7 @@ export function ChatComposer({
         console.error(err);
         toast.error(`Couldn't upload ${file.name}.`);
       } finally {
-        setUploading((n) => n - 1);
+        setPending((cur) => cur.filter((p) => p.id !== id));
       }
     }
   };
@@ -178,7 +204,7 @@ export function ChatComposer({
         </div>
       )}
 
-      {attachments.length > 0 && (
+      {(attachments.length > 0 || pending.length > 0) && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {attachments.map((a, i) => (
             <div
@@ -197,12 +223,26 @@ export function ChatComposer({
               </button>
             </div>
           ))}
-          {uploading > 0 && (
-            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Uploading…
+          {pending.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-muted-foreground"
+            >
+              {p.stage === "ocr" ? (
+                <ScanLine className="h-3.5 w-3.5 animate-pulse text-primary" />
+              ) : (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              )}
+              <span className="max-w-[140px] truncate font-medium text-foreground">{p.name}</span>
+              <span>
+                {p.stage === "ocr"
+                  ? "Reading image…"
+                  : p.stage === "parsing"
+                    ? "Parsing…"
+                    : "Uploading…"}
+              </span>
             </div>
-          )}
+          ))}
         </div>
       )}
 
@@ -242,7 +282,7 @@ export function ChatComposer({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKey}
-          placeholder={disabled ? disabledMessage ?? placeholder : placeholder}
+          placeholder={disabled ? (disabledMessage ?? placeholder) : placeholder}
           disabled={disabled}
           className="min-h-[24px] flex-1 resize-none border-0 bg-transparent px-1 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
           aria-label="Message"

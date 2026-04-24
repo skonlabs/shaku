@@ -1,7 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Link, useNavigate, useLocation } from "@tanstack/react-router";
-import { X, Plus, Pin, MoreHorizontal, Trash2, LogOut, Moon, Sun, Monitor } from "lucide-react";
+import {
+  X,
+  Plus,
+  Pin,
+  MoreHorizontal,
+  Trash2,
+  LogOut,
+  Moon,
+  Sun,
+  Monitor,
+  Search,
+} from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
@@ -20,6 +31,7 @@ import {
   createConversation,
   togglePinConversation,
   deleteConversation,
+  searchMessages,
 } from "@/lib/conversations.functions";
 
 export function SidePanel() {
@@ -113,13 +125,27 @@ function ChatsPanel() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
   });
 
+  const [query, setQuery] = useState("");
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const searchQ = useQuery({
+    queryKey: ["search-messages", debounced],
+    queryFn: () => searchMessages({ data: { query: debounced } }),
+    enabled: debounced.length >= 2 && !loading && !!user,
+  });
+
   const conversations = data?.conversations ?? [];
   const pinned = conversations.filter((c) => c.pinned);
   const recent = conversations.filter((c) => !c.pinned);
+  const isSearching = debounced.length >= 2;
 
   return (
     <div className="flex h-full flex-col">
-      <div className="px-3 pb-2">
+      <div className="space-y-2 px-3 pb-2">
         <Button
           onClick={() => createMut.mutate()}
           disabled={createMut.isPending}
@@ -128,9 +154,25 @@ function ChatsPanel() {
         >
           <Plus className="h-4 w-4" /> New chat
         </Button>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search chats & images…"
+            className="h-8 w-full rounded-md border border-input bg-background pl-7 pr-2 text-xs outline-none focus:border-ring/60"
+          />
+        </div>
       </div>
       <ScrollArea className="flex-1 px-2">
-        {isLoading ? (
+        {isSearching ? (
+          <SearchResults
+            isLoading={searchQ.isLoading}
+            results={searchQ.data?.results ?? []}
+            error={searchQ.data?.error ?? null}
+            onPick={() => setActive(null)}
+          />
+        ) : isLoading ? (
           <div className="space-y-1.5 p-2">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="h-8 animate-pulse rounded-md bg-muted/60" />
@@ -175,6 +217,55 @@ function ChatsPanel() {
           </div>
         )}
       </ScrollArea>
+    </div>
+  );
+}
+
+interface SearchResult {
+  conversation_id: string;
+  conversation_title: string | null;
+  message_id: string;
+  snippet: string;
+  role: string;
+}
+
+function SearchResults({
+  isLoading,
+  results,
+  error,
+  onPick,
+}: {
+  isLoading: boolean;
+  results: SearchResult[];
+  error: string | null;
+  onPick: () => void;
+}) {
+  if (isLoading) {
+    return <div className="p-3 text-xs text-muted-foreground">Searching…</div>;
+  }
+  if (error) {
+    return <div className="p-3 text-xs text-destructive">{error}</div>;
+  }
+  if (results.length === 0) {
+    return <div className="p-3 text-xs text-muted-foreground">No matches.</div>;
+  }
+  return (
+    <div className="space-y-1 pb-4">
+      {results.map((r) => (
+        <Link
+          key={r.message_id}
+          to="/c/$id"
+          params={{ id: r.conversation_id }}
+          onClick={onPick}
+          className="block rounded-md px-2 py-1.5 text-xs transition hover:bg-accent"
+        >
+          <div className="truncate font-medium">{r.conversation_title ?? "Untitled chat"}</div>
+          <div
+            className="line-clamp-2 text-muted-foreground [&>mark]:rounded [&>mark]:bg-primary/20 [&>mark]:px-0.5 [&>mark]:text-foreground"
+            dangerouslySetInnerHTML={{ __html: r.snippet }}
+          />
+        </Link>
+      ))}
     </div>
   );
 }
