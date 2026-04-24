@@ -72,9 +72,15 @@ function ChatPage() {
             ),
           );
         },
-        onDone: () => {
+        onDone: ({ assistantMessageId }) => {
           setStreamingId(null);
-          setStreamingMessages([]);
+          if (assistantMessageId) {
+            setStreamingMessages([]);
+          } else {
+            setStreamingMessages((cur) =>
+              cur.map((m) => (m.id === tempAsstId ? { ...m, pending: false } : m)),
+            );
+          }
           qc.invalidateQueries({ queryKey: ["conversation", id] });
           qc.invalidateQueries({ queryKey: ["conversations"] });
         },
@@ -117,9 +123,15 @@ function ChatPage() {
             ),
           );
         },
-        onDone: () => {
+        onDone: ({ assistantMessageId }) => {
           setStreamingId(null);
-          setStreamingMessages([]);
+          if (assistantMessageId) {
+            setStreamingMessages([]);
+          } else {
+            setStreamingMessages((cur) =>
+              cur.map((m) => (m.id === tempAsstId ? { ...m, pending: false } : m)),
+            );
+          }
           qc.invalidateQueries({ queryKey: ["conversation", id] });
         },
         onInterrupted: () => {
