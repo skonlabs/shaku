@@ -202,7 +202,7 @@ export function ChatComposer({
         </div>
       )}
 
-      {attachments.length > 0 && (
+      {(attachments.length > 0 || pending.length > 0) && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {attachments.map((a, i) => (
             <div
