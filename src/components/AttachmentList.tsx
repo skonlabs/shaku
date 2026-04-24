@@ -107,7 +107,15 @@ function AttachmentRow({
         ) : (
           <FileText className="h-3.5 w-3.5 text-muted-foreground" />
         )}
-        {a.url ? (
+        {canPreview && !isImage ? (
+          <button
+            onClick={openInPanel}
+            className="max-w-[180px] truncate text-left font-medium text-foreground hover:underline"
+            title="Open preview"
+          >
+            {a.name}
+          </button>
+        ) : a.url ? (
           <a
             href={a.url}
             target="_blank"
@@ -116,13 +124,6 @@ function AttachmentRow({
           >
             {a.name}
           </a>
-        ) : hasTranscript ? (
-          <button
-            onClick={openInPanel}
-            className="max-w-[180px] truncate text-left font-medium text-foreground hover:underline"
-          >
-            {a.name}
-          </button>
         ) : (
           <span className="max-w-[180px] truncate font-medium text-foreground">{a.name}</span>
         )}
@@ -133,7 +134,7 @@ function AttachmentRow({
           </span>
         )}
         <div className="ml-auto flex items-center gap-0.5">
-          {hasTranscript && (
+          {canPreview && (
             <button
               onClick={openInPanel}
               className="flex items-center gap-1 rounded px-1 py-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
