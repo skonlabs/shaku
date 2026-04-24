@@ -65,7 +65,8 @@ export const uploadChatFile = createServerFn({ method: "POST" })
       else if (kind === "spreadsheet") extractedText = await extractSpreadsheet(bytes, data.name);
       else if (kind === "text") extractedText = decodeText(bytes);
       else if (kind === "audio") extractedText = await transcribeAudio(bytes, data.name, data.type);
-      // images / other → leave null
+      else if (kind === "image") extractedText = await ocrImage(bytes, data.name, data.type);
+      // other → leave null
     } catch (e) {
       console.error("[uploadChatFile] extraction failed:", data.name, e);
       extractionError = e instanceof Error ? e.message : "Extraction failed";
