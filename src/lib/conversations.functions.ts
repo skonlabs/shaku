@@ -112,21 +112,27 @@ export const deleteConversation = createServerFn({ method: "POST" })
     return { success: true };
   });
 
-export const editMessage = createServerFn({ method: "POST" })
+/**
+ * Edit a user message: stamp original_content (first edit only),
+ * mark is_edited, and DEACTIVATE all subsequent active messages
+ * in the conversation so the chat re-streams from this point.
+ */
+export const editMessageAndTrim = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(z.object({ id: z.string().uuid(), content: z.string().min(1).max(50000) }))
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    // Verify ownership via conversation
     const { data: msg } = await supabase
       .from("messages")
-      .select("id, conversation_id, content, original_content, conversations!inner(user_id)")
+      .select(
+        "id, conversation_id, content, original_content, created_at, conversations!inner(user_id)",
+      )
       .eq("id", data.id)
       .single();
     // @ts-expect-error joined relation
     if (!msg || msg.conversations.user_id !== userId) throw new Error("Not allowed");
 
-    const { error } = await supabase
+    const { error: updateErr } = await supabase
       .from("messages")
       .update({
         content: data.content,
@@ -134,8 +140,17 @@ export const editMessage = createServerFn({ method: "POST" })
         is_edited: true,
       })
       .eq("id", data.id);
-    if (error) throw new Error("Couldn't save the edit.");
-    return { success: true };
+    if (updateErr) throw new Error("Couldn't save the edit.");
+
+    // Soft-delete subsequent messages
+    const { error: trimErr } = await supabase
+      .from("messages")
+      .update({ is_active: false })
+      .eq("conversation_id", msg.conversation_id)
+      .gt("created_at", msg.created_at);
+    if (trimErr) throw new Error("Couldn't trim follow-up messages.");
+
+    return { success: true, conversation_id: msg.conversation_id, content: data.content };
   });
 
 export const setMessageFeedback = createServerFn({ method: "POST" })
@@ -164,5 +179,62 @@ export const setMessageFeedback = createServerFn({ method: "POST" })
     };
     const { error } = await supabase.from("messages").update({ metadata }).eq("id", data.id);
     if (error) throw new Error("Couldn't save feedback.");
+    return { success: true };
+  });
+
+export const getRateLimitStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count } = await supabase
+      .from("messages")
+      .select("id, conversations!inner(user_id)", { count: "exact", head: true })
+      .eq("role", "user")
+      .eq("conversations.user_id", userId)
+      .gte("created_at", oneHourAgo);
+
+    let resetAt: string | null = null;
+    if ((count ?? 0) > 0) {
+      const { data: oldest } = await supabase
+        .from("messages")
+        .select("created_at, conversations!inner(user_id)")
+        .eq("role", "user")
+        .eq("conversations.user_id", userId)
+        .gte("created_at", oneHourAgo)
+        .order("created_at", { ascending: true })
+        .limit(1);
+      if (oldest?.[0]?.created_at) {
+        resetAt = new Date(
+          new Date(oldest[0].created_at).getTime() + 60 * 60 * 1000,
+        ).toISOString();
+      }
+    }
+    return { used: count ?? 0, limit: 20, reset_at: resetAt };
+  });
+
+export const completeOnboarding = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ name: z.string().min(1).max(100).optional() }))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const update: Record<string, unknown> = { has_completed_onboarding: true };
+    if (data.name) update.name = data.name;
+    const { error } = await supabase.from("users").update(update).eq("id", userId);
+    if (error) {
+      console.error("[completeOnboarding]", error);
+      throw new Error("Couldn't save your preferences.");
+    }
+    return { success: true };
+  });
+
+export const recordSeen = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    await supabase
+      .from("users")
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq("id", userId);
     return { success: true };
   });
