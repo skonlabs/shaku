@@ -85,10 +85,12 @@ function ChatsPanel() {
   const qc = useQueryClient();
   const location = useLocation();
   const { setActive } = usePanel();
+  const { user, loading } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: ["conversations"],
     queryFn: () => listConversations({ data: undefined as never }),
+    enabled: !loading && !!user,
   });
 
   const createMut = useMutation({

@@ -36,7 +36,7 @@ function pickThree(): string[] {
 }
 
 function NewChatPage() {
-  const { profile } = useAuth();
+  const { profile, user, loading } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const suggestions = useMemo(pickThree, []);
@@ -60,6 +60,7 @@ function NewChatPage() {
   const { data: convoList } = useQuery({
     queryKey: ["conversations"],
     queryFn: () => listConversations({ data: undefined }),
+    enabled: !loading && !!user,
     staleTime: 30_000,
   });
   const lastConvo = welcomeBack ? convoList?.conversations?.[0] : undefined;

@@ -6,6 +6,7 @@ import { MessageList, type DisplayMessage } from "@/components/MessageList";
 import { getConversation } from "@/lib/conversations.functions";
 import { streamChat } from "@/lib/streamChat";
 import { RateLimitBanner } from "@/components/RateLimitBanner";
+import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/c/$id")({
@@ -20,10 +21,12 @@ export const Route = createFileRoute("/_app/c/$id")({
 function ChatPage() {
   const { id } = Route.useParams();
   const qc = useQueryClient();
+  const { user, loading: authLoading } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: ["conversation", id],
     queryFn: () => getConversation({ data: { id } }),
+    enabled: !authLoading && !!user,
   });
 
   const [streamingMessages, setStreamingMessages] = useState<DisplayMessage[]>([]);

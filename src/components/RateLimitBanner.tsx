@@ -1,20 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { getRateLimitStatus } from "@/lib/conversations.functions";
+import { useAuth } from "@/lib/auth-context";
 
 /**
  * Shows an inline warning when the user has used >=80% of their hourly limit.
  * The 100% disabled state is handled separately by ChatComposer's `disabled` prop.
  */
 export function RateLimitBanner() {
+  const { user, loading } = useAuth();
+
   const { data } = useQuery({
     queryKey: ["rate-limit"],
     queryFn: () => getRateLimitStatus({ data: undefined }),
+    enabled: !loading && !!user,
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
 
-  if (!data) return null;
+  if (loading || !user || !data) return null;
   const pct = data.limit > 0 ? data.used / data.limit : 0;
   if (pct < 0.8 || pct >= 1) return null;
 
