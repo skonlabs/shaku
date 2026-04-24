@@ -45,9 +45,9 @@ export function AttachmentList({ conversationId, messageId, attachments, align =
 }
 
 function AttachmentRow({
-  conversationId,
-  messageId,
-  index,
+  conversationId: _conversationId,
+  messageId: _messageId,
+  index: _index,
   attachment: a,
 }: {
   conversationId: string;
@@ -55,13 +55,12 @@ function AttachmentRow({
   index: number;
   attachment: AttachmentLike;
 }) {
-  const qc = useQueryClient();
   const { openDocument } = usePanel();
   const isImage = a.kind === "image" || (a.type ?? "").startsWith("image/");
   const hasTranscript = typeof a.extracted_text === "string" && a.extracted_text.trim().length > 0;
-  const isTempMessage = messageId.startsWith("temp-");
   // Previewable in side panel when we have either extracted text OR a fetchable URL (non-image).
   const canPreview = hasTranscript || (!!a.url && !isImage);
+  const canDownload = !!a.url || hasTranscript;
 
   const openInPanel = () =>
     openDocument({
@@ -71,27 +70,31 @@ function AttachmentRow({
       url: a.url,
     });
 
-  // Default: expand image transcripts when present (so users immediately see/review).
-  const [open, setOpen] = useState<boolean>(isImage && hasTranscript);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(a.extracted_text ?? "");
-
-  const mut = useMutation({
-    mutationFn: (text: string) =>
-      updateAttachmentOcr({
-        data: { message_id: messageId, attachment_index: index, extracted_text: text },
-      }),
-    onSuccess: () => {
-      setEditing(false);
-      toast.success("Transcript updated.");
-      qc.invalidateQueries({ queryKey: ["conversation", conversationId] });
-    },
-    onError: () => toast.error("Couldn't save the transcript."),
-  });
+  const onDownload = () => {
+    if (a.url) {
+      const link = window.document.createElement("a");
+      link.href = a.url;
+      link.download = a.name;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.click();
+      return;
+    }
+    if (hasTranscript) {
+      const blob = new Blob([a.extracted_text ?? ""], {
+        type: a.type || "text/plain",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = window.document.createElement("a");
+      link.href = url;
+      link.download = a.name;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+  };
 
   return (
     <div className="w-full max-w-[420px] overflow-hidden rounded-lg border border-border bg-card">
-      {/* Header row: file name + size + open/expand */}
       <div className="flex items-center gap-2 px-2 py-1.5 text-xs">
         {isImage ? (
           <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -135,28 +138,14 @@ function AttachmentRow({
               <Eye className="h-3.5 w-3.5" />
             </button>
           )}
-          {a.url && (
-            <a
-              href={a.url}
-              download={a.name}
-              target="_blank"
-              rel="noreferrer"
+          {canDownload && (
+            <button
+              onClick={onDownload}
               className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition hover:bg-accent hover:text-foreground"
               aria-label="Download"
               title="Download"
             >
               <Download className="h-3.5 w-3.5" />
-            </a>
-          )}
-          {(hasTranscript || a.extraction_error || a.storage_error) && (
-            <button
-              onClick={() => setOpen((o) => !o)}
-              className="flex h-6 items-center gap-0.5 rounded px-1 text-muted-foreground transition hover:bg-accent hover:text-foreground"
-              aria-expanded={open}
-              aria-label={open ? "Hide inline" : "Show inline"}
-              title={open ? "Hide inline" : "Show inline"}
-            >
-              {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
             </button>
           )}
         </div>
@@ -167,58 +156,6 @@ function AttachmentRow({
           <img src={a.url} alt={a.name} className="max-h-56 w-full object-cover" loading="lazy" />
         </a>
       )}
-
-      {open && (
-        <div className="border-t border-border bg-background/40 p-2">
-          {a.storage_error && (
-            <p className="mb-2 text-xs text-muted-foreground">{a.storage_error}</p>
-          )}
-          {a.extraction_error && !hasTranscript ? (
-            <p className="text-xs text-destructive">{a.extraction_error}</p>
-          ) : editing ? (
-            <div className="space-y-1.5">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                rows={Math.min(12, Math.max(4, draft.split("\n").length + 1))}
-                className="w-full resize-y rounded border border-input bg-background px-2 py-1.5 font-mono text-[11px] leading-relaxed outline-none focus:border-ring/60"
-              />
-              <div className="flex justify-end gap-1.5">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setDraft(a.extracted_text ?? "");
-                    setEditing(false);
-                  }}
-                >
-                  <X className="mr-1 h-3 w-3" /> Cancel
-                </Button>
-                <Button size="sm" onClick={() => mut.mutate(draft)} disabled={mut.isPending}>
-                  <Check className="mr-1 h-3 w-3" /> Save
-                </Button>
-              </div>
-            </div>
-          ) : hasTranscript ? (
-            <div className="space-y-1.5">
-              <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-foreground/90">
-                {a.extracted_text}
-              </pre>
-              {!isTempMessage && (
-                <button
-                  onClick={() => {
-                    setDraft(a.extracted_text ?? "");
-                    setEditing(true);
-                  }}
-                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
-                >
-                  <Pencil className="h-3 w-3" /> Edit transcript
-                </button>
-              )}
-            </div>
-          ) : null}
-        </div>
-      )}
     </div>
   );
 }
@@ -228,3 +165,4 @@ function formatBytes(b: number) {
   if (b < 1024 * 1024) return `${Math.round(b / 1024)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
+
