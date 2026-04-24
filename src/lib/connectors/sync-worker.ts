@@ -71,7 +71,7 @@ export async function syncConnector(
       status: "connected",
       last_synced_at: new Date().toISOString(),
       items_indexed: (current?.items_indexed ?? 0) + itemsProcessed,
-      sync_cursor: newCursor ?? undefined,
+      sync_cursor: newCursor,
       error_message: null,
     }).eq("id", connectorId);
   } catch (e) {

@@ -4,4 +4,8 @@
   "compatibility_date": "2025-09-24",
   "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server-entry",
+  "triggers": {
+    // Connector sync polling — matches POLLING_INTERVALS minimum (5 min)
+    "crons": ["*/5 * * * *"]
+  }
 }

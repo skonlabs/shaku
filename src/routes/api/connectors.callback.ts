@@ -94,10 +94,12 @@ export const Route = createFileRoute("/api/connectors/callback")({
             }
           })();
 
-          // CF Workers: use waitUntil to keep the sync alive after response
+          // CF Workers: use waitUntil; fall back to await in dev mode
           const ctx = (globalThis as unknown as { __cfContext?: ExecutionContext }).__cfContext;
           if (ctx?.waitUntil) {
             ctx.waitUntil(syncPromise);
+          } else {
+            await syncPromise;
           }
 
           return redirect("/chat?connector_connected=true");

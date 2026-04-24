@@ -65,8 +65,8 @@ export const getSharedResponse = createServerFn({ method: "POST" })
     // No auth required — this is a public endpoint
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string),
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string),
+      process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string),
+      process.env.SUPABASE_PUBLISHABLE_KEY ?? (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string),
     );
 
     const { data: shared, error } = await supabase

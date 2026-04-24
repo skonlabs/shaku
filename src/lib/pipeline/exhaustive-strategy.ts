@@ -127,7 +127,7 @@ async function searchAllMemories(
     .select("id, type, content, confidence")
     .eq("user_id", userId)
     .is("superseded_by", null)
-    .textSearch("content", query)
+    .textSearch("search_vector", query, { config: "english" })
     .limit(10);
 
   return (data ?? []).map((m, i) => ({

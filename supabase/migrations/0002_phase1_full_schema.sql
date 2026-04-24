@@ -177,6 +177,15 @@ CREATE INDEX IF NOT EXISTS idx_memories_embedding
   ON public.memories USING hnsw (embedding vector_cosine_ops)
   WITH (m = 16, ef_construction = 64);
 
+-- Full-text search on memories (needed by exhaustive-strategy L2 search)
+ALTER TABLE public.memories
+  ADD COLUMN IF NOT EXISTS search_vector tsvector
+    GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_memories_search
+  ON public.memories USING gin(search_vector)
+  WHERE superseded_by IS NULL;
+
 -- ---- User Knowledge Models ----
 CREATE TABLE IF NOT EXISTS public.user_knowledge_models (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,

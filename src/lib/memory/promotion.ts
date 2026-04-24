@@ -58,17 +58,10 @@ async function saveMemory(
 ): Promise<string | null> {
   // Check for contradictions before saving
   const contradictions = await detectContradictions(userId, candidate.content, supabase);
+
+  // If any existing memory has higher confidence, skip this candidate
   for (const contra of contradictions) {
-    if (candidate.confidence > contra.confidence) {
-      // Supersede the old memory
-      await supabase
-        .from("memories")
-        .update({ superseded_by: "pending" }) // will be updated below
-        .eq("id", contra.id);
-    } else {
-      // New memory has lower confidence — skip
-      return null;
-    }
+    if (candidate.confidence <= contra.confidence) return null;
   }
 
   let embedding: number[] | undefined;
@@ -95,7 +88,7 @@ async function saveMemory(
 
   if (error || !data) return null;
 
-  // Update the superseded memories to point to the new one
+  // Point superseded memories at the new one (valid UUID now available)
   for (const contra of contradictions) {
     await supabase
       .from("memories")

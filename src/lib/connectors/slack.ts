@@ -60,7 +60,7 @@ export async function validateSlackSignature(
   timestamp: string,
   signature: string,
 ): Promise<boolean> {
-  const signingSecret = process.env.SLACK_CLIENT_SECRET;
+  const signingSecret = process.env.SLACK_SIGNING_SECRET;
   if (!signingSecret) return false;
 
   // Reject replays older than 5 minutes

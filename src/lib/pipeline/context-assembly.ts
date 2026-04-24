@@ -162,12 +162,11 @@ async function retrieveMemories(
       match_count: 10,
     });
 
-    // Update access count
     if (data?.length) {
       const ids = data.map((m: { id: string }) => m.id);
-      await supabase
+      void supabase
         .from("memories")
-        .update({ access_count: supabase.rpc as never, last_accessed_at: new Date().toISOString() })
+        .update({ last_accessed_at: new Date().toISOString() })
         .in("id", ids);
     }
 

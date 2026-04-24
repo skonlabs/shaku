@@ -142,14 +142,14 @@ export function estimatePreRetrievalTokens(
   );
 }
 
-// Build provider adapter for a model
-export function getProvider(modelId: string) {
+// Build provider adapter for a model (async for CF Workers ESM compatibility)
+export async function getProvider(modelId: string) {
   if (modelId.startsWith("claude-")) {
-    const { AnthropicProvider } = require("./anthropic");
+    const { AnthropicProvider } = await import("./anthropic");
     return new AnthropicProvider();
   }
   if (modelId.startsWith("gpt-")) {
-    const { OpenAIProvider } = require("./openai");
+    const { OpenAIProvider } = await import("./openai");
     return new OpenAIProvider();
   }
   throw new Error(`Unknown model provider for: ${modelId}`);

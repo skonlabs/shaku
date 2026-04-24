@@ -33,16 +33,15 @@ export async function processFile(
   const contentHash = await hashBytes(bytes);
 
   // Check if we already indexed this exact content (deduplication)
-  const { data: existing } = await supabase
+  const { count: existingCount } = await supabase
     .from("chunks")
-    .select("id")
+    .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
     .eq("source_type", opts.sourceType)
-    .eq("content_hash", contentHash)
-    .limit(1);
+    .eq("content_hash", contentHash);
 
-  if (existing?.length) {
-    return { chunkCount: existing.length, contentHash };
+  if (existingCount && existingCount > 0) {
+    return { chunkCount: existingCount, contentHash };
   }
 
   // 1. Extract text content
