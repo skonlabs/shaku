@@ -58,6 +58,7 @@ export function ChatComposer({
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const uploading = pending.length;
+  const [maxMb] = useUploadMaxMb();
 
   // Hydrate draft on mount only
   useEffect(() => {
