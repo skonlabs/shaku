@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, Square, Paperclip, X, FileText, Loader2, ScanLine } from "lucide-react";
+import { ArrowUp, Square, Paperclip, X, FileText, Loader2, ScanLine, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { uploadChatFile } from "@/lib/uploads.functions";
