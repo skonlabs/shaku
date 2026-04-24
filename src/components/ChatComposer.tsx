@@ -3,6 +3,7 @@ import { ArrowUp, Square, Paperclip, X, FileText, Loader2, ScanLine } from "luci
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { uploadChatFile } from "@/lib/uploads.functions";
+import { useUploadMaxMb } from "@/lib/upload-settings";
 
 export interface Attachment {
   name: string;
@@ -57,6 +58,7 @@ export function ChatComposer({
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const uploading = pending.length;
+  const [maxMb] = useUploadMaxMb();
 
   // Hydrate draft on mount only
   useEffect(() => {
@@ -127,9 +129,10 @@ export function ChatComposer({
 
   const handleFiles = async (files: File[]) => {
     if (!conversationId) return;
+    const maxBytes = maxMb * 1024 * 1024;
     for (const file of files) {
-      if (file.size > 25 * 1024 * 1024) {
-        toast.error(`${file.name} is too large (max 25 MB).`);
+      if (file.size > maxBytes) {
+        toast.error(`${file.name} is too large (max ${maxMb} MB — change in Settings).`);
         continue;
       }
       const isImage =
@@ -154,6 +157,7 @@ export function ChatComposer({
             name: file.name,
             type: file.type || "application/octet-stream",
             data_b64,
+            max_mb: maxMb,
           },
         });
         setAttachments((cur) => [...cur, result]);

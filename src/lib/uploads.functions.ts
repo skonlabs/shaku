@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+const HARD_MAX_BYTES = 25 * 1024 * 1024; // 25 MB ceiling
 const BUCKET = "chat-uploads";
 const MAX_EXTRACTED_CHARS = 120_000; // cap to keep prompt size sane
 
@@ -26,14 +26,17 @@ export const uploadChatFile = createServerFn({ method: "POST" })
       name: z.string().min(1).max(255),
       type: z.string().max(120),
       data_b64: z.string().min(1),
+      max_mb: z.number().int().min(1).max(25).optional(),
     }),
   )
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
 
     const bytes = decodeBase64(data.data_b64);
-    if (bytes.byteLength > MAX_BYTES) {
-      throw new Error("That file is too large. Max 25 MB.");
+    const limitBytes = Math.min((data.max_mb ?? 1) * 1024 * 1024, HARD_MAX_BYTES);
+    if (bytes.byteLength > limitBytes) {
+      const mb = Math.round((limitBytes / (1024 * 1024)) * 10) / 10;
+      throw new Error(`That file is too large. Max ${mb} MB.`);
     }
 
     const safeName = data.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-180);
