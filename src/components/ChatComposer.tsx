@@ -3,6 +3,7 @@ import { ArrowUp, Square, Paperclip, X, FileText, Loader2, ScanLine } from "luci
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { uploadChatFile } from "@/lib/uploads.functions";
+import { useUploadMaxMb } from "@/lib/upload-settings";
 
 export interface Attachment {
   name: string;
