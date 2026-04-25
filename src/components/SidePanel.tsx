@@ -17,6 +17,9 @@ import {
   Check,
   Pencil,
   Brain,
+  FileText,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
@@ -39,6 +42,7 @@ import {
   deleteConversation,
   searchMessages,
 } from "@/lib/conversations.functions";
+import { listFiles, deleteDatasourceFile } from "@/lib/datasources.functions";
 import {
   getMemories,
   createMemory,
@@ -94,7 +98,7 @@ export function SidePanel({ side = "left" }: { side?: "left" | "right" }) {
       <div className="flex-1 overflow-hidden">
         {active === "chats" && <ChatsPanel />}
         {active === "projects" && <ComingSoon label="Projects" />}
-        {active === "datasources" && <ComingSoon label="Data sources" />}
+        {active === "datasources" && <DatasourcesPanel />}
         {active === "connectors" && <ComingSoon label="Connectors" />}
         {active === "memory" && <MemoryPanel />}
         {active === "settings" && <SettingsPanel />}
