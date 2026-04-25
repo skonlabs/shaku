@@ -17,6 +17,9 @@ import {
   Check,
   Pencil,
   Brain,
+  FileText,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
@@ -39,6 +42,7 @@ import {
   deleteConversation,
   searchMessages,
 } from "@/lib/conversations.functions";
+import { listFiles, deleteDatasourceFile } from "@/lib/datasources.functions";
 import {
   getMemories,
   createMemory,
@@ -94,7 +98,7 @@ export function SidePanel({ side = "left" }: { side?: "left" | "right" }) {
       <div className="flex-1 overflow-hidden">
         {active === "chats" && <ChatsPanel />}
         {active === "projects" && <ComingSoon label="Projects" />}
-        {active === "datasources" && <ComingSoon label="Data sources" />}
+        {active === "datasources" && <DatasourcesPanel />}
         {active === "connectors" && <ComingSoon label="Connectors" />}
         {active === "memory" && <MemoryPanel />}
         {active === "settings" && <SettingsPanel />}
@@ -380,6 +384,129 @@ function ComingSoon({ label }: { label: string }) {
       <p className="text-xs text-muted-foreground">Coming in a future sprint.</p>
     </div>
   );
+}
+
+type DatasourceFile = {
+  id: string;
+  name: string;
+  file_type: string;
+  file_size_bytes: number;
+  status: "uploading" | "processing" | "ready" | "error";
+  chunk_count: number | null;
+  last_refreshed_at: string | null;
+  created_at: string;
+};
+
+function DatasourcesPanel() {
+  const qc = useQueryClient();
+  const { user, loading } = useAuth();
+  const { data, isLoading } = useQuery({
+    queryKey: ["datasource-files", null],
+    queryFn: () => listFiles({ data: { folder_id: null } }),
+    enabled: !loading && !!user,
+    refetchInterval: (query) => {
+      const files = ((query.state.data as Awaited<ReturnType<typeof listFiles>> | undefined)?.files ?? []) as DatasourceFile[];
+      return files.some((f) => f.status === "uploading" || f.status === "processing") ? 2500 : false;
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteDatasourceFile({ data: { id } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["datasource-files"] }),
+    onError: () => toast.error("Couldn't delete the file."),
+  });
+
+  const files = (data?.files ?? []) as DatasourceFile[];
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="px-4 pb-2">
+        <p className="text-xs text-muted-foreground">Uploaded knowledge files appear here after upload.</p>
+      </div>
+      <ScrollArea className="flex-1 px-3">
+        {isLoading ? (
+          <div className="space-y-2 py-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-14 animate-pulse rounded-md bg-muted/60" />
+            ))}
+          </div>
+        ) : data?.error ? (
+          <div className="p-3 text-xs text-destructive">{data.error}</div>
+        ) : files.length === 0 ? (
+          <div className="px-3 py-8 text-center text-xs text-muted-foreground">No files uploaded yet.</div>
+        ) : (
+          <div className="space-y-2 pb-4">
+            {files.map((file) => (
+              <DatasourceFileRow
+                key={file.id}
+                file={file}
+                deleting={deleteMut.isPending}
+                onDelete={() => deleteMut.mutate(file.id)}
+              />
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+    </div>
+  );
+}
+
+function DatasourceFileRow({
+  file,
+  deleting,
+  onDelete,
+}: {
+  file: DatasourceFile;
+  deleting: boolean;
+  onDelete: () => void;
+}) {
+  const active = file.status === "uploading" || file.status === "processing";
+  const failed = file.status === "error";
+  return (
+    <div className="rounded-md border border-border bg-card px-2 py-2 text-xs">
+      <div className="flex items-start gap-2">
+        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          {active ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : failed ? (
+            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+          ) : (
+            <FileText className="h-3.5 w-3.5" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium text-foreground" title={file.name}>{file.name}</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+            <span>{formatDatasourceSize(file.file_size_bytes)}</span>
+            <span>{file.file_type.toUpperCase()}</span>
+            <span className={cn(failed && "text-destructive", file.status === "ready" && "text-primary")}>{statusLabel(file)}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting}
+          aria-label={`Delete ${file.name}`}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition hover:bg-accent hover:text-destructive disabled:opacity-50"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function statusLabel(file: DatasourceFile) {
+  if (file.status === "ready") return `${file.chunk_count ?? 0} chunks ready`;
+  if (file.status === "processing") return "Processing";
+  if (file.status === "uploading") return "Uploading";
+  return "Needs attention";
+}
+
+function formatDatasourceSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function SettingsPanel() {
