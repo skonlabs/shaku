@@ -43,6 +43,7 @@ import {
   searchMessages,
 } from "@/lib/conversations.functions";
 import { listFiles, deleteDatasourceFile } from "@/lib/datasources.functions";
+import { getUsageByConversation } from "@/lib/usage.functions";
 import {
   getMemories,
   createMemory,
@@ -568,8 +569,129 @@ function SettingsPanel() {
           Per-file limit, 1–{HARD_UPLOAD_MAX_MB} MB. Default 1 MB.
         </p>
       </div>
+      <TokenUsageSection />
     </div>
   );
+}
+
+function TokenUsageSection() {
+  const { user, loading } = useAuth();
+  const { data, isLoading } = useQuery({
+    queryKey: ["usage-by-conversation"],
+    queryFn: () => getUsageByConversation({ data: undefined as never }),
+    enabled: !loading && !!user,
+    staleTime: 30_000,
+  });
+
+  const events = (data?.events ?? []) as Array<{
+    model_used: string | null;
+    tokens_in: number | null;
+    tokens_out: number | null;
+    cost_usd: number | string | null;
+    created_at: string;
+  }>;
+
+  const byModel = new Map<string, { in: number; out: number; cost: number; calls: number }>();
+  let totalIn = 0;
+  let totalOut = 0;
+  let totalCost = 0;
+  for (const e of events) {
+    const model = e.model_used ?? "unknown";
+    const tin = e.tokens_in ?? 0;
+    const tout = e.tokens_out ?? 0;
+    const cost = Number(e.cost_usd ?? 0);
+    totalIn += tin;
+    totalOut += tout;
+    totalCost += cost;
+    const cur = byModel.get(model) ?? { in: 0, out: 0, cost: 0, calls: 0 };
+    cur.in += tin;
+    cur.out += tout;
+    cur.cost += cost;
+    cur.calls += 1;
+    byModel.set(model, cur);
+  }
+  const rows = [...byModel.entries()].sort((a, b) => b[1].in + b[1].out - (a[1].in + a[1].out));
+
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        Token usage
+      </p>
+      {isLoading ? (
+        <div className="space-y-1.5">
+          <div className="h-10 animate-pulse rounded-md bg-muted/60" />
+          <div className="h-10 animate-pulse rounded-md bg-muted/60" />
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground">
+          No usage recorded yet. Send a message to start tracking.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-2 rounded-lg border border-border bg-card/60 p-3 text-center">
+            <UsageStat label="Input" value={formatTokens(totalIn)} tone="text-foreground" />
+            <UsageStat label="Output" value={formatTokens(totalOut)} tone="text-primary" />
+            <UsageStat label="Cost" value={`$${totalCost.toFixed(4)}`} tone="text-foreground" />
+          </div>
+          <div className="mt-3 space-y-1.5">
+            {rows.map(([model, v]) => {
+              const total = v.in + v.out || 1;
+              const inPct = (v.in / total) * 100;
+              return (
+                <div
+                  key={model}
+                  className="rounded-md border border-border bg-card/60 px-2.5 py-2 text-[11px]"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium text-foreground" title={model}>
+                      {model}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {v.calls} call{v.calls === 1 ? "" : "s"} · ${v.cost.toFixed(4)}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="bg-foreground/70"
+                      style={{ width: `${inPct}%` }}
+                      title={`Input: ${v.in.toLocaleString()}`}
+                    />
+                    <div
+                      className="bg-primary"
+                      style={{ width: `${100 - inPct}%` }}
+                      title={`Output: ${v.out.toLocaleString()}`}
+                    />
+                  </div>
+                  <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+                    <span>↓ {formatTokens(v.in)} in</span>
+                    <span>↑ {formatTokens(v.out)} out</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[10px] text-muted-foreground">
+            Last {events.length} call{events.length === 1 ? "" : "s"} across all chats.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function UsageStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <span className={cn("text-sm font-semibold tabular-nums", tone)}>{value}</span>
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+function formatTokens(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(2)}M`;
 }
 
 function AccountPanel() {

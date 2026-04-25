@@ -1,9 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles, ArrowRight } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { ChatComposer } from "@/components/ChatComposer";
+import { ChatComposer, type Attachment } from "@/components/ChatComposer";
 import { RateLimitBanner } from "@/components/RateLimitBanner";
 import {
   createConversation,
@@ -15,6 +15,7 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_app/")({
   component: NewChatPage,
 });
+
 
 const SUGGESTIONS = [
   "Help me draft a thoughtful reply to this email…",
@@ -63,19 +64,41 @@ function NewChatPage() {
   });
   const lastConvo = welcomeBack ? convoList?.conversations?.[0] : undefined;
 
+  // Pre-create a draft conversation so the composer supports file uploads on "/".
+  // The conversation is harmless if unused — it stays empty and disappears under
+  // older entries.
+  const [draftConvoId, setDraftConvoId] = useState<string | null>(null);
+  const draftReqRef = useRef(false);
+  useEffect(() => {
+    if (loading || !user || draftConvoId || draftReqRef.current) return;
+    draftReqRef.current = true;
+    createConversation({ data: {} })
+      .then(({ conversation }) => setDraftConvoId(conversation.id))
+      .catch(() => {
+        draftReqRef.current = false;
+      });
+  }, [loading, user, draftConvoId]);
+
   const startMut = useMutation({
-    mutationFn: async (text: string) => {
-      const { conversation } = await createConversation({ data: {} });
-      return { conversation, text };
+    mutationFn: async ({ text, attachments }: { text: string; attachments: Attachment[] }) => {
+      let id = draftConvoId;
+      if (!id) {
+        const { conversation } = await createConversation({ data: {} });
+        id = conversation.id;
+      }
+      return { conversationId: id, text, attachments };
     },
-    onSuccess: ({ conversation, text }) => {
+    onSuccess: ({ conversationId, text, attachments }) => {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       try {
-        sessionStorage.setItem(`cortex.pending.${conversation.id}`, text);
+        sessionStorage.setItem(
+          `cortex.pending.${conversationId}`,
+          JSON.stringify({ text, attachments }),
+        );
       } catch {
         /* noop */
       }
-      void navigate({ to: "/c/$id", params: { id: conversation.id } });
+      void navigate({ to: "/c/$id", params: { id: conversationId } });
     },
     onError: () => toast.error("I ran into a problem starting the chat."),
   });
@@ -122,7 +145,7 @@ function NewChatPage() {
             {suggestions.map((s, i) => (
               <button
                 key={s}
-                onClick={() => startMut.mutate(s)}
+                onClick={() => startMut.mutate({ text: s, attachments: [] })}
                 disabled={startMut.isPending}
                 style={{ animationDelay: `${280 + i * 60}ms` }}
                 className="animate-fade-rise group rounded-xl border border-border/70 bg-card/80 px-4 py-3.5 text-left text-sm text-muted-foreground shadow-sm backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-card hover:text-foreground hover:shadow-md disabled:opacity-50"
@@ -135,7 +158,8 @@ function NewChatPage() {
       </div>
       <RateLimitBanner />
       <ChatComposer
-        onSend={(text) => startMut.mutate(text)}
+        conversationId={draftConvoId ?? undefined}
+        onSend={(text, attachments) => startMut.mutate({ text, attachments })}
         isStreaming={startMut.isPending}
         draftKey="cortex.draft.new"
         autoFocus
