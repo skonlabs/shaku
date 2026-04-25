@@ -16,9 +16,6 @@ export const Route = createFileRoute("/_app/")({
   component: NewChatPage,
 });
 
-export const Route = createFileRoute("/_app/")({
-  component: NewChatPage,
-});
 
 const SUGGESTIONS = [
   "Help me draft a thoughtful reply to this email…",
