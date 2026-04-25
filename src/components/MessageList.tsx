@@ -89,20 +89,21 @@ export function MessageList({
 
   return (
     <div className="relative h-full">
-      <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6">
-          <div className="space-y-6">
+      <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto scroll-smooth">
+        <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+          <div className="space-y-8">
             {messages.map((m) => (
-              <MessageRow
-                key={m.id}
-                conversationId={conversationId}
-                message={m}
-                isStreaming={streamingId === m.id}
-                isLastAssistant={m.id === lastAssistantId}
-                onRegenerate={onRegenerate}
-                onEdit={onEdit}
-                onFollowupClick={onFollowupClick}
-              />
+              <div key={m.id} className="animate-fade-rise">
+                <MessageRow
+                  conversationId={conversationId}
+                  message={m}
+                  isStreaming={streamingId === m.id}
+                  isLastAssistant={m.id === lastAssistantId}
+                  onRegenerate={onRegenerate}
+                  onEdit={onEdit}
+                  onFollowupClick={onFollowupClick}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -110,7 +111,7 @@ export function MessageList({
       {showJumpPill && (
         <button
           onClick={jumpToBottom}
-          className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-md transition hover:bg-accent"
+          className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 animate-fade-in items-center gap-1.5 rounded-full border border-border bg-card/90 px-3.5 py-2 text-xs font-medium text-foreground shadow-md backdrop-blur transition-all duration-200 hover:bg-card hover:shadow-lg"
         >
           <ArrowDown className="h-3 w-3" />
           New message
