@@ -89,20 +89,21 @@ export function MessageList({
 
   return (
     <div className="relative h-full">
-      <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6">
-          <div className="space-y-6">
+      <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto scroll-smooth">
+        <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+          <div className="space-y-8">
             {messages.map((m) => (
-              <MessageRow
-                key={m.id}
-                conversationId={conversationId}
-                message={m}
-                isStreaming={streamingId === m.id}
-                isLastAssistant={m.id === lastAssistantId}
-                onRegenerate={onRegenerate}
-                onEdit={onEdit}
-                onFollowupClick={onFollowupClick}
-              />
+              <div key={m.id} className="animate-fade-rise">
+                <MessageRow
+                  conversationId={conversationId}
+                  message={m}
+                  isStreaming={streamingId === m.id}
+                  isLastAssistant={m.id === lastAssistantId}
+                  onRegenerate={onRegenerate}
+                  onEdit={onEdit}
+                  onFollowupClick={onFollowupClick}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -110,7 +111,7 @@ export function MessageList({
       {showJumpPill && (
         <button
           onClick={jumpToBottom}
-          className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-md transition hover:bg-accent"
+          className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 animate-fade-in items-center gap-1.5 rounded-full border border-border bg-card/90 px-3.5 py-2 text-xs font-medium text-foreground shadow-md backdrop-blur transition-all duration-200 hover:bg-card hover:shadow-lg"
         >
           <ArrowDown className="h-3 w-3" />
           New message
@@ -208,7 +209,7 @@ function MessageRow({
         ) : (
           <div className="max-w-[85%] space-y-1.5">
             {!isPlaceholder && (
-              <div className="rounded-2xl bg-bubble px-4 py-2.5 text-sm text-bubble-foreground">
+              <div className="rounded-2xl rounded-tr-md bg-bubble px-4 py-2.5 text-sm leading-relaxed text-bubble-foreground shadow-sm">
                 <div className="whitespace-pre-wrap">{message.content}</div>
               </div>
             )}
@@ -256,11 +257,11 @@ function MessageRow({
   })();
 
   return (
-    <div className="group flex gap-3">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
-        <Sparkles className="h-3.5 w-3.5" />
+    <div className="group flex gap-3.5">
+      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.55_0.18_255)] text-primary-foreground shadow-[0_4px_10px_-4px_oklch(0.6_0.16_245/0.5)]">
+        <Sparkles className="h-4 w-4" />
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 pt-0.5">
         <div className={cn("text-sm", isStreaming && "streaming-caret")}>
           {message.content ? (
             <MessageContent content={fullContent} />

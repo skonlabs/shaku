@@ -92,12 +92,14 @@ function NewChatPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-4 py-10 text-center">
-          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <Sparkles className="h-6 w-6" />
+        <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-4 py-12 text-center">
+          <div className="animate-fade-rise mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-primary/10">
+            <Sparkles className="h-7 w-7" />
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{greeting}</h1>
-          <p className="mt-2 max-w-md text-muted-foreground">
+          <h1 className="animate-fade-rise text-4xl font-semibold tracking-tight sm:text-5xl [animation-delay:60ms]">
+            {greeting}
+          </h1>
+          <p className="animate-fade-rise mt-3 max-w-md text-base text-muted-foreground [animation-delay:120ms]">
             What can I help you with today?
           </p>
 
@@ -106,21 +108,24 @@ function NewChatPage() {
               onClick={() =>
                 void navigate({ to: "/c/$id", params: { id: lastConvo.id } })
               }
-              className="mt-5 inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+              className="animate-fade-rise group mt-6 inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur transition-all duration-200 hover:border-primary/40 hover:bg-card hover:text-foreground hover:shadow-md [animation-delay:180ms]"
             >
               Continue last chat
-              {lastConvo.title ? <span className="font-medium text-foreground">— {lastConvo.title}</span> : null}
-              <ArrowRight className="h-3 w-3" />
+              {lastConvo.title ? (
+                <span className="font-medium text-foreground">— {lastConvo.title}</span>
+              ) : null}
+              <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5" />
             </button>
           )}
 
-          <div className="mt-8 grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-3">
-            {suggestions.map((s) => (
+          <div className="mt-10 grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:grid-cols-3">
+            {suggestions.map((s, i) => (
               <button
                 key={s}
                 onClick={() => startMut.mutate(s)}
                 disabled={startMut.isPending}
-                className="rounded-xl border border-border bg-card px-4 py-3 text-left text-sm text-muted-foreground transition hover:border-primary/40 hover:bg-accent hover:text-foreground disabled:opacity-50"
+                style={{ animationDelay: `${280 + i * 60}ms` }}
+                className="animate-fade-rise group rounded-xl border border-border/70 bg-card/80 px-4 py-3.5 text-left text-sm text-muted-foreground shadow-sm backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-card hover:text-foreground hover:shadow-md disabled:opacity-50"
               >
                 {s}
               </button>

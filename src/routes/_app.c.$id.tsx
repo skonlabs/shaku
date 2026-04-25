@@ -187,8 +187,13 @@ function ChatPage() {
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-hidden">
         {messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center px-4 text-center">
-            <p className="text-muted-foreground">Start the conversation.</p>
+          <div className="flex h-full animate-fade-in items-center justify-center px-4 text-center">
+            <div className="flex flex-col items-center gap-3 text-muted-foreground">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <span className="text-lg font-bold">C</span>
+              </div>
+              <p className="text-sm">Start the conversation — type below.</p>
+            </div>
           </div>
         ) : (
           <MessageList

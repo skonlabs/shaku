@@ -195,17 +195,17 @@ export function ChatComposer({
   };
 
   return (
-    <div className="relative mx-auto w-full max-w-3xl px-4 pb-4 pt-2">
+    <div className="relative mx-auto w-full max-w-3xl px-4 pb-5 pt-2 sm:px-6">
       {isDragging && (
-        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-primary/5 backdrop-blur-sm">
-          <div className="rounded-2xl border-2 border-dashed border-primary bg-card px-8 py-6 text-sm font-medium text-primary shadow-lg">
+        <div className="pointer-events-none fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-primary/10 backdrop-blur-md">
+          <div className="rounded-2xl border-2 border-dashed border-primary bg-card px-10 py-7 text-sm font-medium text-primary shadow-xl">
             Drop files to attach
           </div>
         </div>
       )}
 
       {disabled && disabledMessage && (
-        <div className="mb-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <div className="mb-2 animate-fade-in rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
           {disabledMessage}
         </div>
       )}
@@ -222,7 +222,7 @@ export function ChatComposer({
           {pending.map((p) => (
             <div
               key={p.id}
-              className="flex items-center gap-1.5 self-start rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-muted-foreground"
+              className="flex animate-fade-in items-center gap-1.5 self-start rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground shadow-sm"
             >
               {p.stage === "ocr" ? (
                 <ScanLine className="h-3.5 w-3.5 animate-pulse text-primary" />
@@ -244,7 +244,8 @@ export function ChatComposer({
 
       <div
         className={cn(
-          "relative flex items-end gap-1 rounded-2xl border border-input bg-card px-2 py-2 shadow-sm transition focus-within:border-ring/60 focus-within:shadow-md",
+          "relative flex items-end gap-1.5 rounded-[20px] border border-input bg-card px-2.5 py-2 shadow-[0_2px_8px_-2px_oklch(0.18_0.01_250/0.06)] transition-all duration-200",
+          "focus-within:border-primary/50 focus-within:shadow-[0_4px_20px_-4px_oklch(0.6_0.16_245/0.25)]",
           disabled && "opacity-60",
         )}
       >
@@ -266,9 +267,9 @@ export function ChatComposer({
               onClick={() => fileRef.current?.click()}
               aria-label="Attach files"
               disabled={disabled}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Paperclip className="h-4 w-4" />
+              <Paperclip className="h-[18px] w-[18px]" />
             </button>
           </>
         )}
@@ -280,14 +281,14 @@ export function ChatComposer({
           onKeyDown={handleKey}
           placeholder={disabled ? (disabledMessage ?? placeholder) : placeholder}
           disabled={disabled}
-          className="min-h-[24px] flex-1 resize-none border-0 bg-transparent px-1 py-1.5 text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+          className="min-h-[28px] flex-1 resize-none border-0 bg-transparent px-1 py-2 text-[15px] leading-6 outline-none placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
           aria-label="Message"
         />
         {isStreaming ? (
           <button
             onClick={onStop}
             aria-label="Stop generating"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground text-background transition hover:opacity-90"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-foreground text-background transition-all duration-150 hover:scale-105 active:scale-95"
           >
             <Square className="h-3.5 w-3.5" fill="currentColor" />
           </button>
@@ -296,13 +297,13 @@ export function ChatComposer({
             onClick={submit}
             disabled={disabled || (!value.trim() && attachments.length === 0) || uploading > 0}
             aria-label="Send"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[0_2px_8px_-2px_oklch(0.6_0.16_245/0.5)] transition-all duration-150 hover:shadow-[0_4px_12px_-2px_oklch(0.6_0.16_245/0.6)] enabled:hover:scale-105 enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none"
           >
-            <ArrowUp className="h-4 w-4" />
+            <ArrowUp className="h-[18px] w-[18px]" />
           </button>
         )}
       </div>
-      <p className="mt-2 text-center text-[11px] text-muted-foreground">
+      <p className="mt-2.5 text-center text-[11px] text-muted-foreground/80">
         Cortex can make mistakes. Verify important information.
       </p>
     </div>

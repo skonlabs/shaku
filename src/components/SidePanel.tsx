@@ -78,19 +78,19 @@ export function SidePanel({ side = "left" }: { side?: "left" | "right" }) {
   return (
     <div
       className={cn(
-        "z-20 flex h-svh shrink-0 flex-col bg-card",
+        "z-20 flex h-svh shrink-0 animate-fade-in flex-col bg-sidebar/80 backdrop-blur-xl",
         side === "right" ? "border-l border-border" : "border-r border-border",
-        isDoc ? "w-[480px]" : "w-[300px]",
+        isDoc ? "w-[480px]" : "w-[320px]",
       )}
     >
-      <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-3">
-        <h2 className="truncate text-sm font-semibold capitalize">
+      <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-4">
+        <h2 className="truncate text-[13px] font-semibold tracking-tight text-foreground">
           {isDoc ? (document?.title ?? "Document") : labelFor(active)}
         </h2>
         <button
           onClick={() => setActive(null)}
           aria-label="Close panel"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
         >
           <X className="h-4 w-4" />
         </button>
