@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { MessageSquare, FolderKanban, Database, Plug, Settings, User } from "lucide-react";
+import { MessageSquare, FolderKanban, Database, Plug, Settings, User, Brain } from "lucide-react";
 import { usePanel, type PanelId } from "@/lib/ui-context";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -9,6 +9,7 @@ const items: { id: PanelId; icon: typeof MessageSquare; label: string }[] = [
   { id: "projects", icon: FolderKanban, label: "Projects" },
   { id: "datasources", icon: Database, label: "Data sources" },
   { id: "connectors", icon: Plug, label: "Connectors" },
+  { id: "memory", icon: Brain, label: "Memory & Persona" },
 ];
 
 export function AppSidebar() {

@@ -579,6 +579,13 @@ export const Route = createFileRoute("/api/chat/stream")({
               confidence,
               citation_ratio: citationRatio,
             };
+            if (assembled.memoriesUsed.length > 0) {
+              metadata.memories_used = assembled.memoriesUsed.map((m) => ({
+                id: m.id,
+                type: m.type,
+                content: m.content.slice(0, 150),
+              }));
+            }
             if (followups.length) metadata.follow_ups = followups;
             if (priorVersion) metadata.versions = [priorVersion];
             if (streamError) metadata.partial = true;
@@ -613,6 +620,7 @@ export const Route = createFileRoute("/api/chat/stream")({
               assistant_message_id: assistantId,
               created_at: assistantCreatedAt,
               followups,
+              memories_used: assembled.memoriesUsed.length,
             });
           }
 

@@ -11,6 +11,7 @@ import {
   FileText,
   Sparkles,
   PanelRightOpen,
+  Brain,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { MessageContent } from "@/components/MessageContent";
@@ -318,6 +319,12 @@ function MessageRow({
           </div>
         )}
 
+        {/* Memory usage indicator */}
+        {!isStreaming && Array.isArray(message.metadata?.memories_used) &&
+          (message.metadata!.memories_used as MemoryChipEntry[]).length > 0 && (
+          <MemoryUsedChip memories={message.metadata!.memories_used as MemoryChipEntry[]} />
+        )}
+
         {!isStreaming && message.content && !message.pending && (
           <div className="mt-1 flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
             <IconBtn label="Copy" onClick={copy}>
@@ -445,5 +452,47 @@ function IconBtn({
     >
       {children}
     </button>
+  );
+}
+
+interface MemoryChipEntry {
+  id: string;
+  type: string;
+  content: string;
+}
+
+const MEMORY_EMOJI: Record<string, string> = {
+  preference: "💡",
+  episodic: "📅",
+  semantic: "🧠",
+  behavioral: "🎯",
+  anti_preference: "🚫",
+  correction: "✏️",
+  response_style: "✍️",
+  project: "📁",
+};
+
+function MemoryUsedChip({ memories }: { memories: MemoryChipEntry[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition hover:border-primary/30 hover:text-foreground">
+          <Brain className="h-3 w-3" />
+          {memories.length} {memories.length === 1 ? "memory" : "memories"} used
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-3">
+        <p className="mb-2.5 text-xs font-medium">Memories that shaped this response</p>
+        <div className="space-y-2">
+          {memories.map((m) => (
+            <div key={m.id} className="flex items-start gap-2">
+              <span className="mt-0.5 shrink-0 text-sm">{MEMORY_EMOJI[m.type] ?? "💡"}</span>
+              <p className="text-xs leading-relaxed text-foreground/90">{m.content}</p>
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

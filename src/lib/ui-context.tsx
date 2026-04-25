@@ -39,7 +39,8 @@ export type PanelId =
   | "connectors"
   | "settings"
   | "account"
-  | "document";
+  | "document"
+  | "memory";
 const PanelContext = React.createContext<PanelContextValue | null>(null);
 
 export function PanelProvider({ children }: { children: React.ReactNode }) {
