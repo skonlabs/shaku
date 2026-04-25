@@ -145,7 +145,7 @@ function NewChatPage() {
             {suggestions.map((s, i) => (
               <button
                 key={s}
-                onClick={() => startMut.mutate(s)}
+                onClick={() => startMut.mutate({ text: s, attachments: [] })}
                 disabled={startMut.isPending}
                 style={{ animationDelay: `${280 + i * 60}ms` }}
                 className="animate-fade-rise group rounded-xl border border-border/70 bg-card/80 px-4 py-3.5 text-left text-sm text-muted-foreground shadow-sm backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-card hover:text-foreground hover:shadow-md disabled:opacity-50"
@@ -158,7 +158,8 @@ function NewChatPage() {
       </div>
       <RateLimitBanner />
       <ChatComposer
-        onSend={(text) => startMut.mutate(text)}
+        conversationId={draftConvoId ?? undefined}
+        onSend={(text, attachments) => startMut.mutate({ text, attachments })}
         isStreaming={startMut.isPending}
         draftKey="cortex.draft.new"
         autoFocus
