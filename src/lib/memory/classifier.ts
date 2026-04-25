@@ -95,7 +95,7 @@ Assistant: ${assistantResponse.slice(0, 400)}`,
 
 // Detect if user is making a correction in their message
 export function detectCorrection(userMessage: string): boolean {
-  return /\b(no,?\s+i\s+meant|that'?s\s+(wrong|incorrect)|actually[,\s]/i.test(userMessage) ||
+  return /\b(no,?\s+i\s+meant|that'?s\s+(wrong|incorrect)|actually[,\s])/i.test(userMessage) ||
     /\b(not\s+quite|i\s+said|you\s+misunderstood)\b/i.test(userMessage);
 }
 

@@ -14,7 +14,13 @@ import {
   buildSystemAdditions,
   detectFormatHint,
 } from "@/lib/pipeline/prompt-optimization";
-import { redactOutputPii } from "@/lib/pipeline/output-validation";
+import {
+  redactOutputPii,
+  verifyCitations,
+  scoreConfidence,
+  isSafeContent,
+  scoreAmbiguity,
+} from "@/lib/pipeline/output-validation";
 import { route, estimatePreRetrievalTokens } from "@/lib/llm/router";
 import { recordModelResult } from "@/lib/llm/registry";
 import { promoteConversationMemories } from "@/lib/memory/promotion";
@@ -532,8 +538,31 @@ export const Route = createFileRoute("/api/chat/stream")({
             console.error("[chat.stream] stream error", { model: selectedModel.id, err });
           }
 
-          // ---- Persist assistant message ----
+          // ---- Output validation ----
           const { visible, followups } = splitFollowups(assistantText);
+
+          if (visible.trim().length > 0 && !isSafeContent(visible)) {
+            send("error", { message: "I can't send that response. Please try again." });
+            await supabase
+              .from("conversations")
+              .update({ updated_at: new Date().toISOString() })
+              .eq("id", convo.id);
+            return;
+          }
+
+          const sourceNames = finalChunks.map(
+            (c) => (c.metadata.title as string) ?? c.sourceType,
+          );
+          const citationRatio = verifyCitations(visible, sourceNames);
+          const ambiguity = scoreAmbiguity(currentUserMessage);
+          const confidence = scoreConfidence({
+            retrievalQualityAvg: retrievalResult.qualityScore,
+            claimsVerifiedRatio: citationRatio,
+            queryAmbiguity: ambiguity,
+            modelCapability: selectedModel.capability,
+          });
+
+          // ---- Persist assistant message ----
           if (hitFinalCap) {
             const cont = "Continue generating";
             if (!followups.some((f) => f.toLowerCase().includes("continue"))) {
@@ -545,7 +574,11 @@ export const Route = createFileRoute("/api/chat/stream")({
           let assistantId: string | null = null;
           let assistantCreatedAt: string | null = null;
           if (visible.trim().length > 0) {
-            const metadata: Record<string, unknown> = { model: selectedModel.id };
+            const metadata: Record<string, unknown> = {
+              model: selectedModel.id,
+              confidence,
+              citation_ratio: citationRatio,
+            };
             if (followups.length) metadata.follow_ups = followups;
             if (priorVersion) metadata.versions = [priorVersion];
             if (streamError) metadata.partial = true;

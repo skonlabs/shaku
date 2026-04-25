@@ -74,6 +74,7 @@ export function detectTone(
     confidence = 0.8;
     signals.push("frustration language");
   } else if (
+    messages.filter((m) => m.role === "user").slice(-3).length >= 2 &&
     messages.filter((m) => m.role === "user").slice(-3).every((m) => m.content.length < 50)
   ) {
     current = "focused";
