@@ -81,15 +81,19 @@ export function buildSystemAdditions(
   const toneInstructions = TONE_INSTRUCTIONS[conversationTone];
   if (toneInstructions) parts.push(toneInstructions);
 
-  // Chart annotation instruction (7e)
-  parts.push(
-    "When presenting trends, comparisons, or numerical data with 3+ data points, output data as a Markdown table AND add `<!--chart:line-->` or `<!--chart:bar-->` above the table.",
-  );
+  // Chart annotation instruction (7e) — only for data-heavy intents
+  if (intent === "analysis" || intent === "search" || intent === "question") {
+    parts.push(
+      "When presenting trends, comparisons, or numerical data with 3+ data points, output data as a Markdown table AND add `<!--chart:line-->` or `<!--chart:bar-->` above the table.",
+    );
+  }
 
-  // Follow-up question instruction (7f)
-  parts.push(
-    'After substantive responses, suggest 2-3 natural follow-up questions. Format as JSON array in a <followups>["q1","q2"]</followups> tag at the very end. Omit for short/acknowledging replies.',
-  );
+  // Follow-up question instruction (7f) — skip for trivial/social intents
+  if (intent !== "acknowledgment" && intent !== "casual_chat") {
+    parts.push(
+      'After substantive responses, suggest 2-3 natural follow-up questions. Format as JSON array in a <followups>["q1","q2"]</followups> tag at the very end. Omit for short/acknowledging replies.',
+    );
+  }
 
   // Safety framing (7d)
   parts.push(

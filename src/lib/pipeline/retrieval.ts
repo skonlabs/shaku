@@ -118,9 +118,12 @@ export async function retrieve(
   return { chunks, sourcesSearched, qualityScore, webSearchTriggered: false };
 }
 
-// Fallback: pure tsvector full-text search when embedding is unavailable
+// Fallback: pure tsvector full-text search when embedding is unavailable.
+// User isolation is enforced by Supabase RLS on the chunks table — the supabase
+// client is constructed with the user's JWT so auth.uid() inside RLS policies
+// automatically scopes the query to owned rows.
 async function retrieveTextOnly(
-  _userId: string,
+  _userId: string, // RLS enforces user scope via the authenticated client
   query: string,
   sourceTypes: string[],
   topK: number,
@@ -144,6 +147,22 @@ async function retrieveTextOnly(
   }));
 
   return { chunks, sourcesSearched: [], qualityScore: chunks.length > 0 ? 0.5 : 0, webSearchTriggered: false };
+}
+
+// Format retrieved chunks into an XML block for injection into the system prompt.
+export function buildRetrievalContext(chunks: RetrievedChunk[], tokenBudget = 6_000): string {
+  if (!chunks.length) return "";
+  const charBudget = tokenBudget * 4;
+  let used = 0;
+  const parts: string[] = [];
+  for (const chunk of chunks) {
+    const sourceName = (chunk.metadata.title as string) ?? chunk.sourceType;
+    const block = `<source name="${sourceName}" type="${chunk.sourceType}">\n${chunk.content}\n</source>`;
+    if (used + block.length > charBudget) break;
+    parts.push(block);
+    used += block.length;
+  }
+  return parts.join("\n\n");
 }
 
 // Web search fallback (Sprint 7, triggered by exhaustive strategy)

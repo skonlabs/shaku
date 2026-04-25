@@ -34,14 +34,10 @@ export async function retrieveMemories(
 
     if (error || !data) return [];
 
-    // Update access metrics
+    // Update access metrics atomically via RPC to avoid race conditions on access_count
     const ids = data.map((m: { id: string }) => m.id);
     if (ids.length) {
-      // Use supabase admin for this update to bypass RLS complexity
-      void supabase
-        .from("memories")
-        .update({ last_accessed_at: new Date().toISOString() })
-        .in("id", ids);
+      void supabase.rpc("increment_memory_access", { memory_ids: ids });
     }
 
     return data.map((m: Record<string, unknown>) => ({

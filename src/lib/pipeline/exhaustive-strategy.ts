@@ -144,8 +144,12 @@ async function searchAllMemories(
 function deduplicateChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
   const seen = new Set<string>();
   return chunks.filter((c) => {
-    // Deduplicate by content fingerprint (first 100 chars)
-    const key = c.content.slice(0, 100).toLowerCase().trim();
+    // Fingerprint: first 60 chars + last 60 chars + length bucket.
+    // Using only a prefix is fragile when chunks start with identical boilerplate
+    // (e.g. "Source: X\n..."). The combined start+end+length fingerprint is
+    // cheap and catches both identical and near-duplicate chunks.
+    const text = c.content.toLowerCase().trim();
+    const key = `${text.slice(0, 60)}|${text.slice(-60)}|${Math.floor(text.length / 50)}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

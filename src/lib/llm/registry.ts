@@ -4,7 +4,7 @@ import type { ModelConfig } from "./types";
 // Display names appear ONLY in the model selector — never in chat UI.
 export const MODEL_REGISTRY: ModelConfig[] = [
   {
-    id: "claude-haiku-4-5",
+    id: "claude-haiku-4-5-20251001",
     displayName: "Claude Haiku",
     provider: "anthropic",
     capability: 0.6,
@@ -17,30 +17,30 @@ export const MODEL_REGISTRY: ModelConfig[] = [
     domains: { general: 0.6, code: 0.5, creative: 0.55 },
   },
   {
-    id: "claude-sonnet-4-5",
+    id: "claude-sonnet-4-6",
     displayName: "Claude Sonnet",
     provider: "anthropic",
-    capability: 0.85,
+    capability: 0.87,
     costPerMTokInput: 3.0,
     costPerMTokOutput: 15.0,
     latencyP50Ms: 600,
     contextWindow: 200_000,
     maxOutputTokens: 64_000,
     multimodal: true,
-    domains: { general: 0.85, code: 0.8, analysis: 0.9, reasoning: 0.85 },
+    domains: { general: 0.87, code: 0.82, analysis: 0.92, reasoning: 0.87 },
   },
   {
-    id: "claude-opus-4-5",
+    id: "claude-opus-4-7",
     displayName: "Claude Opus",
     provider: "anthropic",
-    capability: 0.95,
+    capability: 0.97,
     costPerMTokInput: 15.0,
     costPerMTokOutput: 75.0,
     latencyP50Ms: 1200,
     contextWindow: 200_000,
     maxOutputTokens: 32_000,
     multimodal: true,
-    domains: { general: 0.95, analysis: 0.95, reasoning: 0.98, code: 0.9 },
+    domains: { general: 0.97, analysis: 0.97, reasoning: 0.99, code: 0.93 },
   },
   {
     id: "gpt-4o-mini",
@@ -70,7 +70,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
   },
 ];
 
-export const DEFAULT_MODEL_ID = "claude-sonnet-4-5";
+export const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
 export function getModel(id: string): ModelConfig | undefined {
   return MODEL_REGISTRY.find((m) => m.id === id);
@@ -79,9 +79,9 @@ export function getModel(id: string): ModelConfig | undefined {
 // Map user-facing selector values to API model IDs
 export const SELECTOR_TO_MODEL_ID: Record<string, string> = {
   auto: "", // empty = routing engine decides
-  "claude-haiku": "claude-haiku-4-5",
-  "claude-sonnet": "claude-sonnet-4-5",
-  "claude-opus": "claude-opus-4-5",
+  "claude-haiku": "claude-haiku-4-5-20251001",
+  "claude-sonnet": "claude-sonnet-4-6",
+  "claude-opus": "claude-opus-4-7",
   "gpt-4o-mini": "gpt-4o-mini",
   "gpt-4o": "gpt-4o",
 };

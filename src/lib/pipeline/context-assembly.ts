@@ -164,10 +164,7 @@ async function retrieveMemories(
 
     if (data?.length) {
       const ids = data.map((m: { id: string }) => m.id);
-      void supabase
-        .from("memories")
-        .update({ last_accessed_at: new Date().toISOString() })
-        .in("id", ids);
+      void supabase.rpc("increment_memory_access", { memory_ids: ids });
     }
 
     return (data ?? []).map((m: Record<string, unknown>) => ({

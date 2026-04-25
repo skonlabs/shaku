@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { checkRateLimit } from "@/lib/utils/rate-limit";
+import { TokenOptimizationMiddleware } from "@/lib/token-optimization";
+import { retrieve, buildRetrievalContext } from "@/lib/pipeline/retrieval";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
 const SUPABASE_PUBLISHABLE_KEY =
@@ -225,9 +227,46 @@ export const Route = createFileRoute("/api/chat/stream")({
           }
         }
 
-        const claudeMessages = history
+        const rawHistory = history
           .filter((m) => m.role === "user" || m.role === "assistant")
           .map((m) => ({ role: m.role as "user" | "assistant", content: m.content as unknown as string }));
+
+        // ---- RAG: retrieve relevant chunks from user's knowledge base ----
+        const currentUserMessage = body.user_message ?? rawHistory.at(-1)?.content ?? "";
+        let retrievalContext = "";
+        if (currentUserMessage.trim().length > 10) {
+          try {
+            const retrieval = await retrieve(
+              userId,
+              currentUserMessage,
+              "question", // default intent; full pipeline intent classification is future work
+              convo.id,
+              supabase,
+              { topK: 10 },
+            );
+            retrievalContext = buildRetrievalContext(retrieval.chunks);
+          } catch {
+            // Retrieval failure is non-fatal — proceed with history only
+          }
+        }
+
+        // Run history through token-optimization middleware: clean inputs, compress
+        // old turns into a summary block, enforce the context budget. The system
+        // prompt is passed so the middleware can count it against the budget.
+        const tokenMw = new TokenOptimizationMiddleware({
+          provider: "anthropic",
+          historyKeepTurns: 20,
+          enableContextPruning: false, // RAG handled separately by retrieval pipeline
+          budget: { maxInputTokens: 150_000, maxOutputTokens: 64_000, maxTotalTokens: 214_000 },
+        });
+        const mwResult = tokenMw.process([
+          { role: "system", content: SYSTEM_PROMPT },
+          ...rawHistory,
+        ]);
+        const claudeMessages = mwResult.messages as { role: "user" | "assistant"; content: string }[];
+        const optimizedSystemPrompt = retrievalContext
+          ? `${mwResult.systemPrompt ?? SYSTEM_PROMPT}\n\n## Sources\n${retrievalContext}`
+          : (mwResult.systemPrompt ?? SYSTEM_PROMPT);
 
         // If the latest user turn has attachments, expand it into multimodal content
         // (image blocks for images, inline text for everything else we extracted).
@@ -262,8 +301,7 @@ export const Route = createFileRoute("/api/chat/stream")({
             }
           }
           blocks.unshift({ type: "text", text: textParts.join("") || "(see attachments)" });
-          // @ts-expect-error multimodal content typed loosely above
-          claudeMessages[lastIdx].content = blocks;
+          (claudeMessages[lastIdx] as { role: string; content: unknown }).content = blocks;
         }
 
         // ---- Stream from Anthropic ----
@@ -277,10 +315,8 @@ export const Route = createFileRoute("/api/chat/stream")({
           let assistantText = "";
           let streamError: unknown = null;
           let stopReason: string | null = null;
-          // Claude Sonnet 4.5 supports up to 64K output tokens. Use the full
-          // ceiling so we don't truncate long answers (e.g. summarizing big
-          // attachments). If we still hit max_tokens, auto-continue up to N
-          // times so the user always receives a complete reply.
+          // Claude Sonnet 4.6 supports up to 64K output tokens. Use 16K per
+          // turn with auto-continue so long answers are never truncated.
           const PER_TURN_MAX_TOKENS = 16_000;
           const MAX_AUTO_CONTINUES = 3;
           // Overlap window we ask the model to echo so we can detect & strip
@@ -292,9 +328,9 @@ export const Route = createFileRoute("/api/chat/stream")({
           try {
             for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
               const claudeStream = anthropic.messages.stream({
-                model: "claude-sonnet-4-5",
+                model: "claude-sonnet-4-6",
                 max_tokens: PER_TURN_MAX_TOKENS,
-                system: SYSTEM_PROMPT,
+                system: optimizedSystemPrompt,
                 messages: turnMessages,
               });
 
@@ -419,7 +455,7 @@ export const Route = createFileRoute("/api/chat/stream")({
             void (async () => {
               try {
                 const titleRes = await anthropic.messages.create({
-                  model: "claude-haiku-4-5",
+                  model: "claude-haiku-4-5-20251001",
                   max_tokens: 32,
                   system: TITLE_PROMPT,
                   messages: [
