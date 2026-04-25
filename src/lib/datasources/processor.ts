@@ -9,7 +9,6 @@
 import { extractContent } from "./extractors";
 import { chunkByFileType } from "./chunkers";
 import { embedBatch } from "@/lib/embeddings";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type ProcessingStatus = "uploading" | "processing" | "ready" | "error";
 
@@ -28,7 +27,7 @@ export async function processFile(
   fileName: string,
   fileType: string,
   opts: ProcessingOptions,
-  supabase: SupabaseClient,
+  supabase: any,
 ): Promise<{ chunkCount: number; contentHash: string }> {
   const contentHash = await hashBytes(bytes);
 
@@ -110,7 +109,7 @@ export async function processUrl(
   userId: string,
   url: string,
   conversationId: string,
-  supabase: SupabaseClient,
+  supabase: any,
 ): Promise<{ chunkCount: number }> {
   let html: string;
   try {
@@ -148,7 +147,7 @@ export async function deleteChunks(
   userId: string,
   sourceType: string,
   sourceId: string,
-  supabase: SupabaseClient,
+  supabase: any,
 ): Promise<void> {
   await supabase
     .from("chunks")
@@ -160,7 +159,9 @@ export async function deleteChunks(
 
 // SHA-256 hash of bytes (CF Workers has native crypto.subtle)
 async function hashBytes(bytes: Uint8Array): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  const data = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(data).set(bytes);
+  const hash = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");

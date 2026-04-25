@@ -13,6 +13,11 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as ApiFeedbackRouteImport } from './routes/api/feedback'
+import { Route as ApiWebhooksStripeRouteImport } from './routes/api/webhooks.stripe'
+import { Route as ApiWebhooksSlackRouteImport } from './routes/api/webhooks.slack'
+import { Route as ApiDatasourcesProcessRouteImport } from './routes/api/datasources.process'
+import { Route as ApiConnectorsCallbackRouteImport } from './routes/api/connectors.callback'
 import { Route as ApiChatStreamRouteImport } from './routes/api/chat.stream'
 import { Route as AppCIdRouteImport } from './routes/_app.c.$id'
 
@@ -35,6 +40,31 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const ApiFeedbackRoute = ApiFeedbackRouteImport.update({
+  id: '/api/feedback',
+  path: '/api/feedback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksStripeRoute = ApiWebhooksStripeRouteImport.update({
+  id: '/api/webhooks/stripe',
+  path: '/api/webhooks/stripe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksSlackRoute = ApiWebhooksSlackRouteImport.update({
+  id: '/api/webhooks/slack',
+  path: '/api/webhooks/slack',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDatasourcesProcessRoute = ApiDatasourcesProcessRouteImport.update({
+  id: '/api/datasources/process',
+  path: '/api/datasources/process',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiConnectorsCallbackRoute = ApiConnectorsCallbackRouteImport.update({
+  id: '/api/connectors/callback',
+  path: '/api/connectors/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiChatStreamRoute = ApiChatStreamRouteImport.update({
   id: '/api/chat/stream',
   path: '/api/chat/stream',
@@ -50,45 +80,90 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/c/$id': typeof AppCIdRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
+  '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
+  '/api/datasources/process': typeof ApiDatasourcesProcessRoute
+  '/api/webhooks/slack': typeof ApiWebhooksSlackRoute
+  '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/': typeof AppIndexRoute
   '/c/$id': typeof AppCIdRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
+  '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
+  '/api/datasources/process': typeof ApiDatasourcesProcessRoute
+  '/api/webhooks/slack': typeof ApiWebhooksSlackRoute
+  '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/api/feedback': typeof ApiFeedbackRoute
   '/_app/': typeof AppIndexRoute
   '/_app/c/$id': typeof AppCIdRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
+  '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
+  '/api/datasources/process': typeof ApiDatasourcesProcessRoute
+  '/api/webhooks/slack': typeof ApiWebhooksSlackRoute
+  '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/onboarding' | '/c/$id' | '/api/chat/stream'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/onboarding'
+    | '/api/feedback'
+    | '/c/$id'
+    | '/api/chat/stream'
+    | '/api/connectors/callback'
+    | '/api/datasources/process'
+    | '/api/webhooks/slack'
+    | '/api/webhooks/stripe'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/onboarding' | '/' | '/c/$id' | '/api/chat/stream'
+  to:
+    | '/login'
+    | '/onboarding'
+    | '/api/feedback'
+    | '/'
+    | '/c/$id'
+    | '/api/chat/stream'
+    | '/api/connectors/callback'
+    | '/api/datasources/process'
+    | '/api/webhooks/slack'
+    | '/api/webhooks/stripe'
   id:
     | '__root__'
     | '/_app'
     | '/login'
     | '/onboarding'
+    | '/api/feedback'
     | '/_app/'
     | '/_app/c/$id'
     | '/api/chat/stream'
+    | '/api/connectors/callback'
+    | '/api/datasources/process'
+    | '/api/webhooks/slack'
+    | '/api/webhooks/stripe'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
+  ApiFeedbackRoute: typeof ApiFeedbackRoute
   ApiChatStreamRoute: typeof ApiChatStreamRoute
+  ApiConnectorsCallbackRoute: typeof ApiConnectorsCallbackRoute
+  ApiDatasourcesProcessRoute: typeof ApiDatasourcesProcessRoute
+  ApiWebhooksSlackRoute: typeof ApiWebhooksSlackRoute
+  ApiWebhooksStripeRoute: typeof ApiWebhooksStripeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -120,6 +195,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/api/feedback': {
+      id: '/api/feedback'
+      path: '/api/feedback'
+      fullPath: '/api/feedback'
+      preLoaderRoute: typeof ApiFeedbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/stripe': {
+      id: '/api/webhooks/stripe'
+      path: '/api/webhooks/stripe'
+      fullPath: '/api/webhooks/stripe'
+      preLoaderRoute: typeof ApiWebhooksStripeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/slack': {
+      id: '/api/webhooks/slack'
+      path: '/api/webhooks/slack'
+      fullPath: '/api/webhooks/slack'
+      preLoaderRoute: typeof ApiWebhooksSlackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/datasources/process': {
+      id: '/api/datasources/process'
+      path: '/api/datasources/process'
+      fullPath: '/api/datasources/process'
+      preLoaderRoute: typeof ApiDatasourcesProcessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/connectors/callback': {
+      id: '/api/connectors/callback'
+      path: '/api/connectors/callback'
+      fullPath: '/api/connectors/callback'
+      preLoaderRoute: typeof ApiConnectorsCallbackRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/chat/stream': {
       id: '/api/chat/stream'
@@ -154,7 +264,12 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
+  ApiFeedbackRoute: ApiFeedbackRoute,
   ApiChatStreamRoute: ApiChatStreamRoute,
+  ApiConnectorsCallbackRoute: ApiConnectorsCallbackRoute,
+  ApiDatasourcesProcessRoute: ApiDatasourcesProcessRoute,
+  ApiWebhooksSlackRoute: ApiWebhooksSlackRoute,
+  ApiWebhooksStripeRoute: ApiWebhooksStripeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
