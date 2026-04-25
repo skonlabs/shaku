@@ -209,7 +209,7 @@ function MessageRow({
         ) : (
           <div className="max-w-[85%] space-y-1.5">
             {!isPlaceholder && (
-              <div className="rounded-2xl bg-bubble px-4 py-2.5 text-sm text-bubble-foreground">
+              <div className="rounded-2xl rounded-tr-md bg-bubble px-4 py-2.5 text-sm leading-relaxed text-bubble-foreground shadow-sm">
                 <div className="whitespace-pre-wrap">{message.content}</div>
               </div>
             )}
