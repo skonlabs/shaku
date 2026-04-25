@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 export interface StreamCallbacks {
   onUserMessage: (id: string, createdAt: string) => void;
   onDelta: (text: string) => void;
-  onDone: (info: { assistantMessageId?: string; followups?: string[] }) => void;
+  onDone: (info: { assistantMessageId?: string; followups?: string[]; memoriesUsed?: number }) => void;
   onInterrupted?: () => void;
   onError: (message: string) => void;
   onRateLimit?: (resetAt: string) => void;
@@ -108,6 +108,7 @@ export async function streamChat(req: StreamRequest, cb: StreamCallbacks): Promi
                 cb.onDone({
                   assistantMessageId: parsed.assistant_message_id,
                   followups: parsed.followups,
+                  memoriesUsed: parsed.memories_used,
                 });
                 return;
               } else if (event === "error") {

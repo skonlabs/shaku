@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { embed } from "@/lib/embeddings";
 import { listMemories } from "@/lib/memory/retrieval";
+import { loadUkm } from "@/lib/knowledge/ukm";
 
 export const getMemories = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -89,6 +90,18 @@ export const toggleMemory = createServerFn({ method: "POST" })
       .eq("id", userId);
     if (error) throw new Error("Couldn't update memory preference.");
     return { success: true };
+  });
+
+export const getUkm = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({}))
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const [ukm, userRow] = await Promise.all([
+      loadUkm(userId, supabase),
+      supabase.from("users").select("memory_enabled").eq("id", userId).maybeSingle(),
+    ]);
+    return { ukm, memoryEnabled: (userRow.data?.memory_enabled ?? true) as boolean };
   });
 
 export const createMemory = createServerFn({ method: "POST" })
