@@ -36,7 +36,8 @@ import {
   updateUkmFromMemory,
 } from "@/lib/knowledge/ukm";
 import { redactText } from "@/lib/utils/pii";
-import { countTokens } from "@/lib/tokens";
+import { countTokens, countTokensMessages, estimateCost } from "@/lib/tokens";
+import type { ModelConfig } from "@/lib/llm/types";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
 const SUPABASE_PUBLISHABLE_KEY =
@@ -409,133 +410,153 @@ export const Route = createFileRoute("/api/chat/stream")({
         return sse(async (send) => {
           if (userMsg) send("user_message", userMsg);
 
+          let activeModel = selectedModel;
           let assistantText = "";
           let streamError: unknown = null;
-          const PER_TURN_MAX_TOKENS = Math.min(16_000, selectedModel.maxOutputTokens);
-          const MAX_AUTO_CONTINUES = selectedModel.provider === "anthropic" ? 3 : 0;
+          let usedStaticFallback = false;
+          const startedAt = Date.now();
           const OVERLAP_CHARS = 240;
           let hitFinalCap = false;
+          const runnableModels = uniqueModels([selectedModel, ...routingDecision.fallback]).filter(
+            modelHasRuntimeKey,
+          );
 
-          try {
-            if (selectedModel.provider === "anthropic") {
-              const apiKey = process.env.ANTHROPIC_API_KEY;
-              if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
-              const anthropic = new Anthropic({ apiKey });
-              const turnMessages = [...optimizedMessages];
-              let stopReason: string | null = null;
+          if (runnableModels.length === 0) {
+            usedStaticFallback = true;
+            assistantText =
+              "I can’t connect to the AI service right now. Please try again in a moment.";
+            send("delta", { text: assistantText });
+          } else {
+            for (const candidateModel of runnableModels) {
+              activeModel = candidateModel;
+              assistantText = "";
+              hitFinalCap = false;
 
-              for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
-                const claudeStream = anthropic.messages.stream({
-                  model: selectedModel.id,
-                  max_tokens: PER_TURN_MAX_TOKENS,
-                  system: optimizedSystemPrompt,
-                  messages: turnMessages,
-                });
+              try {
+                const PER_TURN_MAX_TOKENS = Math.min(16_000, candidateModel.maxOutputTokens);
+                const MAX_AUTO_CONTINUES = candidateModel.provider === "anthropic" ? 3 : 0;
 
-                let turnText = "";
-                const isContinuation = turn > 0;
-                const priorTail = isContinuation ? assistantText.slice(-OVERLAP_CHARS) : "";
-                let dedupResolved = !isContinuation;
-                let dedupBuffer = "";
-                const DEDUP_SCAN_BUDGET = OVERLAP_CHARS * 3;
+                if (candidateModel.provider === "anthropic") {
+                  const apiKey = process.env.ANTHROPIC_API_KEY;
+                  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
+                  const anthropic = new Anthropic({ apiKey });
+                  const turnMessages = [...optimizedMessages];
+                  let stopReason: string | null = null;
 
-                stopReason = null;
-                for await (const event of claudeStream) {
-                  if (
-                    event.type === "content_block_delta" &&
-                    event.delta.type === "text_delta"
-                  ) {
-                    const raw = event.delta.text;
-                    turnText += raw;
+                  for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
+                    const claudeStream = anthropic.messages.stream({
+                      model: candidateModel.id,
+                      max_tokens: PER_TURN_MAX_TOKENS,
+                      system: optimizedSystemPrompt,
+                      messages: turnMessages,
+                    });
 
-                    let emit = raw;
-                    if (!dedupResolved) {
-                      dedupBuffer += raw;
-                      const stripped = stripOverlapPrefix(dedupBuffer, priorTail);
-                      if (stripped !== null) {
-                        emit = stripped;
-                        dedupResolved = true;
-                      } else if (dedupBuffer.length >= DEDUP_SCAN_BUDGET) {
-                        emit = dedupBuffer;
-                        dedupResolved = true;
-                      } else {
-                        continue;
+                    let turnText = "";
+                    const isContinuation = turn > 0;
+                    const priorTail = isContinuation ? assistantText.slice(-OVERLAP_CHARS) : "";
+                    let dedupResolved = !isContinuation;
+                    let dedupBuffer = "";
+                    const DEDUP_SCAN_BUDGET = OVERLAP_CHARS * 3;
+
+                    stopReason = null;
+                    for await (const event of claudeStream) {
+                      if (
+                        event.type === "content_block_delta" &&
+                        event.delta.type === "text_delta"
+                      ) {
+                        const raw = event.delta.text;
+                        turnText += raw;
+
+                        let emit = raw;
+                        if (!dedupResolved) {
+                          dedupBuffer += raw;
+                          const stripped = stripOverlapPrefix(dedupBuffer, priorTail);
+                          if (stripped !== null) {
+                            emit = stripped;
+                            dedupResolved = true;
+                          } else if (dedupBuffer.length >= DEDUP_SCAN_BUDGET) {
+                            emit = dedupBuffer;
+                            dedupResolved = true;
+                          } else {
+                            continue;
+                          }
+                        }
+
+                        const { text: safeChunk } = redactOutputPii(emit, allowedPiiValues);
+                        assistantText += safeChunk;
+                        const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                        if (visible) send("delta", { text: visible });
+                      } else if (event.type === "message_delta") {
+                        stopReason = event.delta.stop_reason ?? stopReason;
                       }
                     }
 
-                    const { text: safeChunk } = redactOutputPii(emit, allowedPiiValues);
-                    assistantText += safeChunk;
-                    const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                    if (visible) send("delta", { text: visible });
-                  } else if (event.type === "message_delta") {
-                    stopReason = event.delta.stop_reason ?? stopReason;
+                    if (!dedupResolved && dedupBuffer.length > 0) {
+                      const { text: safeChunk } = redactOutputPii(dedupBuffer, allowedPiiValues);
+                      assistantText += safeChunk;
+                      const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                      if (visible) send("delta", { text: visible });
+                    }
+
+                    if (stopReason !== "max_tokens") break;
+                    if (turn === MAX_AUTO_CONTINUES) {
+                      hitFinalCap = true;
+                      break;
+                    }
+
+                    turnMessages.push({ role: "assistant", content: turnText });
+                    const tail = assistantText.slice(-OVERLAP_CHARS);
+                    turnMessages.push({
+                      role: "user",
+                      content: `Continue exactly from where you stopped. Begin your reply by repeating verbatim these final characters of your previous message, then continue seamlessly:
+
+"""${tail}"""
+
+Do not add any preface, apology, or commentary.`,
+                    });
+                  }
+                } else {
+                  const apiKey = process.env.OPENAI_API_KEY;
+                  if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
+                  const openai = new OpenAI({ apiKey });
+
+                  const oaiMessages = [
+                    { role: "system" as const, content: optimizedSystemPrompt },
+                    ...optimizedMessages.map((m) => ({
+                      role: m.role as "user" | "assistant",
+                      content: messageContentToText(m.content),
+                    })),
+                  ];
+
+                  const stream = await openai.chat.completions.create({
+                    model: candidateModel.id,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    messages: oaiMessages as any,
+                    stream: true,
+                    max_tokens: PER_TURN_MAX_TOKENS,
+                  });
+
+                  for await (const chunk of stream) {
+                    const text = chunk.choices[0]?.delta?.content ?? "";
+                    if (text) {
+                      const { text: safeChunk } = redactOutputPii(text, allowedPiiValues);
+                      assistantText += safeChunk;
+                      const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                      if (visible) send("delta", { text: visible });
+                    }
                   }
                 }
 
-                if (!dedupResolved && dedupBuffer.length > 0) {
-                  const { text: safeChunk } = redactOutputPii(dedupBuffer, allowedPiiValues);
-                  assistantText += safeChunk;
-                  const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                  if (visible) send("delta", { text: visible });
-                }
-
-                recordModelResult(selectedModel.id, false);
-                if (stopReason !== "max_tokens") break;
-                if (turn === MAX_AUTO_CONTINUES) {
-                  hitFinalCap = true;
-                  break;
-                }
-
-                turnMessages.push({ role: "assistant", content: turnText });
-                const tail = assistantText.slice(-OVERLAP_CHARS);
-                turnMessages.push({
-                  role: "user",
-                  content: `Continue exactly from where you stopped. Begin your reply by repeating verbatim these final characters of your previous message, then continue seamlessly:\n\n"""${tail}"""\n\nDo not add any preface, apology, or commentary.`,
-                });
+                streamError = null;
+                recordModelResult(candidateModel.id, false);
+                break;
+              } catch (err) {
+                streamError = err;
+                recordModelResult(candidateModel.id, true);
+                console.error("[chat.stream] stream error", { model: candidateModel.id, err });
+                if (assistantText.trim().length > 0) break;
               }
-            } else {
-              // OpenAI provider
-              const apiKey = process.env.OPENAI_API_KEY;
-              if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
-              const openai = new OpenAI({ apiKey });
-
-              const oaiMessages = [
-                { role: "system" as const, content: optimizedSystemPrompt },
-                ...optimizedMessages.map((m) => ({
-                  role: m.role as "user" | "assistant",
-                  content:
-                    typeof m.content === "string"
-                      ? (m.content as string)
-                      : (m.content as Array<{ type: string; text?: string }>)
-                          .filter((b) => b.type === "text")
-                          .map((b) => b.text ?? "")
-                          .join("\n"),
-                })),
-              ];
-
-              const stream = await openai.chat.completions.create({
-                model: selectedModel.id,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                messages: oaiMessages as any,
-                stream: true,
-                max_tokens: PER_TURN_MAX_TOKENS,
-              });
-
-              for await (const chunk of stream) {
-                const text = chunk.choices[0]?.delta?.content ?? "";
-                if (text) {
-                  const { text: safeChunk } = redactOutputPii(text, allowedPiiValues);
-                  assistantText += safeChunk;
-                  const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                  if (visible) send("delta", { text: visible });
-                }
-              }
-              recordModelResult(selectedModel.id, false);
             }
-          } catch (err) {
-            streamError = err;
-            recordModelResult(selectedModel.id, true);
-            console.error("[chat.stream] stream error", { model: selectedModel.id, err });
           }
 
           // ---- Output validation ----
@@ -559,7 +580,7 @@ export const Route = createFileRoute("/api/chat/stream")({
             retrievalQualityAvg: retrievalResult.qualityScore,
             claimsVerifiedRatio: citationRatio,
             queryAmbiguity: ambiguity,
-            modelCapability: selectedModel.capability,
+            modelCapability: activeModel.capability,
           });
 
           // ---- Persist assistant message ----
@@ -575,7 +596,7 @@ export const Route = createFileRoute("/api/chat/stream")({
           let assistantCreatedAt: string | null = null;
           if (visible.trim().length > 0) {
             const metadata: Record<string, unknown> = {
-              model: selectedModel.id,
+              model: activeModel.id,
               confidence,
               citation_ratio: citationRatio,
             };
@@ -692,6 +713,49 @@ export const Route = createFileRoute("/api/chat/stream")({
 });
 
 // ---------- helpers ----------
+
+
+function uniqueModels(models: ModelConfig[]): ModelConfig[] {
+  const seen = new Set<string>();
+  return models.filter((model) => {
+    if (seen.has(model.id)) return false;
+    seen.add(model.id);
+    return true;
+  });
+}
+
+function modelHasRuntimeKey(model: ModelConfig): boolean {
+  if (model.provider === "anthropic") return Boolean(process.env.ANTHROPIC_API_KEY);
+  if (model.provider === "openai") return Boolean(process.env.OPENAI_API_KEY);
+  return false;
+}
+
+function messageContentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((block) => {
+      if (!block || typeof block !== "object") return "";
+      const b = block as { type?: string; text?: string; source?: { url?: string } };
+      if (b.type === "text") return b.text ?? "";
+      if (b.type === "image") return b.source?.url ? `[Image: ${b.source.url}]` : "[Image]";
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function estimateInputTokens(
+  systemPrompt: string,
+  messages: { role: "user" | "assistant"; content: unknown }[],
+): number {
+  return (
+    countTokens(systemPrompt) +
+    countTokensMessages(
+      messages.map((m) => ({ role: m.role, content: messageContentToText(m.content) })),
+    )
+  );
+}
 
 function stripOverlapPrefix(buffer: string, priorTail: string): string | null {
   if (!priorTail) return buffer;
