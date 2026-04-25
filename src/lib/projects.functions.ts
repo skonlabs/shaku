@@ -31,7 +31,10 @@ export const createProject = createServerFn({ method: "POST" })
       .insert({ user_id: userId, name: data.name, color: data.color ?? "#378ADD" })
       .select("*")
       .single();
-    if (error) throw new Error("Couldn't create project.");
+    if (error) {
+      console.error("[createProject] insert failed", { code: error.code, message: error.message, details: error.details, hint: error.hint });
+      throw new Error(`Couldn't create project: ${error.message}`);
+    }
     return { project: row };
   });
 
