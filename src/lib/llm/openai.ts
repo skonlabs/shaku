@@ -54,6 +54,8 @@ export class OpenAIProvider implements LLMProvider {
         parts.push({ type: "image_url", image_url: { url: part.url } });
       }
     }
-    return { role: msg.role as "user" | "assistant", content: parts };
+    return msg.role === "assistant"
+      ? { role: "assistant", content: parts }
+      : { role: "user", content: parts };
   }
 }
