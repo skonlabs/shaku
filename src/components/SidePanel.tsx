@@ -409,118 +409,6 @@ type DatasourceFile = {
   created_at: string;
 };
 
-function DatasourcesPanel() {
-  const qc = useQueryClient();
-  const { user, loading } = useAuth();
-  const { data, isLoading } = useQuery({
-    queryKey: ["datasource-files", null],
-    queryFn: () => listFiles({ data: { folder_id: null } }),
-    enabled: !loading && !!user,
-    refetchInterval: (query) => {
-      const files = ((query.state.data as Awaited<ReturnType<typeof listFiles>> | undefined)?.files ?? []) as DatasourceFile[];
-      return files.some((f) => f.status === "uploading" || f.status === "processing") ? 2500 : false;
-    },
-  });
-
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => deleteDatasourceFile({ data: { id } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["datasource-files"] }),
-    onError: () => toast.error("Couldn't delete the file."),
-  });
-
-  const files = (data?.files ?? []) as DatasourceFile[];
-
-  return (
-    <div className="flex h-full flex-col">
-      <div className="px-4 pb-2">
-        <p className="text-xs text-muted-foreground">Uploaded knowledge files appear here after upload.</p>
-      </div>
-      <ScrollArea className="flex-1 px-3">
-        {isLoading ? (
-          <div className="space-y-2 py-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-14 animate-pulse rounded-md bg-muted/60" />
-            ))}
-          </div>
-        ) : data?.error ? (
-          <div className="p-3 text-xs text-destructive">{data.error}</div>
-        ) : files.length === 0 ? (
-          <div className="px-3 py-8 text-center text-xs text-muted-foreground">No files uploaded yet.</div>
-        ) : (
-          <div className="space-y-2 pb-4">
-            {files.map((file) => (
-              <DatasourceFileRow
-                key={file.id}
-                file={file}
-                deleting={deleteMut.isPending}
-                onDelete={() => deleteMut.mutate(file.id)}
-              />
-            ))}
-          </div>
-        )}
-      </ScrollArea>
-    </div>
-  );
-}
-
-function DatasourceFileRow({
-  file,
-  deleting,
-  onDelete,
-}: {
-  file: DatasourceFile;
-  deleting: boolean;
-  onDelete: () => void;
-}) {
-  const active = file.status === "uploading" || file.status === "processing";
-  const failed = file.status === "error";
-  return (
-    <div className="rounded-md border border-border bg-card px-2 py-2 text-xs">
-      <div className="flex items-start gap-2">
-        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          {active ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : failed ? (
-            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
-          ) : (
-            <FileText className="h-3.5 w-3.5" />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate font-medium text-foreground" title={file.name}>{file.name}</div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-            <span>{formatDatasourceSize(file.file_size_bytes)}</span>
-            <span>{file.file_type.toUpperCase()}</span>
-            <span className={cn(failed && "text-destructive", file.status === "ready" && "text-primary")}>{statusLabel(file)}</span>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={deleting}
-          aria-label={`Delete ${file.name}`}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition hover:bg-accent hover:text-destructive disabled:opacity-50"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function statusLabel(file: DatasourceFile) {
-  if (file.status === "ready") return `${file.chunk_count ?? 0} chunks ready`;
-  if (file.status === "processing") return "Processing";
-  if (file.status === "uploading") return "Uploading";
-  return "Needs attention";
-}
-
-function formatDatasourceSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
 function SettingsPanel() {
   const { theme, setTheme } = useTheme();
   const [maxMb, setMaxMb] = useUploadMaxMb();
@@ -1081,15 +969,52 @@ function fmtBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+const CLOUD_STORAGE_SERVICES = [
+  {
+    service: "google_drive",
+    name: "Google Drive",
+    desc: "Sync Docs, Sheets, Slides and files",
+    implemented: true,
+  },
+  {
+    service: "onedrive",
+    name: "OneDrive / SharePoint",
+    desc: "Sync files from Microsoft OneDrive",
+    implemented: false,
+  },
+  {
+    service: "dropbox",
+    name: "Dropbox",
+    desc: "Sync documents and files from Dropbox",
+    implemented: false,
+  },
+  {
+    service: "shared_folder",
+    name: "Shared / Network Folder",
+    desc: "Mount a local or network shared folder",
+    implemented: false,
+  },
+];
+
 function DatasourcesPanel() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [tab, setTab] = useState<"files" | "cloud">("files");
   const [uploading, setUploading] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["ds-files"],
     queryFn: () => listFiles({ data: {} }),
+    refetchInterval: (query) => {
+      const files = (query.state.data as Awaited<ReturnType<typeof listFiles>> | undefined)?.files ?? [];
+      return files.some((f: DatasourceFile) => f.status === "uploading" || f.status === "processing") ? 2500 : false;
+    },
+  });
+
+  const { data: connData } = useQuery({
+    queryKey: ["connectors"],
+    queryFn: () => listConnectors({ data: undefined as never }),
   });
 
   const files = data?.files ?? [];
@@ -1101,6 +1026,27 @@ function DatasourcesPanel() {
       toast.success("File removed.");
     },
     onError: () => toast.error("Couldn't remove file."),
+  });
+
+  const connectMut = useMutation({
+    mutationFn: (service: string) =>
+      initiateConnectorAuth({
+        data: {
+          service,
+          redirect_uri: `${window.location.origin}/api/connectors/callback?service=${service}`,
+        },
+      }),
+    onSuccess: (res) => { window.location.href = (res as { auth_url: string }).auth_url; },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't connect."),
+  });
+
+  const disconnectMut = useMutation({
+    mutationFn: (id: string) => disconnectConnector({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["connectors"] });
+      toast.success("Disconnected.");
+    },
+    onError: () => toast.error("Couldn't disconnect."),
   });
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1146,6 +1092,10 @@ function DatasourcesPanel() {
     }
   }
 
+  const connectedStorage = (connData?.connected ?? []).filter((c) =>
+    CLOUD_STORAGE_SERVICES.some((s) => s.service === c.service),
+  );
+
   const sorted = [...files].sort((a, b) => {
     const ord: Record<string, number> = { processing: 0, uploading: 0, error: 1, ready: 2 };
     return (ord[a.status] ?? 2) - (ord[b.status] ?? 2);
@@ -1153,87 +1103,190 @@ function DatasourcesPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center px-4 py-2">
-        <input
-          ref={fileRef}
-          type="file"
-          className="sr-only"
-          onChange={handleFileChange}
-          accept=".pdf,.docx,.doc,.txt,.md,.xlsx,.xls,.csv,.pptx,.ppt,.png,.jpg,.jpeg,.gif,.webp,.py,.js,.ts,.tsx,.jsx,.java,.cpp,.c,.rs,.go,.rb,.php,.swift,.kt,.html,.css,.json,.yaml,.sql"
-        />
-        <button
-          disabled={uploading}
-          onClick={() => fileRef.current?.click()}
-          className="ml-auto flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
-        >
-          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-          {uploading ? "Uploading…" : "Upload file"}
-        </button>
+      {/* Tabs */}
+      <div className="flex shrink-0 gap-0.5 border-b border-border px-4 pb-0 pt-1">
+        {(["files", "cloud"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={cn(
+              "px-3 py-2 text-xs font-medium capitalize transition-colors",
+              tab === t
+                ? "border-b-2 border-primary text-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t === "files" ? "Uploaded Files" : "Cloud Sources"}
+          </button>
+        ))}
       </div>
 
-      <ScrollArea className="flex-1">
-        {isLoading && <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>}
-        {!isLoading && sorted.length === 0 && (
-          <div className="px-4 py-8 text-center">
-            <Upload className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
-            <p className="text-xs text-muted-foreground">No files yet.</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Upload PDFs, documents, spreadsheets, or code to use as context in any chat.
-            </p>
+      {tab === "files" && (
+        <>
+          <div className="flex shrink-0 items-center px-4 py-2">
+            <input
+              ref={fileRef}
+              type="file"
+              className="sr-only"
+              onChange={handleFileChange}
+              accept=".pdf,.docx,.doc,.txt,.md,.xlsx,.xls,.csv,.pptx,.ppt,.png,.jpg,.jpeg,.gif,.webp,.py,.js,.ts,.tsx,.jsx,.java,.cpp,.c,.rs,.go,.rb,.php,.swift,.kt,.html,.css,.json,.yaml,.sql"
+            />
+            <p className="text-[11px] text-muted-foreground">PDFs, Docs, Code, Spreadsheets</p>
+            <button
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+              className="ml-auto flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
+            >
+              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              {uploading ? "Uploading…" : "Upload file"}
+            </button>
           </div>
-        )}
-        <div className="space-y-0.5 px-2 pb-2">
-          {sorted.map((f) => {
-            const isActive = f.status === "processing" || f.status === "uploading";
-            return (
-              <div
-                key={f.id}
-                className="group flex items-center gap-2 rounded-md px-2 py-2 hover:bg-accent/40"
-              >
-                <File
-                  className={cn(
-                    "h-4 w-4 shrink-0",
-                    isActive ? "text-blue-500" : "text-muted-foreground",
-                  )}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium">{f.name}</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {fmtBytes(f.file_size_bytes ?? 0)}
-                    {f.chunk_count ? ` · ${f.chunk_count} chunks` : ""}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <span
-                    className={cn(
-                      "rounded px-1.5 py-0.5 text-[10px] font-medium capitalize",
-                      FILE_STATUS_STYLES[f.status] ?? "",
-                    )}
+          <ScrollArea className="flex-1">
+            {isLoading && <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>}
+            {!isLoading && sorted.length === 0 && (
+              <div className="px-4 py-8 text-center">
+                <Upload className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
+                <p className="text-xs text-muted-foreground">No files yet.</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Upload PDFs, documents, spreadsheets, or code to use as context in any chat.
+                </p>
+              </div>
+            )}
+            <div className="space-y-0.5 px-2 pb-2">
+              {sorted.map((f) => {
+                const isActive = f.status === "processing" || f.status === "uploading";
+                return (
+                  <div
+                    key={f.id}
+                    className="group flex items-center gap-2 rounded-md px-2 py-2 hover:bg-accent/40"
                   >
-                    {isActive ? (
-                      <span className="flex items-center gap-1">
-                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                        {f.status}
+                    <File
+                      className={cn(
+                        "h-4 w-4 shrink-0",
+                        isActive ? "text-blue-500" : "text-muted-foreground",
+                      )}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium">{f.name}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {fmtBytes(f.file_size_bytes ?? 0)}
+                        {f.chunk_count ? ` · ${f.chunk_count} chunks` : ""}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <span
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-[10px] font-medium capitalize",
+                          FILE_STATUS_STYLES[f.status] ?? "",
+                        )}
+                      >
+                        {isActive ? (
+                          <span className="flex items-center gap-1">
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                            {f.status}
+                          </span>
+                        ) : (
+                          f.status
+                        )}
                       </span>
-                    ) : (
-                      f.status
-                    )}
-                  </span>
-                  {(f.status === "ready" || f.status === "error") && (
-                    <button
-                      onClick={() => deleteMut.mutate(f.id)}
-                      className="hidden h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-destructive group-hover:flex"
-                      title="Remove file"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
+                      {(f.status === "ready" || f.status === "error") && (
+                        <button
+                          onClick={() => deleteMut.mutate(f.id)}
+                          className="hidden h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-destructive group-hover:flex"
+                          title="Remove file"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        </>
+      )}
+
+      {tab === "cloud" && (
+        <ScrollArea className="flex-1">
+          <div className="space-y-3 px-4 py-3">
+            {connectedStorage.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Connected</p>
+                <div className="space-y-2">
+                  {connectedStorage.map((c) => {
+                    const svc = CLOUD_STORAGE_SERVICES.find((s) => s.service === c.service);
+                    const isPaused = c.status === "paused";
+                    return (
+                      <div key={c.id} className="rounded-lg border border-border bg-background p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium">{svc?.name ?? c.service}</p>
+                          <span className={cn(
+                            "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                            c.status === "syncing" ? "bg-blue-50 text-blue-600 dark:bg-blue-950/50" :
+                            c.status === "paused" ? "bg-yellow-50 text-yellow-600 dark:bg-yellow-950/50" :
+                            "bg-green-50 text-green-600 dark:bg-green-950/50",
+                          )}>
+                            {c.status === "syncing" ? <span className="flex items-center gap-1"><Loader2 className="h-2.5 w-2.5 animate-spin" />Syncing</span> : c.status}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          {c.items_indexed != null ? `${c.items_indexed} items indexed` : ""}
+                          {c.last_synced_at ? ` · synced ${relativeTime(c.last_synced_at)}` : ""}
+                        </p>
+                        <div className="mt-2 flex gap-1.5">
+                          <button
+                            onClick={() => disconnectMut.mutate(c.id)}
+                            disabled={disconnectMut.isPending}
+                            className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-destructive/50 hover:text-destructive disabled:opacity-50"
+                          >
+                            Disconnect
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </ScrollArea>
+            )}
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {connectedStorage.length > 0 ? "Add more" : "Connect a cloud source"}
+              </p>
+              <div className="space-y-2">
+                {CLOUD_STORAGE_SERVICES.filter((s) => !connectedStorage.some((c) => c.service === s.service)).map((s) => (
+                  <div
+                    key={s.service}
+                    className={cn(
+                      "rounded-lg border border-border bg-background p-3",
+                      !s.implemented && "opacity-60",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{s.name}</p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">{s.desc}</p>
+                      </div>
+                      {s.implemented ? (
+                        <button
+                          onClick={() => connectMut.mutate(s.service)}
+                          disabled={connectMut.isPending}
+                          className="flex shrink-0 items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                        >
+                          {connectMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+                          Connect
+                        </button>
+                      ) : (
+                        <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Soon</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
+      )}
     </div>
   );
 }
@@ -1247,18 +1300,25 @@ const CONNECTOR_STATUS_STYLES: Record<string, { badge: string; label: string }> 
   error: { badge: "text-red-600 bg-red-50 dark:bg-red-950/50", label: "Error" },
 };
 
-const CONNECTOR_DISPLAY_NAMES: Record<string, string> = {
-  google_drive: "Google Drive",
-  slack: "Slack",
-  dropbox: "Dropbox",
-  onedrive: "OneDrive / SharePoint",
-  gmail: "Gmail",
-  google_calendar: "Google Calendar",
-  jira: "Jira",
-  github: "GitHub",
-  notion: "Notion",
-  confluence: "Confluence",
-  teams: "Microsoft Teams",
+// Services that appear in Connectors (not cloud storage)
+const CONNECTOR_ONLY_SERVICES = new Set(["slack", "teams", "gmail", "google_calendar", "jira", "github", "notion", "confluence"]);
+
+const CONNECTOR_GROUPS: { label: string; services: string[]; desc: string }[] = [
+  { label: "Communication", services: ["slack", "teams", "gmail"], desc: "" },
+  { label: "Knowledge", services: ["notion", "confluence"], desc: "" },
+  { label: "Dev & Code", services: ["github"], desc: "" },
+  { label: "Productivity", services: ["jira", "google_calendar"], desc: "" },
+];
+
+const CONNECTOR_META: Record<string, { name: string; desc: string; implemented: boolean }> = {
+  slack: { name: "Slack", desc: "Index channel messages, threads and files", implemented: true },
+  teams: { name: "Microsoft Teams", desc: "Index Teams messages and channels", implemented: false },
+  gmail: { name: "Gmail", desc: "Index email threads and attachments", implemented: false },
+  google_calendar: { name: "Google Calendar", desc: "Access calendar events in chat context", implemented: false },
+  jira: { name: "Jira (Atlassian)", desc: "Index issues, epics, sprints and comments", implemented: false },
+  github: { name: "GitHub", desc: "Index issues, PRs, discussions and code", implemented: false },
+  notion: { name: "Notion", desc: "Index pages, databases and wikis", implemented: false },
+  confluence: { name: "Confluence (Atlassian)", desc: "Index spaces, pages and comments", implemented: false },
 };
 
 function ConnectorsPanel() {
@@ -1269,8 +1329,8 @@ function ConnectorsPanel() {
     queryFn: () => listConnectors({ data: undefined as never }),
   });
 
-  const connected = data?.connected ?? [];
-  const available = data?.available ?? [];
+  const allConnected = data?.connected ?? [];
+  const connected = allConnected.filter((c) => CONNECTOR_ONLY_SERVICES.has(c.service));
 
   const connectMut = useMutation({
     mutationFn: (service: string) =>
@@ -1302,49 +1362,36 @@ function ConnectorsPanel() {
     onError: () => toast.error("Couldn't disconnect."),
   });
 
+  const connectedServices = new Set(connected.map((c) => c.service));
+
   return (
     <ScrollArea className="h-full">
-      <div className="space-y-4 px-4 py-3">
+      <div className="space-y-5 px-4 py-3">
         {isLoading && <p className="py-4 text-center text-xs text-muted-foreground">Loading…</p>}
 
         {connected.length > 0 && (
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Connected
-            </p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Connected</p>
             <div className="space-y-2">
               {connected.map((c) => {
+                const meta = CONNECTOR_META[c.service];
                 const style = CONNECTOR_STATUS_STYLES[c.status] ?? CONNECTOR_STATUS_STYLES.connected;
                 const isPaused = c.status === "paused";
                 return (
                   <div key={c.id} className="rounded-lg border border-border bg-background p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-medium">
-                        {CONNECTOR_DISPLAY_NAMES[c.service] ?? c.service}
-                      </p>
-                      <span
-                        className={cn(
-                          "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
-                          style.badge,
-                        )}
-                      >
+                      <p className="truncate text-sm font-medium">{meta?.name ?? c.service}</p>
+                      <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium", style.badge)}>
                         {c.status === "syncing" ? (
-                          <span className="flex items-center gap-1">
-                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                            Syncing
-                          </span>
-                        ) : (
-                          style.label
-                        )}
+                          <span className="flex items-center gap-1"><Loader2 className="h-2.5 w-2.5 animate-spin" />Syncing</span>
+                        ) : style.label}
                       </span>
                     </div>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       {c.items_indexed != null ? `${c.items_indexed} items indexed` : ""}
                       {c.last_synced_at ? ` · synced ${relativeTime(c.last_synced_at)}` : ""}
                     </p>
-                    {c.error_message && (
-                      <p className="mt-1 text-[11px] text-red-500">{c.error_message}</p>
-                    )}
+                    {c.error_message && <p className="mt-1 text-[11px] text-red-500">{c.error_message}</p>}
                     <div className="mt-2 flex gap-1.5">
                       <button
                         onClick={() => pauseMut.mutate({ id: c.id, paused: !isPaused })}
@@ -1369,47 +1416,52 @@ function ConnectorsPanel() {
           </div>
         )}
 
-        {available.length > 0 && (
-          <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {connected.length > 0 ? "Add more" : "Available"}
-            </p>
-            <div className="space-y-1.5">
-              {available.map((a) => (
-                <div
-                  key={a.service}
-                  className={cn(
-                    "flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5",
-                    !a.implemented && "opacity-55",
-                  )}
-                >
-                  <p className="text-sm">{a.displayName}</p>
-                  {a.implemented ? (
-                    <button
-                      onClick={() => connectMut.mutate(a.service)}
-                      disabled={connectMut.isPending}
-                      className="flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    >
-                      {connectMut.isPending ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <ExternalLink className="h-3 w-3" />
+        {CONNECTOR_GROUPS.map((group) => {
+          const ungrouped = group.services.filter((s) => !connectedServices.has(s));
+          if (ungrouped.length === 0) return null;
+          return (
+            <div key={group.label}>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{group.label}</p>
+              <div className="space-y-1.5">
+                {ungrouped.map((service) => {
+                  const meta = CONNECTOR_META[service];
+                  if (!meta) return null;
+                  return (
+                    <div
+                      key={service}
+                      className={cn(
+                        "rounded-lg border border-border bg-background p-3",
+                        !meta.implemented && "opacity-60",
                       )}
-                      Connect
-                    </button>
-                  ) : (
-                    <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                      Soon
-                    </span>
-                  )}
-                </div>
-              ))}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{meta.name}</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">{meta.desc}</p>
+                        </div>
+                        {meta.implemented ? (
+                          <button
+                            onClick={() => connectMut.mutate(service)}
+                            disabled={connectMut.isPending}
+                            className="flex shrink-0 items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                          >
+                            {connectMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+                            Connect
+                          </button>
+                        ) : (
+                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Soon</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })}
 
-        {!isLoading && connected.length === 0 && available.length === 0 && (
-          <p className="py-6 text-center text-xs text-muted-foreground">No connectors available.</p>
+        {!isLoading && connected.length === 0 && (
+          <p className="py-2 text-center text-xs text-muted-foreground">Connect services to bring their data into your chats.</p>
         )}
       </div>
     </ScrollArea>
