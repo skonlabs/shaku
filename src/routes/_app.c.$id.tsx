@@ -33,6 +33,7 @@ function ChatPage() {
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [rateLimitedUntil, setRateLimitedUntil] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const sendInFlightRef = useRef(false);
 
   const serverMessages: DisplayMessage[] = (data?.messages ?? []).map((m) => ({
     id: m.id,
@@ -44,6 +45,8 @@ function ChatPage() {
   const messages = [...serverMessages, ...streamingMessages];
 
   const send = async (text: string, attachments: Attachment[] = []) => {
+    if (sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
     const tempUserId = `temp-user-${Date.now()}`;
     const tempAsstId = `temp-asst-${Date.now()}`;
     setStreamingMessages([
@@ -73,6 +76,7 @@ function ChatPage() {
           );
         },
         onDone: ({ assistantMessageId }) => {
+          sendInFlightRef.current = false;
           setStreamingId(null);
           if (assistantMessageId) {
             setStreamingMessages([]);
@@ -85,12 +89,14 @@ function ChatPage() {
           qc.invalidateQueries({ queryKey: ["conversations"] });
         },
         onInterrupted: () => {
+          sendInFlightRef.current = false;
           setStreamingId(null);
           setStreamingMessages((cur) =>
             cur.map((m) => (m.id === tempAsstId ? { ...m, pending: false } : m)),
           );
         },
         onError: (msg) => {
+          sendInFlightRef.current = false;
           setStreamingId(null);
           toast.error(msg);
           setStreamingMessages((cur) =>
@@ -124,6 +130,7 @@ function ChatPage() {
           );
         },
         onDone: ({ assistantMessageId }) => {
+          sendInFlightRef.current = false;
           setStreamingId(null);
           if (assistantMessageId) {
             setStreamingMessages([]);
@@ -135,12 +142,14 @@ function ChatPage() {
           qc.invalidateQueries({ queryKey: ["conversation", id] });
         },
         onInterrupted: () => {
+          sendInFlightRef.current = false;
           setStreamingId(null);
           setStreamingMessages((cur) =>
             cur.map((m) => (m.id === tempAsstId ? { ...m, pending: false } : m)),
           );
         },
         onError: (msg) => {
+          sendInFlightRef.current = false;
           setStreamingId(null);
           toast.error(msg);
           setStreamingMessages([]);
@@ -227,6 +236,7 @@ function ChatPage() {
         onStop={() => {
           // Preserve partial assistant text in the UI; just stop the network/stream.
           abortRef.current?.abort();
+          sendInFlightRef.current = false;
           setStreamingId(null);
           setStreamingMessages((cur) =>
             cur.map((m) => (m.pending ? { ...m, pending: false } : m)),
