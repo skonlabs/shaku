@@ -81,12 +81,12 @@ function NewChatPage() {
 
   const startMut = useMutation({
     mutationFn: async ({ text, attachments }: { text: string; attachments: Attachment[] }) => {
-      let id = draftConvoId;
+      let id: string | null = draftConvoId;
       if (!id) {
         const { conversation } = await createConversation({ data: {} });
         id = conversation.id;
       }
-      return { conversationId: id, text, attachments };
+      return { conversationId: id as string, text, attachments };
     },
     onSuccess: ({ conversationId, text, attachments }) => {
       qc.invalidateQueries({ queryKey: ["conversations"] });

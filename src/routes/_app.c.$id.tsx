@@ -157,12 +157,15 @@ function ChatPage() {
   };
 
   // Pending first-message handoff from "/" — accepts JSON {text, attachments} or legacy plain string.
+  const pendingHandledRef = useRef<string | null>(null);
   useEffect(() => {
     if (isLoading) return;
+    if (pendingHandledRef.current === id) return;
     try {
       const pending = sessionStorage.getItem(`cortex.pending.${id}`);
       if (pending) {
         sessionStorage.removeItem(`cortex.pending.${id}`);
+        pendingHandledRef.current = id;
         let text = pending;
         let attachments: Attachment[] = [];
         try {
