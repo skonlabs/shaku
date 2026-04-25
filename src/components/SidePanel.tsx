@@ -62,7 +62,7 @@ import {
 } from "@/lib/memory.functions";
 import { listProjects, createProject, deleteProject, listProjectConversations } from "@/lib/projects.functions";
 import { listFiles, createDatasourceFile, deleteDatasourceFile } from "@/lib/datasources.functions";
-import { listConnectors, initiateConnectorAuth, pauseConnector, disconnectConnector } from "@/lib/connectors.functions";
+import { listConnectors, initiateConnectorAuth, pauseConnector, disconnectConnector, getConnectorAvailability } from "@/lib/connectors.functions";
 import { supabase } from "@/integrations/supabase/client";
 import type { UserKnowledgeModel } from "@/lib/knowledge/ukm";
 import { MessageContent } from "@/components/MessageContent";
@@ -1017,6 +1017,14 @@ function DatasourcesPanel() {
     queryFn: () => listConnectors({ data: undefined as never }),
   });
 
+  const { data: availData } = useQuery({
+    queryKey: ["connector-availability"],
+    queryFn: () => getConnectorAvailability({ data: undefined as never }),
+    staleTime: 60_000,
+  });
+
+  const availability = availData ?? {} as Record<string, boolean>;
+
   const files = data?.files ?? [];
 
   const deleteMut = useMutation({
@@ -1254,34 +1262,40 @@ function DatasourcesPanel() {
                 {connectedStorage.length > 0 ? "Add more" : "Connect a cloud source"}
               </p>
               <div className="space-y-2">
-                {CLOUD_STORAGE_SERVICES.filter((s) => !connectedStorage.some((c) => c.service === s.service)).map((s) => (
-                  <div
-                    key={s.service}
-                    className={cn(
-                      "rounded-lg border border-border bg-background p-3",
-                      !s.implemented && "opacity-60",
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium">{s.name}</p>
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">{s.desc}</p>
-                      </div>
-                      {s.implemented ? (
-                        <button
-                          onClick={() => connectMut.mutate(s.service)}
-                          disabled={connectMut.isPending}
-                          className="flex shrink-0 items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                        >
-                          {connectMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
-                          Connect
-                        </button>
-                      ) : (
-                        <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Soon</span>
+                {CLOUD_STORAGE_SERVICES.filter((s) => !connectedStorage.some((c) => c.service === s.service)).map((s) => {
+                  const isConfigured = availability[s.service] ?? false;
+                  const canConnect = s.implemented && isConfigured;
+                  return (
+                    <div
+                      key={s.service}
+                      className={cn(
+                        "rounded-lg border border-border bg-background p-3",
+                        !canConnect && "opacity-60",
                       )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{s.name}</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">{s.desc}</p>
+                        </div>
+                        {canConnect ? (
+                          <button
+                            onClick={() => connectMut.mutate(s.service)}
+                            disabled={connectMut.isPending}
+                            className="flex shrink-0 items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                          >
+                            {connectMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+                            Connect
+                          </button>
+                        ) : s.implemented && !isConfigured ? (
+                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Not configured</span>
+                        ) : (
+                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Soon</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1328,6 +1342,14 @@ function ConnectorsPanel() {
     queryKey: ["connectors"],
     queryFn: () => listConnectors({ data: undefined as never }),
   });
+
+  const { data: availData } = useQuery({
+    queryKey: ["connector-availability"],
+    queryFn: () => getConnectorAvailability({ data: undefined as never }),
+    staleTime: 60_000,
+  });
+
+  const availability = availData ?? {} as Record<string, boolean>;
 
   const allConnected = data?.connected ?? [];
   const connected = allConnected.filter((c) => CONNECTOR_ONLY_SERVICES.has(c.service));
@@ -1426,12 +1448,14 @@ function ConnectorsPanel() {
                 {ungrouped.map((service) => {
                   const meta = CONNECTOR_META[service];
                   if (!meta) return null;
+                  const isConfigured = availability[service] ?? false;
+                  const canConnect = meta.implemented && isConfigured;
                   return (
                     <div
                       key={service}
                       className={cn(
                         "rounded-lg border border-border bg-background p-3",
-                        !meta.implemented && "opacity-60",
+                        !canConnect && "opacity-60",
                       )}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1439,7 +1463,7 @@ function ConnectorsPanel() {
                           <p className="text-sm font-medium">{meta.name}</p>
                           <p className="mt-0.5 text-[11px] text-muted-foreground">{meta.desc}</p>
                         </div>
-                        {meta.implemented ? (
+                        {canConnect ? (
                           <button
                             onClick={() => connectMut.mutate(service)}
                             disabled={connectMut.isPending}
@@ -1448,6 +1472,8 @@ function ConnectorsPanel() {
                             {connectMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
                             Connect
                           </button>
+                        ) : meta.implemented && !isConfigured ? (
+                          <span className="shrink-0 rounded border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">Config needed</span>
                         ) : (
                           <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Soon</span>
                         )}
@@ -1822,9 +1848,17 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
 
   const hasIdentity = ukm && Object.values(ukm.identity).some(Boolean);
   const hasStyle = ukm && Object.values(ukm.communicationStyle).some(Boolean);
+  const hasRelationships = (ukm?.relationships.length ?? 0) > 0;
+  const hasPreferences = ukm && (
+    ukm.preferences.responseFormat ||
+    (ukm.preferences.avoidTopics?.length ?? 0) > 0 ||
+    (ukm.preferences.preferredSources?.length ?? 0) > 0
+  );
   const hasContent =
     hasIdentity ||
     hasStyle ||
+    hasRelationships ||
+    hasPreferences ||
     (ukm?.expertise.length ?? 0) > 0 ||
     (ukm?.activeProjects.length ?? 0) > 0 ||
     (ukm?.antiPreferences.length ?? 0) > 0 ||
@@ -1845,9 +1879,16 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
 
   return (
     <div className="space-y-5 px-4 py-3">
-      <p className="text-[11px] text-muted-foreground">
-        Built from your conversations — used to personalize every response.
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] text-muted-foreground">
+          Built from your conversations — used to personalize every response.
+        </p>
+        {(ukm?.correctionCount ?? 0) > 0 && (
+          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+            {ukm!.correctionCount} corrections
+          </span>
+        )}
+      </div>
 
       {hasIdentity && (
         <PersonaSection title="Identity">
@@ -1872,6 +1913,34 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
         </PersonaSection>
       )}
 
+      {hasPreferences && (
+        <PersonaSection title="Preferences">
+          {ukm!.preferences.responseFormat && (
+            <PersonaRow label="Response format" value={ukm!.preferences.responseFormat} />
+          )}
+          {(ukm!.preferences.avoidTopics?.length ?? 0) > 0 && (
+            <div className="mt-1">
+              <p className="mb-1 text-[10px] text-muted-foreground">Avoid topics</p>
+              <div className="flex flex-wrap gap-1">
+                {ukm!.preferences.avoidTopics!.map((t, i) => (
+                  <span key={i} className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive/80">{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {(ukm!.preferences.preferredSources?.length ?? 0) > 0 && (
+            <div className="mt-1">
+              <p className="mb-1 text-[10px] text-muted-foreground">Preferred sources</p>
+              <div className="flex flex-wrap gap-1">
+                {ukm!.preferences.preferredSources!.map((s, i) => (
+                  <span key={i} className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{s}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </PersonaSection>
+      )}
+
       {(ukm?.expertise.length ?? 0) > 0 && (
         <PersonaSection title="Expertise">
           <div className="flex flex-wrap gap-1.5">
@@ -1891,11 +1960,22 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
         <PersonaSection title="Active projects">
           <ul className="space-y-0.5">
             {ukm!.activeProjects.map((p, i) => (
-              <li key={i} className="text-xs">
-                · {p}
-              </li>
+              <li key={i} className="text-xs">· {p}</li>
             ))}
           </ul>
+        </PersonaSection>
+      )}
+
+      {hasRelationships && (
+        <PersonaSection title="People">
+          <div className="space-y-1">
+            {ukm!.relationships.map((r, i) => (
+              <div key={i} className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium">{r.name}</span>
+                <span className="text-[11px] text-muted-foreground">{r.role}</span>
+              </div>
+            ))}
+          </div>
         </PersonaSection>
       )}
 
@@ -1903,9 +1983,7 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
         <PersonaSection title="Things to avoid">
           <ul className="space-y-0.5">
             {ukm!.antiPreferences.map((a, i) => (
-              <li key={i} className="text-xs text-destructive/80">
-                · {a}
-              </li>
+              <li key={i} className="text-xs text-destructive/80">· {a}</li>
             ))}
           </ul>
         </PersonaSection>
@@ -1915,9 +1993,7 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
         <PersonaSection title="Response style dislikes">
           <ul className="space-y-0.5">
             {ukm!.responseStyleDislikes.map((r, i) => (
-              <li key={i} className="text-xs text-muted-foreground">
-                · {r}
-              </li>
+              <li key={i} className="text-xs text-muted-foreground">· {r}</li>
             ))}
           </ul>
         </PersonaSection>
@@ -1927,9 +2003,7 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
         <PersonaSection title="Things I've corrected">
           <ul className="space-y-0.5">
             {ukm!.corrections.map((c, i) => (
-              <li key={i} className="text-xs">
-                · {c}
-              </li>
+              <li key={i} className="text-xs">· {c}</li>
             ))}
           </ul>
         </PersonaSection>

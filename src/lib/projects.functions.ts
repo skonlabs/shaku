@@ -72,7 +72,7 @@ export const deleteProject = createServerFn({ method: "POST" })
       .update({ status: "archived" })
       .eq("id", data.id)
       .eq("user_id", userId);
-    if (error) throw new Error("Couldn't delete project.");
+    if (error) throw new Error(error.message || "Couldn't archive project.");
     return { success: true };
   });
 

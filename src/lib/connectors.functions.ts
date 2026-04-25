@@ -161,3 +161,23 @@ export const completeConnectorAuth = createServerFn({ method: "POST" })
 
     return { success: true, connector_id: connector.id };
   });
+
+// Returns which services have OAuth credentials configured server-side.
+// Used by the UI to show "Connect" vs "Not configured" without leaking secrets.
+export const getConnectorAvailability = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    return {
+      google_drive: !!(process.env.GOOGLE_DRIVE_CLIENT_ID && process.env.GOOGLE_DRIVE_CLIENT_SECRET),
+      slack: !!(process.env.SLACK_CLIENT_ID && process.env.SLACK_CLIENT_SECRET),
+      onedrive: false,
+      dropbox: false,
+      teams: false,
+      gmail: false,
+      google_calendar: false,
+      jira: false,
+      github: false,
+      notion: false,
+      confluence: false,
+    } as Record<string, boolean>;
+  });

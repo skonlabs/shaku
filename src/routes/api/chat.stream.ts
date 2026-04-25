@@ -414,7 +414,9 @@ export const Route = createFileRoute("/api/chat/stream")({
           let assistantText = "";
           let streamError: unknown = null;
           let usedStaticFallback = false;
-          const startedAt = Date.now();
+          let totalInputTokens = 0;
+          let totalOutputTokens = 0;
+          const startTimeMs = Date.now();
           const OVERLAP_CHARS = 240;
           let hitFinalCap = false;
           const runnableModels = uniqueModels([selectedModel, ...routingDecision.fallback]).filter(
@@ -486,8 +488,11 @@ export const Route = createFileRoute("/api/chat/stream")({
                         assistantText += safeChunk;
                         const visible = stripFollowupsTagPartial(safeChunk, assistantText);
                         if (visible) send("delta", { text: visible });
+                      } else if (event.type === "message_start") {
+                        totalInputTokens += event.message.usage?.input_tokens ?? 0;
                       } else if (event.type === "message_delta") {
                         stopReason = event.delta.stop_reason ?? stopReason;
+                        totalOutputTokens += event.usage?.output_tokens ?? 0;
                       }
                     }
 
@@ -533,6 +538,8 @@ Do not add any preface, apology, or commentary.`,
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     messages: oaiMessages as any,
                     stream: true,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    stream_options: { include_usage: true } as any,
                     max_tokens: PER_TURN_MAX_TOKENS,
                   });
 
@@ -543,6 +550,10 @@ Do not add any preface, apology, or commentary.`,
                       assistantText += safeChunk;
                       const visible = stripFollowupsTagPartial(safeChunk, assistantText);
                       if (visible) send("delta", { text: visible });
+                    }
+                    if (chunk.usage) {
+                      totalInputTokens = chunk.usage.prompt_tokens ?? 0;
+                      totalOutputTokens = chunk.usage.completion_tokens ?? 0;
                     }
                   }
                 }
@@ -599,6 +610,8 @@ Do not add any preface, apology, or commentary.`,
               model: activeModel.id,
               confidence,
               citation_ratio: citationRatio,
+              tokens_in: totalInputTokens,
+              tokens_out: totalOutputTokens,
             };
             if (assembled.memoriesUsed.length > 0) {
               metadata.memories_used = assembled.memoriesUsed.map((m) => ({
@@ -627,6 +640,21 @@ Do not add any preface, apology, or commentary.`,
               assistantId = asst.data?.id ?? null;
               assistantCreatedAt = asst.data?.created_at ?? null;
             }
+
+            // Record usage event (fire-and-forget; non-blocking)
+            if (totalInputTokens > 0 || totalOutputTokens > 0) {
+              const costUsd =
+                (totalInputTokens / 1_000_000) * selectedModel.costPerMTokInput +
+                (totalOutputTokens / 1_000_000) * selectedModel.costPerMTokOutput;
+              void supabase.from("usage_events").insert({
+                user_id: userId,
+                model_used: selectedModel.id,
+                tokens_in: totalInputTokens,
+                tokens_out: totalOutputTokens,
+                cost_usd: costUsd,
+                latency_ms: Date.now() - startTimeMs,
+              });
+            }
           }
 
           await supabase
@@ -642,6 +670,8 @@ Do not add any preface, apology, or commentary.`,
               created_at: assistantCreatedAt,
               followups,
               memories_used: assembled.memoriesUsed.length,
+              tokens_in: totalInputTokens,
+              tokens_out: totalOutputTokens,
             });
           }
 
@@ -669,7 +699,9 @@ Do not add any preface, apology, or commentary.`,
                   .update({ conversation_tone: newTone, updated_at: new Date().toISOString() })
                   .eq("conversation_id", convo.id);
 
-                await updateUkmFromMemory(userId, visible.slice(0, 2000), "episodic", supabase);
+                // Include user message context so UKM can extract identity/style signals
+                const ukmContext = `User: ${currentUserMessage.slice(0, 500)}\nAssistant: ${visible.slice(0, 1500)}`;
+                await updateUkmFromMemory(userId, ukmContext, "episodic", supabase);
               } catch (e) {
                 console.error("[chat.stream] post-processing error", e);
               }

@@ -65,38 +65,71 @@ async function inferUkmDiff(
   memoryType: string,
   currentUkm: UserKnowledgeModel,
 ): Promise<Partial<UserKnowledgeModel> | null> {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return null;
+  const prompt = `New observation (type: ${memoryType}):
+"${memoryContent.slice(0, 800)}"
 
+Current user profile:
+${JSON.stringify({
+  identity: currentUkm.identity,
+  expertise: currentUkm.expertise.slice(0, 5),
+  preferences: currentUkm.preferences,
+  communicationStyle: currentUkm.communicationStyle,
+  activeProjects: currentUkm.activeProjects.slice(0, 3),
+})}
+
+Extract any updates to the user profile from the observation above.
+Return a JSON object with ONLY the fields that should be updated. Use empty {} if nothing changes.
+Allowed fields: identity (name/role/company/team), expertise (array), activeProjects (array), communicationStyle (verbosity/format/tone), preferences (responseFormat/avoidTopics/preferredSources), antiPreferences (array), corrections (array), responseStyleDislikes (array).`;
+
+  // Try Anthropic first (always available when this function runs in chat pipeline)
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey) {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 300,
+          messages: [{ role: "user", content: prompt }],
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { content: { type: string; text: string }[] };
+        const text = json.content.find((b) => b.type === "text")?.text?.trim() ?? "{}";
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+      }
+    } catch {
+      // fall through to OpenAI
+    }
+  }
+
+  // Fallback: OpenAI
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) return null;
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        max_tokens: 256,
+        max_tokens: 300,
         temperature: 0,
-        messages: [
-          {
-            role: "user",
-            content: `New memory (type: ${memoryType}): "${memoryContent}"
-
-Current profile: ${JSON.stringify({
-  identity: currentUkm.identity,
-  expertise: currentUkm.expertise.slice(0, 3),
-  preferences: currentUkm.preferences,
-})}
-
-If this memory should update any profile fields, return a JSON diff object. Return {} if no changes needed.`,
-          },
-        ],
+        messages: [{ role: "user", content: prompt }],
       }),
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(5000),
     });
-
     if (!res.ok) return null;
     const json = (await res.json()) as { choices: { message: { content: string } }[] };
-    return JSON.parse(json.choices[0]?.message?.content?.trim() ?? "{}");
+    const text = json.choices[0]?.message?.content?.trim() ?? "{}";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
   } catch {
     return null;
   }
@@ -112,15 +145,24 @@ function applyDiff(
     communicationStyle: { ...ukm.communicationStyle, ...(diff.communicationStyle ?? {}) },
     preferences: { ...ukm.preferences, ...(diff.preferences ?? {}) },
     activeProjects: diff.activeProjects?.length ? diff.activeProjects : ukm.activeProjects,
+    relationships: diff.relationships?.length
+      ? [...ukm.relationships, ...diff.relationships.filter(
+          (r) => !ukm.relationships.some((e) => e.name === r.name),
+        )]
+      : ukm.relationships,
     expertise: diff.expertise?.length
-      ? [...new Set([...ukm.expertise, ...diff.expertise])]
+      ? [...new Set([...ukm.expertise, ...diff.expertise])].slice(0, 20)
       : ukm.expertise,
     antiPreferences: diff.antiPreferences?.length
-      ? [...new Set([...ukm.antiPreferences, ...diff.antiPreferences])]
+      ? [...new Set([...ukm.antiPreferences, ...diff.antiPreferences])].slice(0, 20)
       : ukm.antiPreferences,
     corrections: diff.corrections?.length
-      ? [...new Set([...ukm.corrections, ...diff.corrections])]
+      ? [...new Set([...ukm.corrections, ...diff.corrections])].slice(0, 20)
       : ukm.corrections,
+    responseStyleDislikes: diff.responseStyleDislikes?.length
+      ? [...new Set([...ukm.responseStyleDislikes, ...diff.responseStyleDislikes])].slice(0, 20)
+      : ukm.responseStyleDislikes,
+    correctionCount: ukm.correctionCount + (diff.corrections?.length ?? 0),
   };
 }
 
