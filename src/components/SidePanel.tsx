@@ -46,6 +46,7 @@ import {
   deleteMemory,
   toggleMemory,
   getUkm,
+  getMemoryStats,
 } from "@/lib/memory.functions";
 import type { UserKnowledgeModel } from "@/lib/knowledge/ukm";
 import { MessageContent } from "@/components/MessageContent";
@@ -639,7 +640,7 @@ function relativeTime(iso: string | null): string {
 }
 
 function MemoryPanel() {
-  const [tab, setTab] = useState<"memories" | "persona">("memories");
+  const [tab, setTab] = useState<"memories" | "persona" | "insights">("memories");
   const qc = useQueryClient();
 
   const { data: memoriesData, isLoading: memoriesLoading } = useQuery({
@@ -652,6 +653,11 @@ function MemoryPanel() {
     queryFn: () => getUkm({ data: {} }),
   });
 
+  const { data: statsData, isLoading: statsLoading } = useQuery({
+    queryKey: ["memory-stats"],
+    queryFn: () => getMemoryStats({ data: {} }),
+  });
+
   const toggleMut = useMutation({
     mutationFn: (enabled: boolean) => toggleMemory({ data: { enabled } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ukm"] }),
@@ -662,6 +668,7 @@ function MemoryPanel() {
     mutationFn: (id: string) => deleteMemory({ data: { id } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["memories"] });
+      qc.invalidateQueries({ queryKey: ["memory-stats"] });
       toast.success("Memory deleted.");
     },
     onError: () => toast.error("Couldn't delete memory."),
@@ -671,28 +678,34 @@ function MemoryPanel() {
   const memories = (memoriesData?.memories ?? []) as MemoryEntry[];
   const grouped = groupByType(memories);
 
+  const TABS = [
+    { id: "memories" as const, label: "Memories" },
+    { id: "persona" as const, label: "Persona" },
+    { id: "insights" as const, label: "Insights" },
+  ];
+
   return (
     <div className="flex h-full flex-col">
       {/* Tab switcher */}
       <div className="flex shrink-0 border-b border-border">
-        {(["memories", "persona"] as const).map((t) => (
+        {TABS.map((t) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={t.id}
+            onClick={() => setTab(t.id)}
             className={cn(
               "flex-1 py-2 text-xs font-medium transition",
-              tab === t
+              tab === t.id
                 ? "border-b-2 border-primary text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {t === "memories" ? "Memories" : "My Persona"}
+            {t.label}
           </button>
         ))}
       </div>
 
       <ScrollArea className="flex-1">
-        {tab === "memories" ? (
+        {tab === "memories" && (
           <MemoriesTab
             memories={memories}
             grouped={grouped}
@@ -700,10 +713,22 @@ function MemoryPanel() {
             isLoading={memoriesLoading}
             onToggle={(v) => toggleMut.mutate(v)}
             onDelete={(id) => deleteMut.mutate(id)}
-            onRefresh={() => qc.invalidateQueries({ queryKey: ["memories"] })}
+            onRefresh={() => {
+              qc.invalidateQueries({ queryKey: ["memories"] });
+              qc.invalidateQueries({ queryKey: ["memory-stats"] });
+            }}
           />
-        ) : (
+        )}
+        {tab === "persona" && (
           <PersonaTab ukm={ukmData?.ukm ?? null} isLoading={ukmLoading} />
+        )}
+        {tab === "insights" && (
+          <InsightsTab
+            memories={memories}
+            ukm={ukmData?.ukm ?? null}
+            stats={statsData ?? null}
+            statsLoading={statsLoading}
+          />
         )}
       </ScrollArea>
     </div>
@@ -1086,6 +1111,292 @@ function PersonaRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center gap-3 py-0.5 text-xs">
       <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
       <span className="capitalize">{value}</span>
+    </div>
+  );
+}
+
+// ---------- Insights Tab ----------
+
+interface MemoryStatsResult {
+  totalResponses: number;
+  responsesWithMemory: number;
+  totalMemoriesInjected: number;
+  avgMemoriesPerResponse: number;
+}
+
+function InsightsTab({
+  memories,
+  ukm,
+  stats,
+  statsLoading,
+}: {
+  memories: MemoryEntry[];
+  ukm: UserKnowledgeModel | null;
+  stats: MemoryStatsResult | null;
+  statsLoading: boolean;
+}) {
+  const grouped = groupByType(memories);
+
+  const high = memories.filter((m) => m.confidence >= 0.8).length;
+  const med = memories.filter((m) => m.confidence >= 0.6 && m.confidence < 0.8).length;
+  const low = memories.filter((m) => m.confidence < 0.6).length;
+  const unused = memories.filter((m) => m.accessCount === 0).length;
+
+  const identityFilled = Object.values(ukm?.identity ?? {}).filter(Boolean).length;
+  const styleFilled = Object.values(ukm?.communicationStyle ?? {}).filter(Boolean).length;
+  const expertiseCount = ukm?.expertise?.length ?? 0;
+  const projectsCount = ukm?.activeProjects?.length ?? 0;
+  const avoidCount = ukm?.antiPreferences?.length ?? 0;
+  const correctionsCount = ukm?.corrections?.length ?? 0;
+  const totalFilled =
+    identityFilled +
+    styleFilled +
+    (expertiseCount > 0 ? 1 : 0) +
+    (projectsCount > 0 ? 1 : 0) +
+    (avoidCount > 0 ? 1 : 0) +
+    (correctionsCount > 0 ? 1 : 0);
+  const completeness = Math.round((totalFilled / 10) * 100);
+
+  const hitRate =
+    (stats?.totalResponses ?? 0) > 0
+      ? Math.round(((stats!.responsesWithMemory) / stats!.totalResponses) * 100)
+      : 0;
+
+  const topMemories = [...memories]
+    .sort((a, b) => b.accessCount - a.accessCount)
+    .slice(0, 5)
+    .filter((m) => m.accessCount > 0);
+
+  return (
+    <div className="space-y-5 px-3 py-3">
+      {/* Memory Library */}
+      <InsightSection title="Memory Library">
+        <div className="mb-3 flex items-end justify-between">
+          <span className="text-3xl font-bold leading-none">{memories.length}</span>
+          <span className="text-[11px] text-muted-foreground">memories stored</span>
+        </div>
+        {memories.length > 0 && (
+          <div className="space-y-1.5">
+            {MEMORY_TYPE_META.filter((t) => (grouped[t.value]?.length ?? 0) > 0).map((t) => {
+              const count = grouped[t.value]?.length ?? 0;
+              const pct = (count / memories.length) * 100;
+              return (
+                <div key={t.value} className="flex items-center gap-2">
+                  <span className="w-4 text-center text-xs">{t.emoji}</span>
+                  <div className="flex-1 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary/60 transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                  <span className="w-5 text-right text-[11px] tabular-nums text-muted-foreground">
+                    {count}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {unused > 0 && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            {unused} {unused === 1 ? "memory" : "memories"} not yet used in responses
+          </p>
+        )}
+      </InsightSection>
+
+      {/* Confidence quality */}
+      {memories.length > 0 && (
+        <InsightSection title="Extraction Quality">
+          <div className="flex gap-2">
+            <ConfidenceBadge label="High" count={high} variant="high" />
+            <ConfidenceBadge label="Med" count={med} variant="med" />
+            <ConfidenceBadge label="Low" count={low} variant="low" />
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            High confidence → auto-saved · Med → suggested · Low → skipped
+          </p>
+        </InsightSection>
+      )}
+
+      {/* Response impact */}
+      <InsightSection title="Response Impact">
+        {statsLoading ? (
+          <div className="space-y-2">
+            <div className="h-6 animate-pulse rounded bg-muted/60" />
+            <div className="h-14 animate-pulse rounded bg-muted/60" />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Memory hit rate</span>
+                <span className="font-semibold tabular-nums">{hitRate}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${hitRate}%` }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <StatBox label="Responses w/ memory" value={String(stats?.responsesWithMemory ?? 0)} />
+              <StatBox label="Total responses" value={String(stats?.totalResponses ?? 0)} />
+              <StatBox label="Total injections" value={String(stats?.totalMemoriesInjected ?? 0)} />
+              <StatBox label="Avg per response" value={String(stats?.avgMemoriesPerResponse ?? 0)} />
+            </div>
+          </div>
+        )}
+      </InsightSection>
+
+      {/* Persona completeness */}
+      <InsightSection title="Persona Completeness">
+        <div className="mb-2 flex items-end justify-between">
+          <span className="text-3xl font-bold leading-none">{completeness}%</span>
+          <span className="text-[11px] text-muted-foreground">profile built</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn(
+              "h-full rounded-full transition-all",
+              completeness < 30
+                ? "bg-destructive/60"
+                : completeness < 70
+                  ? "bg-yellow-500/70"
+                  : "bg-green-500/70",
+            )}
+            style={{ width: `${completeness}%` }}
+          />
+        </div>
+        <div className="mt-3 space-y-1.5">
+          <CompletenessRow label="Identity" filled={identityFilled} total={4} />
+          <CompletenessRow label="Comm. style" filled={styleFilled} total={3} />
+          <CompletenessRow
+            label="Expertise"
+            filled={Math.min(expertiseCount, 1)}
+            total={1}
+            extra={expertiseCount > 0 ? `${expertiseCount} area${expertiseCount !== 1 ? "s" : ""}` : undefined}
+          />
+          <CompletenessRow
+            label="Projects"
+            filled={Math.min(projectsCount, 1)}
+            total={1}
+            extra={projectsCount > 1 ? `${projectsCount}` : undefined}
+          />
+          <CompletenessRow
+            label="Dislikes"
+            filled={Math.min(avoidCount, 1)}
+            total={1}
+            extra={avoidCount > 1 ? `${avoidCount}` : undefined}
+          />
+          <CompletenessRow
+            label="Corrections"
+            filled={Math.min(correctionsCount, 1)}
+            total={1}
+            extra={correctionsCount > 1 ? `${correctionsCount}` : undefined}
+          />
+        </div>
+        {completeness < 100 && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Keep chatting — the persona fills automatically from conversations.
+          </p>
+        )}
+      </InsightSection>
+
+      {/* Top used memories */}
+      {topMemories.length > 0 && (
+        <InsightSection title="Most Used Memories">
+          <div className="space-y-2">
+            {topMemories.map((m) => (
+              <div key={m.id} className="flex items-start gap-2">
+                <span className="mt-0.5 shrink-0 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                  ×{m.accessCount}
+                </span>
+                <span className="shrink-0">
+                  {MEMORY_TYPE_META.find((t) => t.value === m.type)?.emoji ?? "💡"}
+                </span>
+                <p className="line-clamp-2 text-xs leading-relaxed text-foreground/80">
+                  {m.content}
+                </p>
+              </div>
+            ))}
+          </div>
+        </InsightSection>
+      )}
+    </div>
+  );
+}
+
+function InsightSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function ConfidenceBadge({
+  label,
+  count,
+  variant,
+}: {
+  label: string;
+  count: number;
+  variant: "high" | "med" | "low";
+}) {
+  const colors = {
+    high: "bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-400",
+    med: "bg-yellow-50 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400",
+    low: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400",
+  };
+  return (
+    <div className={cn("flex-1 rounded-md px-2 py-1.5 text-center", colors[variant])}>
+      <div className="text-lg font-bold tabular-nums leading-none">{count}</div>
+      <div className="mt-0.5 text-[10px]">{label}</div>
+    </div>
+  );
+}
+
+function StatBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-background/50 px-2 py-1.5">
+      <div className="text-base font-bold tabular-nums leading-none">{value}</div>
+      <div className="mt-0.5 text-[10px] text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+function CompletenessRow({
+  label,
+  filled,
+  total,
+  extra,
+}: {
+  label: string;
+  filled: number;
+  total: number;
+  extra?: string;
+}) {
+  const pct = total > 0 ? (filled / total) * 100 : 0;
+  return (
+    <div className="flex items-center gap-2 text-[11px]">
+      <span className="w-20 shrink-0 text-muted-foreground">{label}</span>
+      <div className="flex-1 overflow-hidden">
+        <div className="h-1.5 rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary/70 transition-all"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+      <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground">
+        {extra ?? `${filled}/${total}`}
+      </span>
     </div>
   );
 }
