@@ -98,7 +98,7 @@ async function processFileAsync(
   storagePath: string,
   fileType: string,
   fileName: string,
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
 ): Promise<void> {
   try {
     // Download from Supabase Storage
