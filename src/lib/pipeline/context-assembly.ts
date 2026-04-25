@@ -34,16 +34,16 @@ export interface MemoryEntry {
 export interface AssembledContext {
   systemPrompt: string;
   messages: { role: "user" | "assistant"; content: string }[];
-  // metadata for audit / transparency
   memoriesUsed: MemoryEntry[];
   sourcesSearched: { name: string; type: string; itemsSearched: number }[];
+  convState: ConversationState;
 }
 
-const TOKEN_BUDGET_RETRIEVAL = 6_000;
-const TOKEN_BUDGET_MEMORY = 500;
-const TOKEN_BUDGET_HISTORY = 3_000;
-const TOKEN_BUDGET_UKM = 200;
-const TOKEN_BUDGET_FACTS = 100;
+const TOKEN_BUDGET_RETRIEVAL = 10_000;
+const TOKEN_BUDGET_MEMORY = 2_000;
+const TOKEN_BUDGET_HISTORY = 50_000;
+const TOKEN_BUDGET_UKM = 500;
+const TOKEN_BUDGET_FACTS = 300;
 
 export async function assembleContext(opts: {
   userId: string;
@@ -53,6 +53,7 @@ export async function assembleContext(opts: {
   retrievedChunks: RetrievedChunk[];
   supabase: SupabaseClient;
   systemInstructions: string;
+  preloadedHistory?: { role: "user" | "assistant"; content: string; createdAt: string }[];
 }): Promise<AssembledContext> {
   const {
     userId,
@@ -62,12 +63,15 @@ export async function assembleContext(opts: {
     retrievedChunks,
     supabase,
     systemInstructions,
+    preloadedHistory,
   } = opts;
 
-  // Load everything in parallel
+  // Load everything in parallel; skip history DB query if caller preloaded it
   const [convState, convHistory, ukm, memories] = await Promise.all([
     loadConversationState(conversationId, supabase),
-    loadConversationHistory(conversationId, supabase),
+    preloadedHistory
+      ? Promise.resolve(preloadedHistory)
+      : loadConversationHistory(conversationId, supabase),
     loadUkm(userId, supabase),
     retrieveMemories(userId, projectId, currentMessage, supabase),
   ]);
@@ -95,10 +99,11 @@ export async function assembleContext(opts: {
     messages: historyMessages,
     memoriesUsed: memories,
     sourcesSearched: [],
+    convState,
   };
 }
 
-async function loadConversationState(
+export async function loadConversationState(
   conversationId: string,
   supabase: SupabaseClient,
 ): Promise<ConversationState> {

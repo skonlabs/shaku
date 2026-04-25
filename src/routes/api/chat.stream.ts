@@ -1,15 +1,52 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { z } from "zod";
 import { checkRateLimit } from "@/lib/utils/rate-limit";
 import { TokenOptimizationMiddleware } from "@/lib/token-optimization";
-import { retrieve, buildRetrievalContext } from "@/lib/pipeline/retrieval";
+import { retrieve } from "@/lib/pipeline/retrieval";
+import { exhaustiveRetrieve } from "@/lib/pipeline/exhaustive-strategy";
+import { assembleContext, updateConversationState } from "@/lib/pipeline/context-assembly";
+import { processInput } from "@/lib/pipeline/input-processing";
+import {
+  rewriteQuery,
+  buildSystemAdditions,
+  detectFormatHint,
+} from "@/lib/pipeline/prompt-optimization";
+import { redactOutputPii } from "@/lib/pipeline/output-validation";
+import { route, estimatePreRetrievalTokens } from "@/lib/llm/router";
+import { recordModelResult } from "@/lib/llm/registry";
+import { promoteConversationMemories } from "@/lib/memory/promotion";
+import {
+  extractConversationFacts,
+  detectTone,
+  maybeRegenerateSummary,
+} from "@/lib/knowledge/conversation-state";
+import type { ToneState } from "@/lib/knowledge/conversation-state";
+import {
+  loadUkm,
+  buildAntiPreferenceBlock,
+  updateUkmFromMemory,
+} from "@/lib/knowledge/ukm";
+import { redactText } from "@/lib/utils/pii";
+import { countTokens } from "@/lib/tokens";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
 const SUPABASE_PUBLISHABLE_KEY =
   process.env.SUPABASE_PUBLISHABLE_KEY ??
   (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
+
+const SYSTEM_PROMPT = `You are Cortex, a helpful, warm, and precise personal AI assistant.
+
+Style:
+- Conversational and natural. Skip hedging and disclaimers.
+- Use Markdown when it helps (lists, code blocks, tables). Use plain prose for short answers.
+- Be concise; expand when asked.
+- If you're uncertain, say what you'd need to verify, then offer your best informed take. Never refuse with "I don't know."
+- Never reveal which model powers you or expose technical details. You are simply Cortex.`;
+
+const TITLE_PROMPT = `Generate a concise 3-6 word title for this conversation. Return ONLY the title text, no quotes, no punctuation at the end.`;
 
 const ACK_RESPONSES = [
   "You're welcome! Let me know if you need anything else.",
@@ -20,39 +57,10 @@ const ACK_RESPONSES = [
   "Happy to help. Let me know if you'd like to dig deeper.",
 ];
 
-function isAcknowledgment(text: string): boolean {
-  const t = text.trim().toLowerCase().replace(/[!.?,]+$/g, "");
-  if (t.length > 25) return false;
-  const patterns = [
-    "thanks",
-    "thank you",
-    "ty",
-    "thx",
-    "ok",
-    "okay",
-    "got it",
-    "perfect",
-    "great",
-    "cool",
-    "nice",
-    "awesome",
-    "sounds good",
-    "👍",
-    "👌",
-    "ok thanks",
-    "thanks!",
-    "got it thanks",
-    "appreciate it",
-  ];
-  return patterns.some((p) => t === p || t === p + "!" || t === p + ".");
-}
-
 const BodySchema = z.object({
   conversation_id: z.string().uuid(),
   user_message: z.string().min(1).max(50000).optional(),
-  // Regenerate path: re-stream a new assistant reply for the most recent user message
   regenerate: z.boolean().optional(),
-  // Optional attachment metadata to store on the user message
   attachments: z
     .array(
       z.object({
@@ -70,21 +78,6 @@ const BodySchema = z.object({
     .max(10)
     .optional(),
 });
-
-const SYSTEM_PROMPT = `You are Cortex, a helpful, warm, and precise personal AI assistant.
-
-Style:
-- Conversational and natural. Skip hedging and disclaimers.
-- Use Markdown when it helps (lists, code blocks, tables). Use plain prose for short answers.
-- Be concise; expand when asked.
-- If you're uncertain, say what you'd need to verify, then offer your best informed take. Never refuse with "I don't know."
-- Never reveal which model powers you or expose technical details. You are simply Cortex.
-
-After substantive responses (more than ~3 sentences), suggest 2–3 natural follow-up questions the user is likely to want next. Append them at the very end of your reply on its own line, exactly in this format and nowhere else:
-<followups>["question 1", "question 2"]</followups>
-The JSON array must be valid. Omit the tag entirely for short / acknowledging replies.`;
-
-const TITLE_PROMPT = `Generate a concise 3-6 word title for this conversation. Return ONLY the title text, no quotes, no punctuation at the end.`;
 
 export const Route = createFileRoute("/api/chat/stream")({
   server: {
@@ -120,13 +113,16 @@ export const Route = createFileRoute("/api/chat/stream")({
         // ---- Verify conversation ownership ----
         const { data: convo } = await supabase
           .from("conversations")
-          .select("id, title, user_id")
+          .select("id, title, user_id, project_id, model_override")
           .eq("id", body.conversation_id)
           .eq("user_id", userId)
           .maybeSingle();
         if (!convo) return jsonError("Conversation not found", 404);
 
-        // ---- Rate limit (free: 20 msg/hr, pro: 30 msg/min) ----
+        const projectId: string | null = convo.project_id ?? null;
+        const modelOverride: string | null = convo.model_override ?? null;
+
+        // ---- Rate limit ----
         if (!body.regenerate) {
           const { data: userRow } = await supabase
             .from("users")
@@ -149,7 +145,23 @@ export const Route = createFileRoute("/api/chat/stream")({
           }
         }
 
-        // ---- Persist user message OR identify the last user message for regenerate ----
+        // ---- Input processing: PII, intent, adversarial check ----
+        let processedMessage = body.user_message ?? "";
+        let inputResult: Awaited<ReturnType<typeof processInput>> | null = null;
+        if (!body.regenerate && body.user_message) {
+          inputResult = await processInput(body.user_message, {});
+
+          if (inputResult.adversarialScore >= 0.8) {
+            return jsonError("I can't help with that request.", 400);
+          }
+
+          if (inputResult.piiAutoRedact.length > 0) {
+            const { redacted } = redactText(body.user_message, inputResult.piiAutoRedact);
+            processedMessage = redacted;
+          }
+        }
+
+        // ---- Persist user message ----
         let userMsg: { id: string; created_at: string } | null = null;
         if (!body.regenerate) {
           const insert = await supabase
@@ -157,7 +169,7 @@ export const Route = createFileRoute("/api/chat/stream")({
             .insert({
               conversation_id: convo.id,
               role: "user",
-              content: body.user_message!,
+              content: processedMessage,
               metadata: body.attachments?.length ? { attachments: body.attachments } : {},
             })
             .select("id, created_at")
@@ -170,7 +182,7 @@ export const Route = createFileRoute("/api/chat/stream")({
         }
 
         // ---- Acknowledgment fast path ----
-        if (!body.regenerate && body.user_message && isAcknowledgment(body.user_message)) {
+        if (inputResult?.isAcknowledgment) {
           const reply = ACK_RESPONSES[Math.floor(Math.random() * ACK_RESPONSES.length)];
           const asst = await supabase
             .from("messages")
@@ -188,7 +200,6 @@ export const Route = createFileRoute("/api/chat/stream")({
             .eq("id", convo.id);
           return sse(async (send) => {
             send("user_message", userMsg);
-            // Stream the canned reply word-by-word for nice UX
             for (const word of reply.split(" ")) {
               send("delta", { text: word + " " });
               await new Promise((r) => setTimeout(r, 18));
@@ -208,12 +219,11 @@ export const Route = createFileRoute("/api/chat/stream")({
           .eq("conversation_id", convo.id)
           .eq("is_active", true)
           .order("created_at", { ascending: true })
-          .limit(40);
+          .limit(50);
 
         let history = historyAll ?? [];
 
-        // For regenerate: drop trailing assistant messages so we re-prompt from the user turn.
-        // Preserve the prior assistant reply's content as a version on the NEW reply.
+        // Regenerate: drop trailing assistant messages
         let priorVersion: { content: string; created_at: string } | null = null;
         if (body.regenerate) {
           while (history.length > 0 && history[history.length - 1].role === "assistant") {
@@ -227,196 +237,303 @@ export const Route = createFileRoute("/api/chat/stream")({
           }
         }
 
-        const rawHistory = history
+        const preloadedHistory = history
           .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({ role: m.role as "user" | "assistant", content: m.content as unknown as string }));
+          .map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content as string,
+            createdAt: m.created_at,
+          }));
 
-        // ---- RAG: retrieve relevant chunks from user's knowledge base ----
-        const currentUserMessage = body.user_message ?? rawHistory.at(-1)?.content ?? "";
-        let retrievalContext = "";
-        if (currentUserMessage.trim().length > 10) {
-          try {
-            const retrieval = await retrieve(
-              userId,
-              currentUserMessage,
-              "question", // default intent; full pipeline intent classification is future work
-              convo.id,
-              supabase,
-              { topK: 10 },
-            );
-            retrievalContext = buildRetrievalContext(retrieval.chunks);
-          } catch {
-            // Retrieval failure is non-fatal — proceed with history only
+        const currentUserMessage = processedMessage || preloadedHistory.at(-1)?.content || "";
+
+        // ---- Intent (from processInput or regenerate fallback) ----
+        const intentResult = inputResult?.intent ?? {
+          intent: "question" as const,
+          confidence: 0.7,
+          isFollowUp: false,
+          followUpReference: null,
+          complexity: 0.5,
+          domain: "general",
+        };
+        const intent = intentResult.intent;
+
+        // ---- Parallel: retrieval + query rewrite ----
+        const shouldRetrieve = currentUserMessage.trim().length > 10;
+        const [retrievalResult, rewrittenQuery] = await Promise.all([
+          shouldRetrieve
+            ? retrieve(userId, currentUserMessage, intent, convo.id, supabase, { topK: 20 })
+            : Promise.resolve({
+                chunks: [],
+                sourcesSearched: [],
+                qualityScore: 1,
+                webSearchTriggered: false,
+              }),
+          rewriteQuery(currentUserMessage, intentResult),
+        ]);
+
+        // ---- Exhaustive strategy if retrieval quality is low ----
+        let finalChunks = retrievalResult.chunks;
+        if (shouldRetrieve && retrievalResult.qualityScore < 0.4) {
+          const exhaustive = await exhaustiveRetrieve(
+            userId,
+            convo.id,
+            rewrittenQuery || currentUserMessage,
+            intent,
+            supabase,
+          );
+          if (exhaustive.chunks.length > finalChunks.length) {
+            finalChunks = exhaustive.chunks;
           }
         }
 
-        // Run history through token-optimization middleware: clean inputs, compress
-        // old turns into a summary block, enforce the context budget. The system
-        // prompt is passed so the middleware can count it against the budget.
+        // ---- Assemble context (UKM + memories + retrieval + history) ----
+        const assembled = await assembleContext({
+          userId,
+          conversationId: convo.id,
+          projectId,
+          currentMessage: rewrittenQuery || currentUserMessage,
+          retrievedChunks: finalChunks,
+          supabase,
+          systemInstructions: SYSTEM_PROMPT,
+          preloadedHistory,
+        });
+
+        // ---- Anti-preferences + system additions + format hint ----
+        const ukm = await loadUkm(userId, supabase);
+        const antiPrefs = buildAntiPreferenceBlock(ukm);
+        const systemAdditions = buildSystemAdditions(
+          intent,
+          assembled.convState.styleProfile,
+          assembled.convState.conversationTone.current,
+          intentResult.isFollowUp,
+          intentResult.followUpReference ?? undefined,
+        );
+        const formatHint = detectFormatHint(currentUserMessage);
+
+        const finalSystemPrompt = [
+          assembled.systemPrompt,
+          antiPrefs ? `\n## Things to avoid\n${antiPrefs}` : "",
+          systemAdditions ? `\n## Response guidance\n${systemAdditions}` : "",
+          formatHint ? `\n## Format\n${formatHint}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        // ---- Model routing ----
+        const estimatedCtxTokens = estimatePreRetrievalTokens(
+          countTokens(SYSTEM_PROMPT),
+          countTokens(preloadedHistory.map((m) => m.content).join(" ")),
+          countTokens(currentUserMessage),
+        );
+        const routingDecision = route({
+          intent: intentResult,
+          estimatedContextTokens: estimatedCtxTokens,
+          hasImages: (body.attachments ?? []).some(
+            (a) => a.kind === "image" || (a.type ?? "").startsWith("image/"),
+          ),
+          modelOverride,
+          conversationMomentum: 0.5,
+        });
+        const selectedModel = routingDecision.selected;
+
+        // ---- Token optimization middleware ----
         const tokenMw = new TokenOptimizationMiddleware({
-          provider: "anthropic",
+          provider: selectedModel.provider,
           historyKeepTurns: 20,
-          enableContextPruning: false, // RAG handled separately by retrieval pipeline
-          budget: { maxInputTokens: 150_000, maxOutputTokens: 64_000, maxTotalTokens: 214_000 },
+          enableContextPruning: false,
+          budget: {
+            maxInputTokens: Math.floor(selectedModel.contextWindow * 0.85),
+            maxOutputTokens: selectedModel.maxOutputTokens,
+            maxTotalTokens: selectedModel.contextWindow,
+          },
         });
         const mwResult = tokenMw.process([
-          { role: "system", content: SYSTEM_PROMPT },
-          ...rawHistory,
+          { role: "system", content: finalSystemPrompt },
+          ...(assembled.messages as { role: "user" | "assistant"; content: string }[]),
         ]);
-        const claudeMessages = mwResult.messages as { role: "user" | "assistant"; content: string }[];
-        const optimizedSystemPrompt = retrievalContext
-          ? `${mwResult.systemPrompt ?? SYSTEM_PROMPT}\n\n## Sources\n${retrievalContext}`
-          : (mwResult.systemPrompt ?? SYSTEM_PROMPT);
+        const optimizedMessages = mwResult.messages as {
+          role: "user" | "assistant";
+          content: string;
+        }[];
+        const optimizedSystemPrompt = mwResult.systemPrompt ?? finalSystemPrompt;
 
-        // If the latest user turn has attachments, expand it into multimodal content
-        // (image blocks for images, inline text for everything else we extracted).
-        const lastIdx = claudeMessages.length - 1;
-        if (lastIdx >= 0 && claudeMessages[lastIdx].role === "user" && body.attachments?.length) {
+        // ---- Multimodal attachment expansion on last user turn (Anthropic format) ----
+        const lastIdx = optimizedMessages.length - 1;
+        if (lastIdx >= 0 && optimizedMessages[lastIdx].role === "user" && body.attachments?.length) {
           const blocks: Anthropic.MessageParam["content"] = [];
           const textParts: string[] = [];
           const baseText =
-            (typeof claudeMessages[lastIdx].content === "string"
-              ? claudeMessages[lastIdx].content
-              : "") || "";
+            typeof optimizedMessages[lastIdx].content === "string"
+              ? (optimizedMessages[lastIdx].content as string)
+              : "";
           if (baseText.trim()) textParts.push(baseText);
 
           for (const a of body.attachments) {
             if ((a.kind === "image" || (a.type ?? "").startsWith("image/")) && a.url) {
-              blocks.push({
-                type: "image",
-                source: { type: "url", url: a.url },
-              });
-            } else if (a.extracted_text && a.extracted_text.trim()) {
+              blocks.push({ type: "image", source: { type: "url", url: a.url } });
+            } else if (a.extracted_text?.trim()) {
               textParts.push(
-                `\n\n--- Attached file: ${a.name} (${a.type || "unknown"}) ---\n${a.extracted_text}\n--- end of ${a.name} ---`,
+                `\n\n--- Attached: ${a.name} (${a.type || "unknown"}) ---\n${a.extracted_text}\n--- end of ${a.name} ---`,
               );
             } else if (a.extraction_error) {
               textParts.push(
                 `\n\n[Attached "${a.name}" could not be parsed: ${a.extraction_error}]`,
               );
             } else if (a.storage_error) {
-              textParts.push(`\n\n[Attached file: ${a.name} could not be stored: ${a.storage_error}]`);
+              textParts.push(
+                `\n\n[Attached "${a.name}" could not be stored: ${a.storage_error}]`,
+              );
             } else {
-              textParts.push(`\n\n[Attached file: ${a.name} (${a.type || "unknown"})]`);
+              textParts.push(`\n\n[Attached: ${a.name} (${a.type || "unknown"})]`);
             }
           }
           blocks.unshift({ type: "text", text: textParts.join("") || "(see attachments)" });
-          (claudeMessages[lastIdx] as { role: string; content: unknown }).content = blocks;
+          (optimizedMessages[lastIdx] as { role: string; content: unknown }).content = blocks;
         }
 
-        // ---- Stream from Anthropic ----
-        const apiKey = process.env.ANTHROPIC_API_KEY;
-        if (!apiKey) return jsonError("Cortex isn't configured yet.", 500);
-        const anthropic = new Anthropic({ apiKey });
+        // PII values the user explicitly sent — allowed to appear in output
+        const allowedPiiValues = new Set<string>(
+          [...(inputResult?.piiAutoSend ?? []), ...(inputResult?.piiNeedsConfirm ?? [])].map(
+            (t) => t.value,
+          ),
+        );
 
+        // ---- Stream ----
         return sse(async (send) => {
           if (userMsg) send("user_message", userMsg);
 
           let assistantText = "";
           let streamError: unknown = null;
-          let stopReason: string | null = null;
-          // Claude Sonnet 4.6 supports up to 64K output tokens. Use 16K per
-          // turn with auto-continue so long answers are never truncated.
-          const PER_TURN_MAX_TOKENS = 16_000;
-          const MAX_AUTO_CONTINUES = 3;
-          // Overlap window we ask the model to echo so we can detect & strip
-          // accidental repetition at the seam between turns.
+          const PER_TURN_MAX_TOKENS = Math.min(16_000, selectedModel.maxOutputTokens);
+          const MAX_AUTO_CONTINUES = selectedModel.provider === "anthropic" ? 3 : 0;
           const OVERLAP_CHARS = 240;
-          const turnMessages = [...claudeMessages];
           let hitFinalCap = false;
 
           try {
-            for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
-              const claudeStream = anthropic.messages.stream({
-                model: "claude-sonnet-4-6",
+            if (selectedModel.provider === "anthropic") {
+              const apiKey = process.env.ANTHROPIC_API_KEY;
+              if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
+              const anthropic = new Anthropic({ apiKey });
+              const turnMessages = [...optimizedMessages];
+              let stopReason: string | null = null;
+
+              for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
+                const claudeStream = anthropic.messages.stream({
+                  model: selectedModel.id,
+                  max_tokens: PER_TURN_MAX_TOKENS,
+                  system: optimizedSystemPrompt,
+                  messages: turnMessages,
+                });
+
+                let turnText = "";
+                const isContinuation = turn > 0;
+                const priorTail = isContinuation ? assistantText.slice(-OVERLAP_CHARS) : "";
+                let dedupResolved = !isContinuation;
+                let dedupBuffer = "";
+                const DEDUP_SCAN_BUDGET = OVERLAP_CHARS * 3;
+
+                stopReason = null;
+                for await (const event of claudeStream) {
+                  if (
+                    event.type === "content_block_delta" &&
+                    event.delta.type === "text_delta"
+                  ) {
+                    const raw = event.delta.text;
+                    turnText += raw;
+
+                    let emit = raw;
+                    if (!dedupResolved) {
+                      dedupBuffer += raw;
+                      const stripped = stripOverlapPrefix(dedupBuffer, priorTail);
+                      if (stripped !== null) {
+                        emit = stripped;
+                        dedupResolved = true;
+                      } else if (dedupBuffer.length >= DEDUP_SCAN_BUDGET) {
+                        emit = dedupBuffer;
+                        dedupResolved = true;
+                      } else {
+                        continue;
+                      }
+                    }
+
+                    const { text: safeChunk } = redactOutputPii(emit, allowedPiiValues);
+                    assistantText += safeChunk;
+                    const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                    if (visible) send("delta", { text: visible });
+                  } else if (event.type === "message_delta") {
+                    stopReason = event.delta.stop_reason ?? stopReason;
+                  }
+                }
+
+                if (!dedupResolved && dedupBuffer.length > 0) {
+                  const { text: safeChunk } = redactOutputPii(dedupBuffer, allowedPiiValues);
+                  assistantText += safeChunk;
+                  const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                  if (visible) send("delta", { text: visible });
+                }
+
+                recordModelResult(selectedModel.id, false);
+                if (stopReason !== "max_tokens") break;
+                if (turn === MAX_AUTO_CONTINUES) {
+                  hitFinalCap = true;
+                  break;
+                }
+
+                turnMessages.push({ role: "assistant", content: turnText });
+                const tail = assistantText.slice(-OVERLAP_CHARS);
+                turnMessages.push({
+                  role: "user",
+                  content: `Continue exactly from where you stopped. Begin your reply by repeating verbatim these final characters of your previous message, then continue seamlessly:\n\n"""${tail}"""\n\nDo not add any preface, apology, or commentary.`,
+                });
+              }
+            } else {
+              // OpenAI provider
+              const apiKey = process.env.OPENAI_API_KEY;
+              if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
+              const openai = new OpenAI({ apiKey });
+
+              const oaiMessages = [
+                { role: "system" as const, content: optimizedSystemPrompt },
+                ...optimizedMessages.map((m) => ({
+                  role: m.role as "user" | "assistant",
+                  content:
+                    typeof m.content === "string"
+                      ? (m.content as string)
+                      : (m.content as Array<{ type: string; text?: string }>)
+                          .filter((b) => b.type === "text")
+                          .map((b) => b.text ?? "")
+                          .join("\n"),
+                })),
+              ];
+
+              const stream = await openai.chat.completions.create({
+                model: selectedModel.id,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                messages: oaiMessages as any,
+                stream: true,
                 max_tokens: PER_TURN_MAX_TOKENS,
-                system: optimizedSystemPrompt,
-                messages: turnMessages,
               });
 
-              let turnText = "";
-              // For continuation turns, the model may re-emit some of the prior
-              // tail before continuing. Buffer the start of the turn until we
-              // either find the overlap and strip it, or decide there isn't one.
-              const isContinuation = turn > 0;
-              const priorTail = isContinuation
-                ? assistantText.slice(-OVERLAP_CHARS)
-                : "";
-              let dedupResolved = !isContinuation;
-              let dedupBuffer = "";
-              const DEDUP_SCAN_BUDGET = OVERLAP_CHARS * 3;
-
-              stopReason = null;
-              for await (const event of claudeStream) {
-                if (
-                  event.type === "content_block_delta" &&
-                  event.delta.type === "text_delta"
-                ) {
-                  const chunk = event.delta.text;
-                  turnText += chunk;
-
-                  let emit = chunk;
-                  if (!dedupResolved) {
-                    dedupBuffer += chunk;
-                    const stripped = stripOverlapPrefix(dedupBuffer, priorTail);
-                    if (stripped !== null) {
-                      // Found & removed the overlap — flush remainder.
-                      emit = stripped;
-                      dedupResolved = true;
-                    } else if (dedupBuffer.length >= DEDUP_SCAN_BUDGET) {
-                      // No overlap detected within budget — flush as-is.
-                      emit = dedupBuffer;
-                      dedupResolved = true;
-                    } else {
-                      // Keep buffering silently.
-                      continue;
-                    }
-                  }
-
-                  assistantText += emit;
-                  const visible = stripFollowupsTagPartial(emit, assistantText);
+              for await (const chunk of stream) {
+                const text = chunk.choices[0]?.delta?.content ?? "";
+                if (text) {
+                  const { text: safeChunk } = redactOutputPii(text, allowedPiiValues);
+                  assistantText += safeChunk;
+                  const visible = stripFollowupsTagPartial(safeChunk, assistantText);
                   if (visible) send("delta", { text: visible });
-                } else if (event.type === "message_delta") {
-                  stopReason = event.delta.stop_reason ?? stopReason;
                 }
               }
-
-              // Flush any remaining buffered text if the turn ended mid-dedup.
-              if (!dedupResolved && dedupBuffer.length > 0) {
-                assistantText += dedupBuffer;
-                const visible = stripFollowupsTagPartial(dedupBuffer, assistantText);
-                if (visible) send("delta", { text: visible });
-              }
-
-              if (stopReason !== "max_tokens") break;
-              if (turn === MAX_AUTO_CONTINUES) {
-                hitFinalCap = true;
-                break;
-              }
-
-              // Auto-continue: feed the partial assistant turn back and ask it
-              // to keep going from exactly where it stopped, echoing a short
-              // overlap so we can dedupe deterministically.
-              turnMessages.push({ role: "assistant", content: turnText });
-              const tail = assistantText.slice(-OVERLAP_CHARS);
-              turnMessages.push({
-                role: "user",
-                content:
-                  `Continue exactly from where you stopped. Begin your reply by repeating verbatim these final characters of your previous message, then continue seamlessly:\n\n"""${tail}"""\n\nDo not add any preface, apology, or commentary.`,
-              });
+              recordModelResult(selectedModel.id, false);
             }
           } catch (err) {
             streamError = err;
-            console.error("[chat.stream] anthropic stream error", err);
+            recordModelResult(selectedModel.id, true);
+            console.error("[chat.stream] stream error", { model: selectedModel.id, err });
           }
 
-          // ALWAYS try to persist whatever we received, even if the client
-          // disconnected or the upstream errored. This prevents the
-          // assistant reply from vanishing on refetch.
+          // ---- Persist assistant message ----
           const { visible, followups } = splitFollowups(assistantText);
-          // If we exhausted all auto-continues and the model still wanted more
-          // tokens, surface a "Continue generating" follow-up so the user can
-          // resume on demand.
           if (hitFinalCap) {
             const cont = "Continue generating";
             if (!followups.some((f) => f.toLowerCase().includes("continue"))) {
@@ -424,10 +541,11 @@ export const Route = createFileRoute("/api/chat/stream")({
               if (followups.length > 3) followups.length = 3;
             }
           }
+
           let assistantId: string | null = null;
           let assistantCreatedAt: string | null = null;
           if (visible.trim().length > 0) {
-            const metadata: Record<string, unknown> = {};
+            const metadata: Record<string, unknown> = { model: selectedModel.id };
             if (followups.length) metadata.follow_ups = followups;
             if (priorVersion) metadata.versions = [priorVersion];
             if (streamError) metadata.partial = true;
@@ -450,36 +568,6 @@ export const Route = createFileRoute("/api/chat/stream")({
             }
           }
 
-          // Auto-title via Haiku for the first exchange (async — doesn't block)
-          if (!convo.title && claudeMessages.length >= 1 && visible.trim().length > 0) {
-            void (async () => {
-              try {
-                const titleRes = await anthropic.messages.create({
-                  model: "claude-haiku-4-5-20251001",
-                  max_tokens: 32,
-                  system: TITLE_PROMPT,
-                  messages: [
-                    {
-                      role: "user",
-                      content: `User: ${claudeMessages[0]?.content ?? ""}\n\nAssistant: ${visible.slice(0, 400)}`,
-                    },
-                  ],
-                });
-                const block = titleRes.content[0];
-                const text =
-                  block && block.type === "text" ? block.text.trim().slice(0, 80) : null;
-                if (text) {
-                  await supabase
-                    .from("conversations")
-                    .update({ title: text })
-                    .eq("id", convo.id);
-                }
-              } catch (e) {
-                console.error("[chat.stream] title gen", e);
-              }
-            })();
-          }
-
           await supabase
             .from("conversations")
             .update({ updated_at: new Date().toISOString() })
@@ -494,6 +582,68 @@ export const Route = createFileRoute("/api/chat/stream")({
               followups,
             });
           }
+
+          // ---- Async post-processing (fire and forget) ----
+          if (visible.trim().length > 0) {
+            void (async () => {
+              try {
+                const msgCount = history.length + 2;
+                const [facts] = await Promise.all([
+                  extractConversationFacts(currentUserMessage, visible),
+                  promoteConversationMemories(userId, convo.id, projectId, supabase),
+                  maybeRegenerateSummary(convo.id, msgCount, supabase),
+                ]);
+
+                if (facts.length > 0) {
+                  await updateConversationState(convo.id, facts, [], supabase);
+                }
+
+                const newTone = detectTone(
+                  [...preloadedHistory, { role: "user", content: currentUserMessage }],
+                  assembled.convState.conversationTone as ToneState,
+                );
+                await supabase
+                  .from("conversation_states")
+                  .update({ conversation_tone: newTone, updated_at: new Date().toISOString() })
+                  .eq("conversation_id", convo.id);
+
+                await updateUkmFromMemory(userId, visible.slice(0, 500), "episodic", supabase);
+              } catch (e) {
+                console.error("[chat.stream] post-processing error", e);
+              }
+            })();
+
+            // Auto-title via Haiku on first exchange
+            if (!convo.title) {
+              void (async () => {
+                try {
+                  if (!process.env.ANTHROPIC_API_KEY) return;
+                  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+                  const titleRes = await anthropic.messages.create({
+                    model: "claude-haiku-4-5-20251001",
+                    max_tokens: 32,
+                    system: TITLE_PROMPT,
+                    messages: [
+                      {
+                        role: "user",
+                        content: `User: ${currentUserMessage.slice(0, 300)}\n\nAssistant: ${visible.slice(0, 400)}`,
+                      },
+                    ],
+                  });
+                  const block = titleRes.content[0];
+                  const text = block?.type === "text" ? block.text.trim().slice(0, 80) : null;
+                  if (text) {
+                    await supabase
+                      .from("conversations")
+                      .update({ title: text })
+                      .eq("id", convo.id);
+                  }
+                } catch (e) {
+                  console.error("[chat.stream] title gen", e);
+                }
+              })();
+            }
+          }
         });
       },
     },
@@ -502,11 +652,6 @@ export const Route = createFileRoute("/api/chat/stream")({
 
 // ---------- helpers ----------
 
-/** If `buffer` begins with the tail of `priorTail` (allowing minor leading
- * noise), strip that overlap and return the remainder. Returns null if we
- * can't yet decide and the caller should keep buffering. Requires at least
- * MIN_OVERLAP chars of match to avoid truncating genuine new content.
- */
 function stripOverlapPrefix(buffer: string, priorTail: string): string | null {
   if (!priorTail) return buffer;
   const MIN_OVERLAP = 24;
@@ -520,12 +665,9 @@ function stripOverlapPrefix(buffer: string, priorTail: string): string | null {
       return body.slice(len);
     }
   }
-  // If buffer already exceeds priorTail by a comfortable margin with no match,
-  // give up and emit as-is. Otherwise wait for more.
   if (body.length >= priorTail.length + MIN_OVERLAP) return buffer;
   return null;
 }
-
 
 function jsonError(error: string, status: number) {
   return new Response(JSON.stringify({ error }), {
@@ -546,7 +688,6 @@ function sse(start: (send: (event: string, data: unknown) => void) => Promise<vo
             encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
           );
         } catch {
-          // Client disconnected; mark closed so subsequent sends are no-ops.
           closed = true;
         }
       };
@@ -573,18 +714,11 @@ function sse(start: (send: (event: string, data: unknown) => void) => Promise<vo
   });
 }
 
-/** Remove an in-progress <followups>...</followups> tag from streamed text.
- * If the accumulated text contains "<followups>", suppress further deltas
- * by returning empty until the closing tag arrives.
- */
 function stripFollowupsTagPartial(_delta: string, accumulated: string): string {
   const tagStart = accumulated.indexOf("<followups>");
   if (tagStart === -1) return _delta;
-  // We've started the tag — figure out what visible portion of THIS delta belongs before it
-  const newlyFromDelta = _delta;
   const visibleBeforeTag = accumulated.slice(0, tagStart);
-  // If the visible-before-tag length >= (accumulated.length - delta.length) we already streamed it
-  const alreadyStreamed = accumulated.length - newlyFromDelta.length;
+  const alreadyStreamed = accumulated.length - _delta.length;
   if (alreadyStreamed >= visibleBeforeTag.length) return "";
   return visibleBeforeTag.slice(alreadyStreamed);
 }
