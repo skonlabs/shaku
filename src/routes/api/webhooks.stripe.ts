@@ -59,7 +59,7 @@ export const Route = createFileRoute("/api/webhooks/stripe")({
 
 async function handleStripeEvent(
   event: Stripe.Event,
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
 ): Promise<void> {
   switch (event.type) {
     case "customer.subscription.created":
