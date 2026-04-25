@@ -156,14 +156,25 @@ function ChatPage() {
     await regenerate();
   };
 
-  // Pending first-message handoff from "/"
+  // Pending first-message handoff from "/" — accepts JSON {text, attachments} or legacy plain string.
   useEffect(() => {
     if (isLoading) return;
     try {
       const pending = sessionStorage.getItem(`cortex.pending.${id}`);
       if (pending) {
         sessionStorage.removeItem(`cortex.pending.${id}`);
-        void send(pending, []);
+        let text = pending;
+        let attachments: Attachment[] = [];
+        try {
+          const parsed = JSON.parse(pending);
+          if (parsed && typeof parsed === "object" && "text" in parsed) {
+            text = String(parsed.text ?? "");
+            attachments = Array.isArray(parsed.attachments) ? parsed.attachments : [];
+          }
+        } catch {
+          /* legacy plain string */
+        }
+        if (text || attachments.length) void send(text || "(attachment)", attachments);
       }
     } catch {
       /* noop */
