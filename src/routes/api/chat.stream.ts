@@ -551,7 +551,7 @@ export const Route = createFileRoute("/api/chat/stream")({
           }
 
           const sourceNames = finalChunks.map(
-            (c) => (c.metadata.title as string) ?? c.sourceType,
+            (c) => (c.metadata?.title as string | undefined) ?? c.sourceType,
           );
           const citationRatio = verifyCitations(visible, sourceNames);
           const ambiguity = scoreAmbiguity(currentUserMessage);
@@ -648,7 +648,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                   .update({ conversation_tone: newTone, updated_at: new Date().toISOString() })
                   .eq("conversation_id", convo.id);
 
-                await updateUkmFromMemory(userId, visible.slice(0, 500), "episodic", supabase);
+                await updateUkmFromMemory(userId, visible.slice(0, 2000), "episodic", supabase);
               } catch (e) {
                 console.error("[chat.stream] post-processing error", e);
               }

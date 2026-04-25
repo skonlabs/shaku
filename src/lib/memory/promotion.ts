@@ -90,10 +90,14 @@ async function saveMemory(
 
   // Point superseded memories at the new one (valid UUID now available)
   for (const contra of contradictions) {
-    await supabase
-      .from("memories")
-      .update({ superseded_by: data.id })
-      .eq("id", contra.id);
+    try {
+      await supabase
+        .from("memories")
+        .update({ superseded_by: data.id })
+        .eq("id", contra.id);
+    } catch (e) {
+      console.error("[promotion] supersession update failed", contra.id, e);
+    }
   }
 
   return data.id;

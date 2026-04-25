@@ -11,7 +11,7 @@
 //   7. Conversation history (0–3,000 tokens)
 
 import { embed } from "@/lib/embeddings";
-import { countTokens } from "@/lib/tokens";
+import { loadUkm, compressUkmForPrompt, buildAntiPreferenceBlock } from "@/lib/knowledge/ukm";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RetrievedChunk } from "./retrieval";
 
@@ -42,7 +42,6 @@ export interface AssembledContext {
 const TOKEN_BUDGET_RETRIEVAL = 10_000;
 const TOKEN_BUDGET_MEMORY = 2_000;
 const TOKEN_BUDGET_HISTORY = 50_000;
-const TOKEN_BUDGET_UKM = 500;
 const TOKEN_BUDGET_FACTS = 300;
 
 export async function assembleContext(opts: {
@@ -77,7 +76,8 @@ export async function assembleContext(opts: {
   ]);
 
   // Build context sections
-  const ukmSummary = compressUkm(ukm);
+  const ukmSummary = compressUkmForPrompt(ukm);
+  const antiPrefs = buildAntiPreferenceBlock(ukm);
   const factsBlock = buildFactsBlock(convState);
   const retrievalBlock = buildRetrievalBlock(retrievedChunks, TOKEN_BUDGET_RETRIEVAL);
   const memoryBlock = buildMemoryBlock(memories, TOKEN_BUDGET_MEMORY);
@@ -87,6 +87,7 @@ export async function assembleContext(opts: {
   const systemPrompt = [
     systemInstructions,
     ukmSummary ? `\n## About the user\n${ukmSummary}` : "",
+    antiPrefs ? `\n## Avoid (user dislikes)\n${antiPrefs}` : "",
     factsBlock ? `\n## Conversation context\n${factsBlock}` : "",
     memoryBlock ? `\n## Memory\n${memoryBlock}` : "",
     retrievalBlock ? `\n## Sources\n${retrievalBlock}` : "",
@@ -143,15 +144,6 @@ async function loadConversationHistory(
   }));
 }
 
-async function loadUkm(userId: string, supabase: SupabaseClient): Promise<Record<string, unknown>> {
-  const { data } = await supabase
-    .from("user_knowledge_models")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
-  return data ?? {};
-}
-
 async function retrieveMemories(
   userId: string,
   projectId: string | null,
@@ -183,28 +175,6 @@ async function retrieveMemories(
   }
 }
 
-function compressUkm(ukm: Record<string, unknown>): string {
-  const parts: string[] = [];
-  const identity = ukm.identity as Record<string, string> | undefined;
-  if (identity) {
-    const name = identity.name;
-    const role = identity.role;
-    const company = identity.company;
-    if (name) parts.push(name);
-    if (role && company) parts.push(`${role} at ${company}`);
-    else if (role) parts.push(role);
-  }
-
-  const prefs = ukm.preferences as Record<string, string> | undefined;
-  if (prefs?.response_format) parts.push(`Prefers ${prefs.response_format} responses`);
-
-  const style = ukm.communication_style as Record<string, string> | undefined;
-  if (style?.verbosity) parts.push(`Style: ${style.verbosity}`);
-
-  if (parts.length === 0) return "";
-  const text = parts.join(". ") + ".";
-  return text.slice(0, TOKEN_BUDGET_UKM * 4); // rough char limit
-}
 
 function buildFactsBlock(state: ConversationState): string {
   const parts: string[] = [];
@@ -230,7 +200,7 @@ function buildRetrievalBlock(chunks: RetrievedChunk[], tokenBudget: number): str
   const parts: string[] = [];
 
   for (const chunk of chunks) {
-    const sourceName = (chunk.metadata.title as string) ?? chunk.sourceType;
+    const sourceName = (chunk.metadata?.title as string | undefined) ?? chunk.sourceType;
     const text = `<source name="${sourceName}" type="${chunk.sourceType}">\n${chunk.content}\n</source>`;
     if (used + text.length > charBudget) break;
     parts.push(text);
