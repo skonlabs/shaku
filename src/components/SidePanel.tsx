@@ -1941,6 +1941,7 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
         </PersonaSection>
       )}
 
+
       {(ukm?.expertise.length ?? 0) > 0 && (
         <PersonaSection title="Expertise">
           <div className="flex flex-wrap gap-1.5">
@@ -1979,11 +1980,14 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
         </PersonaSection>
       )}
 
+
       {(ukm?.antiPreferences.length ?? 0) > 0 && (
         <PersonaSection title="Things to avoid">
           <ul className="space-y-0.5">
             {ukm!.antiPreferences.map((a, i) => (
-              <li key={i} className="text-xs text-destructive/80">· {a}</li>
+              <li key={i} className="text-xs text-destructive/80">
+                · {a}
+              </li>
             ))}
           </ul>
         </PersonaSection>
@@ -1993,7 +1997,9 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
         <PersonaSection title="Response style dislikes">
           <ul className="space-y-0.5">
             {ukm!.responseStyleDislikes.map((r, i) => (
-              <li key={i} className="text-xs text-muted-foreground">· {r}</li>
+              <li key={i} className="text-xs text-muted-foreground">
+                · {r}
+              </li>
             ))}
           </ul>
         </PersonaSection>
@@ -2003,7 +2009,9 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
         <PersonaSection title="Things I've corrected">
           <ul className="space-y-0.5">
             {ukm!.corrections.map((c, i) => (
-              <li key={i} className="text-xs">· {c}</li>
+              <li key={i} className="text-xs">
+                · {c}
+              </li>
             ))}
           </ul>
         </PersonaSection>
