@@ -205,28 +205,6 @@ export const Route = createFileRoute("/api/chat/stream")({
             .from("conversations")
             .update({ updated_at: new Date().toISOString() })
             .eq("id", convo.id);
-
-          if (visible.trim().length > 0) {
-            const inputTokens = estimateInputTokens(optimizedSystemPrompt, optimizedMessages);
-            const outputTokens = countTokens(visible);
-            const latencyMs = Math.max(1, Date.now() - startedAt);
-            const usage = await supabase.rpc("insert_usage_event", {
-              p_user_id: userId,
-              p_event_type: usedStaticFallback
-                ? "chat_unavailable"
-                : streamError
-                  ? "chat_partial"
-                  : "chat_completion",
-              p_model_used: activeModel.id,
-              p_tokens_in: inputTokens,
-              p_tokens_out: outputTokens,
-              p_cost_usd: usedStaticFallback ? 0 : estimateCost(activeModel.id, inputTokens, outputTokens),
-              p_cache_hit: false,
-              p_routing_savings_usd: null,
-              p_latency_ms: latencyMs,
-            });
-            if (usage.error) console.error("[chat.stream] usage event", usage.error);
-          }
           return sse(async (send) => {
             send("user_message", userMsg);
             for (const word of reply.split(" ")) {
