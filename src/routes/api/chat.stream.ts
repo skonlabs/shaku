@@ -764,8 +764,7 @@ function messageContentToText(content: unknown): string {
       return "";
     })
     .filter(Boolean)
-    .join("
-");
+    .join("\n");
 }
 
 function estimateInputTokens(
