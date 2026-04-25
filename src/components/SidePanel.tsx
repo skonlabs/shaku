@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Link, useNavigate, useLocation } from "@tanstack/react-router";
 import {
@@ -17,9 +17,17 @@ import {
   Check,
   Pencil,
   Brain,
-  FileText,
-  Loader2,
   AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  File,
+  FileText,
+  FolderPlus,
+  Loader2,
+  Pause,
+  Play,
+  Upload,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
@@ -42,7 +50,6 @@ import {
   deleteConversation,
   searchMessages,
 } from "@/lib/conversations.functions";
-import { listFiles, deleteDatasourceFile } from "@/lib/datasources.functions";
 import { getUsageByConversation } from "@/lib/usage.functions";
 import {
   getMemories,
@@ -53,6 +60,10 @@ import {
   getUkm,
   getMemoryStats,
 } from "@/lib/memory.functions";
+import { listProjects, createProject, deleteProject, listProjectConversations } from "@/lib/projects.functions";
+import { listFiles, createDatasourceFile, deleteDatasourceFile } from "@/lib/datasources.functions";
+import { listConnectors, initiateConnectorAuth, pauseConnector, disconnectConnector } from "@/lib/connectors.functions";
+import { supabase } from "@/integrations/supabase/client";
 import type { UserKnowledgeModel } from "@/lib/knowledge/ukm";
 import { MessageContent } from "@/components/MessageContent";
 
@@ -98,9 +109,9 @@ export function SidePanel({ side = "left" }: { side?: "left" | "right" }) {
       </div>
       <div className="flex-1 overflow-hidden">
         {active === "chats" && <ChatsPanel />}
-        {active === "projects" && <ComingSoon label="Projects" />}
+        {active === "projects" && <ProjectsPanel />}
         {active === "datasources" && <DatasourcesPanel />}
-        {active === "connectors" && <ComingSoon label="Connectors" />}
+        {active === "connectors" && <ConnectorsPanel />}
         {active === "memory" && <MemoryPanel />}
         {active === "settings" && <SettingsPanel />}
         {active === "account" && <AccountPanel />}
@@ -868,6 +879,541 @@ interface MemoryEntry {
   importance: number;
   accessCount: number;
   lastAccessedAt: string | null;
+}
+
+// ─── Projects ────────────────────────────────────────────────────────────────
+
+function ProjectsPanel() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => listProjects({ data: undefined as never }),
+  });
+
+  const projects = data?.projects ?? [];
+
+  const createMut = useMutation({
+    mutationFn: (name: string) => createProject({ data: { name } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      setCreating(false);
+      setNewName("");
+    },
+    onError: () => toast.error("Couldn't create project."),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteProject({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      toast.success("Project archived.");
+    },
+    onError: () => toast.error("Couldn't archive project."),
+  });
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center px-4 py-2">
+        <button
+          onClick={() => { setCreating(true); setNewName(""); }}
+          className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          <FolderPlus className="h-3.5 w-3.5" /> New project
+        </button>
+      </div>
+
+      {creating && (
+        <form
+          className="mx-3 mb-3 space-y-1.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (newName.trim()) createMut.mutate(newName.trim());
+          }}
+        >
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Project name"
+            maxLength={100}
+            className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:border-ring/60"
+          />
+          <div className="flex gap-1">
+            <Button size="sm" type="submit" disabled={!newName.trim() || createMut.isPending} className="h-7 flex-1 text-xs">
+              {createMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Create"}
+            </Button>
+            <Button size="sm" variant="ghost" type="button" className="h-7 text-xs" onClick={() => setCreating(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+
+      <ScrollArea className="flex-1">
+        {isLoading && <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>}
+        {!isLoading && projects.length === 0 && !creating && (
+          <div className="px-4 py-8 text-center">
+            <FolderPlus className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
+            <p className="text-xs text-muted-foreground">No projects yet.</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Create a project to organize related chats together.
+            </p>
+          </div>
+        )}
+        <div className="space-y-0.5 px-2 pb-2">
+          {projects.map((p) => (
+            <ProjectRow
+              key={p.id}
+              project={p}
+              isExpanded={expanded === p.id}
+              onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
+              onDelete={() => deleteMut.mutate(p.id)}
+            />
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+function ProjectRow({
+  project,
+  isExpanded,
+  onToggle,
+  onDelete,
+}: {
+  project: { id: string; name: string; color: string };
+  isExpanded: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { setActive } = usePanel();
+
+  const { data: convData } = useQuery({
+    queryKey: ["project-convs", project.id],
+    queryFn: () => listProjectConversations({ data: { project_id: project.id } }),
+    enabled: isExpanded,
+  });
+
+  const createMut = useMutation({
+    mutationFn: () => createConversation({ data: { project_id: project.id } }),
+    onSuccess: ({ conversation }) => {
+      qc.invalidateQueries({ queryKey: ["project-convs", project.id] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      navigate({ to: "/c/$id", params: { id: conversation.id } });
+      setActive(null);
+    },
+    onError: () => toast.error("Couldn't create chat."),
+  });
+
+  const convs = convData?.conversations ?? [];
+
+  return (
+    <div>
+      <div className="group flex items-center rounded-md px-2 py-1.5 hover:bg-accent/60">
+        <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2">
+          {isExpanded ? (
+            <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+          )}
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: project.color }} />
+          <span className="truncate text-sm">{project.name}</span>
+        </button>
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <button
+            onClick={(e) => { e.stopPropagation(); createMut.mutate(); }}
+            title="New chat in project"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            title="Archive project"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="mb-0.5 ml-5 border-l border-border pl-2">
+          {convs.length === 0 ? (
+            <p className="py-1 text-xs text-muted-foreground">No chats yet. Click + to create one.</p>
+          ) : (
+            convs.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => { navigate({ to: "/c/$id", params: { id: c.id } }); setActive(null); }}
+                className="block w-full truncate rounded px-1 py-0.5 text-left text-xs text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+              >
+                {c.title ?? "Untitled chat"}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Data Sources ─────────────────────────────────────────────────────────────
+
+const FILE_STATUS_STYLES: Record<string, string> = {
+  ready: "text-green-600 bg-green-50 dark:bg-green-950/50",
+  processing: "text-blue-600 bg-blue-50 dark:bg-blue-950/50",
+  uploading: "text-blue-600 bg-blue-50 dark:bg-blue-950/50",
+  error: "text-red-600 bg-red-50 dark:bg-red-950/50",
+};
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function DatasourcesPanel() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["ds-files"],
+    queryFn: () => listFiles({ data: {} }),
+  });
+
+  const files = data?.files ?? [];
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteDatasourceFile({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ds-files"] });
+      toast.success("File removed.");
+    },
+    onError: () => toast.error("Couldn't remove file."),
+  });
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    e.target.value = "";
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
+      const { file: record } = await createDatasourceFile({
+        data: { name: file.name, file_type: ext, file_size_bytes: file.size },
+      });
+      const fileId = record.id;
+      const storagePath = `${user.id}/${fileId}/${file.name}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("datasource-files")
+        .upload(storagePath, file, { upsert: false });
+
+      if (upErr) {
+        await deleteDatasourceFile({ data: { id: fileId } });
+        throw new Error(upErr.message);
+      }
+
+      await supabase.from("datasource_files").update({ storage_path: storagePath }).eq("id", fileId);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (token) {
+        await fetch("/api/datasources/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ file_id: fileId, storage_path: storagePath, file_type: ext, file_name: file.name }),
+        });
+      }
+
+      qc.invalidateQueries({ queryKey: ["ds-files"] });
+      toast.success(`"${file.name}" is processing.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const sorted = [...files].sort((a, b) => {
+    const ord: Record<string, number> = { processing: 0, uploading: 0, error: 1, ready: 2 };
+    return (ord[a.status] ?? 2) - (ord[b.status] ?? 2);
+  });
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center px-4 py-2">
+        <input
+          ref={fileRef}
+          type="file"
+          className="sr-only"
+          onChange={handleFileChange}
+          accept=".pdf,.docx,.doc,.txt,.md,.xlsx,.xls,.csv,.pptx,.ppt,.png,.jpg,.jpeg,.gif,.webp,.py,.js,.ts,.tsx,.jsx,.java,.cpp,.c,.rs,.go,.rb,.php,.swift,.kt,.html,.css,.json,.yaml,.sql"
+        />
+        <button
+          disabled={uploading}
+          onClick={() => fileRef.current?.click()}
+          className="ml-auto flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
+        >
+          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+          {uploading ? "Uploading…" : "Upload file"}
+        </button>
+      </div>
+
+      <ScrollArea className="flex-1">
+        {isLoading && <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>}
+        {!isLoading && sorted.length === 0 && (
+          <div className="px-4 py-8 text-center">
+            <Upload className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
+            <p className="text-xs text-muted-foreground">No files yet.</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Upload PDFs, documents, spreadsheets, or code to use as context in any chat.
+            </p>
+          </div>
+        )}
+        <div className="space-y-0.5 px-2 pb-2">
+          {sorted.map((f) => {
+            const isActive = f.status === "processing" || f.status === "uploading";
+            return (
+              <div
+                key={f.id}
+                className="group flex items-center gap-2 rounded-md px-2 py-2 hover:bg-accent/40"
+              >
+                <File
+                  className={cn(
+                    "h-4 w-4 shrink-0",
+                    isActive ? "text-blue-500" : "text-muted-foreground",
+                  )}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">{f.name}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {fmtBytes(f.file_size_bytes ?? 0)}
+                    {f.chunk_count ? ` · ${f.chunk_count} chunks` : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <span
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-[10px] font-medium capitalize",
+                      FILE_STATUS_STYLES[f.status] ?? "",
+                    )}
+                  >
+                    {isActive ? (
+                      <span className="flex items-center gap-1">
+                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                        {f.status}
+                      </span>
+                    ) : (
+                      f.status
+                    )}
+                  </span>
+                  {(f.status === "ready" || f.status === "error") && (
+                    <button
+                      onClick={() => deleteMut.mutate(f.id)}
+                      className="hidden h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-destructive group-hover:flex"
+                      title="Remove file"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+// ─── Connectors ───────────────────────────────────────────────────────────────
+
+const CONNECTOR_STATUS_STYLES: Record<string, { badge: string; label: string }> = {
+  connected: { badge: "text-green-600 bg-green-50 dark:bg-green-950/50", label: "Connected" },
+  syncing: { badge: "text-blue-600 bg-blue-50 dark:bg-blue-950/50", label: "Syncing" },
+  paused: { badge: "text-yellow-600 bg-yellow-50 dark:bg-yellow-950/50", label: "Paused" },
+  error: { badge: "text-red-600 bg-red-50 dark:bg-red-950/50", label: "Error" },
+};
+
+const CONNECTOR_DISPLAY_NAMES: Record<string, string> = {
+  google_drive: "Google Drive",
+  slack: "Slack",
+  dropbox: "Dropbox",
+  onedrive: "OneDrive / SharePoint",
+  gmail: "Gmail",
+  google_calendar: "Google Calendar",
+  jira: "Jira",
+  github: "GitHub",
+  notion: "Notion",
+  confluence: "Confluence",
+  teams: "Microsoft Teams",
+};
+
+function ConnectorsPanel() {
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["connectors"],
+    queryFn: () => listConnectors({ data: undefined as never }),
+  });
+
+  const connected = data?.connected ?? [];
+  const available = data?.available ?? [];
+
+  const connectMut = useMutation({
+    mutationFn: (service: string) =>
+      initiateConnectorAuth({
+        data: {
+          service,
+          redirect_uri: `${window.location.origin}/api/connectors/callback?service=${service}`,
+        },
+      }),
+    onSuccess: (res) => {
+      window.location.href = (res as { auth_url: string }).auth_url;
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't connect."),
+  });
+
+  const pauseMut = useMutation({
+    mutationFn: ({ id, paused }: { id: string; paused: boolean }) =>
+      pauseConnector({ data: { id, paused } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["connectors"] }),
+    onError: () => toast.error("Couldn't update connector."),
+  });
+
+  const disconnectMut = useMutation({
+    mutationFn: (id: string) => disconnectConnector({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["connectors"] });
+      toast.success("Connector disconnected.");
+    },
+    onError: () => toast.error("Couldn't disconnect."),
+  });
+
+  return (
+    <ScrollArea className="h-full">
+      <div className="space-y-4 px-4 py-3">
+        {isLoading && <p className="py-4 text-center text-xs text-muted-foreground">Loading…</p>}
+
+        {connected.length > 0 && (
+          <div>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Connected
+            </p>
+            <div className="space-y-2">
+              {connected.map((c) => {
+                const style = CONNECTOR_STATUS_STYLES[c.status] ?? CONNECTOR_STATUS_STYLES.connected;
+                const isPaused = c.status === "paused";
+                return (
+                  <div key={c.id} className="rounded-lg border border-border bg-background p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-medium">
+                        {CONNECTOR_DISPLAY_NAMES[c.service] ?? c.service}
+                      </p>
+                      <span
+                        className={cn(
+                          "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                          style.badge,
+                        )}
+                      >
+                        {c.status === "syncing" ? (
+                          <span className="flex items-center gap-1">
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                            Syncing
+                          </span>
+                        ) : (
+                          style.label
+                        )}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {c.items_indexed != null ? `${c.items_indexed} items indexed` : ""}
+                      {c.last_synced_at ? ` · synced ${relativeTime(c.last_synced_at)}` : ""}
+                    </p>
+                    {c.error_message && (
+                      <p className="mt-1 text-[11px] text-red-500">{c.error_message}</p>
+                    )}
+                    <div className="mt-2 flex gap-1.5">
+                      <button
+                        onClick={() => pauseMut.mutate({ id: c.id, paused: !isPaused })}
+                        disabled={pauseMut.isPending}
+                        className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                      >
+                        {isPaused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+                        {isPaused ? "Resume" : "Pause"}
+                      </button>
+                      <button
+                        onClick={() => disconnectMut.mutate(c.id)}
+                        disabled={disconnectMut.isPending}
+                        className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-destructive/50 hover:text-destructive disabled:opacity-50"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {available.length > 0 && (
+          <div>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {connected.length > 0 ? "Add more" : "Available"}
+            </p>
+            <div className="space-y-1.5">
+              {available.map((a) => (
+                <div
+                  key={a.service}
+                  className={cn(
+                    "flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5",
+                    !a.implemented && "opacity-55",
+                  )}
+                >
+                  <p className="text-sm">{a.displayName}</p>
+                  {a.implemented ? (
+                    <button
+                      onClick={() => connectMut.mutate(a.service)}
+                      disabled={connectMut.isPending}
+                      className="flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {connectMut.isPending ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <ExternalLink className="h-3 w-3" />
+                      )}
+                      Connect
+                    </button>
+                  ) : (
+                    <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      Soon
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!isLoading && connected.length === 0 && available.length === 0 && (
+          <p className="py-6 text-center text-xs text-muted-foreground">No connectors available.</p>
+        )}
+      </div>
+    </ScrollArea>
+  );
 }
 
 function groupByType(memories: MemoryEntry[]): Record<string, MemoryEntry[]> {
