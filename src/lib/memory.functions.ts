@@ -104,6 +104,56 @@ export const getUkm = createServerFn({ method: "POST" })
     return { ukm, memoryEnabled: (userRow.data?.memory_enabled ?? true) as boolean };
   });
 
+export const getMemoryStats = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({}))
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+
+    const { data: convs } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("user_id", userId);
+
+    const convIds = (convs ?? []).map((c: { id: string }) => c.id);
+
+    if (convIds.length === 0) {
+      return { totalResponses: 0, responsesWithMemory: 0, totalMemoriesInjected: 0, avgMemoriesPerResponse: 0 };
+    }
+
+    const [{ count: totalResponses }, { data: withMemory }] = await Promise.all([
+      supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .in("conversation_id", convIds)
+        .eq("role", "assistant")
+        .eq("is_active", true),
+      supabase
+        .from("messages")
+        .select("metadata")
+        .in("conversation_id", convIds)
+        .eq("role", "assistant")
+        .eq("is_active", true)
+        .not("metadata->memories_used", "is", null),
+    ]);
+
+    const responsesWithMemory = withMemory?.length ?? 0;
+    const totalMemoriesInjected = (withMemory ?? []).reduce((sum, m) => {
+      const mu = (m.metadata as Record<string, unknown>)?.memories_used;
+      return sum + (Array.isArray(mu) ? mu.length : 0);
+    }, 0);
+
+    return {
+      totalResponses: totalResponses ?? 0,
+      responsesWithMemory,
+      totalMemoriesInjected,
+      avgMemoriesPerResponse:
+        responsesWithMemory > 0
+          ? Math.round((totalMemoriesInjected / responsesWithMemory) * 10) / 10
+          : 0,
+    };
+  });
+
 export const createMemory = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
