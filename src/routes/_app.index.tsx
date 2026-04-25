@@ -64,19 +64,41 @@ function NewChatPage() {
   });
   const lastConvo = welcomeBack ? convoList?.conversations?.[0] : undefined;
 
+  // Pre-create a draft conversation so the composer supports file uploads on "/".
+  // The conversation is harmless if unused — it stays empty and disappears under
+  // older entries.
+  const [draftConvoId, setDraftConvoId] = useState<string | null>(null);
+  const draftReqRef = useRef(false);
+  useEffect(() => {
+    if (loading || !user || draftConvoId || draftReqRef.current) return;
+    draftReqRef.current = true;
+    createConversation({ data: {} })
+      .then(({ conversation }) => setDraftConvoId(conversation.id))
+      .catch(() => {
+        draftReqRef.current = false;
+      });
+  }, [loading, user, draftConvoId]);
+
   const startMut = useMutation({
-    mutationFn: async (text: string) => {
-      const { conversation } = await createConversation({ data: {} });
-      return { conversation, text };
+    mutationFn: async ({ text, attachments }: { text: string; attachments: Attachment[] }) => {
+      let id = draftConvoId;
+      if (!id) {
+        const { conversation } = await createConversation({ data: {} });
+        id = conversation.id;
+      }
+      return { conversationId: id, text, attachments };
     },
-    onSuccess: ({ conversation, text }) => {
+    onSuccess: ({ conversationId, text, attachments }) => {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       try {
-        sessionStorage.setItem(`cortex.pending.${conversation.id}`, text);
+        sessionStorage.setItem(
+          `cortex.pending.${conversationId}`,
+          JSON.stringify({ text, attachments }),
+        );
       } catch {
         /* noop */
       }
-      void navigate({ to: "/c/$id", params: { id: conversation.id } });
+      void navigate({ to: "/c/$id", params: { id: conversationId } });
     },
     onError: () => toast.error("I ran into a problem starting the chat."),
   });
