@@ -5,7 +5,9 @@ import OpenAI from "openai";
 
 import { z } from "zod";
 import { checkRateLimit } from "@/lib/utils/rate-limit";
-import { TokenOptimizationMiddleware } from "@/lib/token-optimization";
+// Token budgeting is owned end-to-end by assembleContext (see src/lib/pipeline/context-assembly.ts).
+// The TokenOptimizationMiddleware was previously chained here but only re-counted tokens and ran
+// destructive normalizers on already-budgeted content; removed to make budget ownership unambiguous.
 import { retrieve } from "@/lib/pipeline/retrieval";
 import { exhaustiveRetrieve } from "@/lib/pipeline/exhaustive-strategy";
 import { assembleContext, updateConversationState } from "@/lib/pipeline/context-assembly";
@@ -355,26 +357,13 @@ export const Route = createFileRoute("/api/chat/stream")({
         });
         const selectedModel = routingDecision.selected;
 
-        // ---- Token optimization middleware ----
-        const tokenMw = new TokenOptimizationMiddleware({
-          provider: selectedModel.provider,
-          historyKeepTurns: 20,
-          enableContextPruning: false,
-          budget: {
-            maxInputTokens: Math.floor(selectedModel.contextWindow * 0.85),
-            maxOutputTokens: selectedModel.maxOutputTokens,
-            maxTotalTokens: selectedModel.contextWindow,
-          },
-        });
-        const mwResult = tokenMw.process([
-          { role: "system", content: finalSystemPrompt },
+        // ---- Final messages for the provider ----
+        // assembleContext is the single budget owner: it has already trimmed history,
+        // capped retrieval, and capped memory blocks. We do not re-process here.
+        const optimizedMessages = [
           ...(assembled.messages as { role: "user" | "assistant"; content: string }[]),
-        ]);
-        const optimizedMessages = mwResult.messages as {
-          role: "user" | "assistant";
-          content: string;
-        }[];
-        const optimizedSystemPrompt = mwResult.systemPrompt ?? finalSystemPrompt;
+        ];
+        const optimizedSystemPrompt = finalSystemPrompt;
 
         const attachmentContext = buildAttachmentContext(body.attachments ?? []);
 
