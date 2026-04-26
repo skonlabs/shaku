@@ -12,12 +12,23 @@ export interface ConflictingMemory {
   similarity: number;
 }
 
+export interface ContradictionOptions {
+  projectId?: string | null;
+  similarityThreshold?: number;
+}
+
 export async function detectContradictions(
   userId: string,
   newContent: string,
   supabase: SupabaseClient,
-  similarityThreshold = 0.85,
+  options: ContradictionOptions | number = {},
 ): Promise<ConflictingMemory[]> {
+  // Backward-compatible: allow legacy positional similarityThreshold number
+  const opts: ContradictionOptions =
+    typeof options === "number" ? { similarityThreshold: options } : options;
+  const similarityThreshold = opts.similarityThreshold ?? 0.85;
+  const projectId = opts.projectId ?? null;
+
   let embedding: number[];
   try {
     embedding = await embed(newContent);
@@ -25,10 +36,11 @@ export async function detectContradictions(
     return [];
   }
 
+  // Scope to projectId so memories from other projects can't supersede this one.
   const { data } = await supabase.rpc("search_memories", {
     query_embedding: `[${embedding.join(",")}]`,
     target_user_id: userId,
-    target_project_id: null,
+    target_project_id: projectId,
     match_count: 5,
   });
 
