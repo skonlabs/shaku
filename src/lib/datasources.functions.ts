@@ -13,6 +13,7 @@ const ALLOWED_EXTENSIONS = new Set([
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB for datasource files
 
+// TODO: wire to UI — currently unused
 export const listFolders = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -26,6 +27,7 @@ export const listFolders = createServerFn({ method: "POST" })
     return { folders: data ?? [], error: null };
   });
 
+// TODO: wire to UI — currently unused
 export const createFolder = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
@@ -45,6 +47,7 @@ export const createFolder = createServerFn({ method: "POST" })
     return { folder: row };
   });
 
+// TODO: wire to UI — currently unused
 export const deleteFolder = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(z.object({ id: z.string().uuid() }))
@@ -159,6 +162,7 @@ export const deleteDatasourceFile = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+// TODO: wire to UI — currently unused
 export const updateDatasourceFileStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(

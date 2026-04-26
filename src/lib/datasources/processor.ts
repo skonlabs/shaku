@@ -111,6 +111,7 @@ export async function processFile(
 }
 
 // Process a URL: fetch → extract HTML → chunk → embed → index (temporary)
+// TODO: wire to UI — currently unused; URL indexing isn't wired from chat pipeline.
 export async function processUrl(
   userId: string,
   url: string,

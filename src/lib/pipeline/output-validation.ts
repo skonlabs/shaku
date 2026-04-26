@@ -12,6 +12,7 @@ export interface ValidationResult {
 
 // 9a. Re-inject original PII values into AI response for "Redact & Send" flow.
 // Called DURING streaming, per-chunk — checks accumulated text for placeholders.
+// TODO: wire to UI — currently unused; PII confirmation UI doesn't exist yet.
 export function reInjectPiiChunk(
   chunk: string,
   accumulated: string,
