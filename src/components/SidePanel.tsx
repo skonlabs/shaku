@@ -1137,7 +1137,7 @@ function DatasourcesPanel() {
               type="file"
               className="sr-only"
               onChange={handleFileChange}
-              accept=".pdf,.docx,.doc,.txt,.md,.xlsx,.xls,.csv,.pptx,.ppt,.png,.jpg,.jpeg,.gif,.webp,.py,.js,.ts,.tsx,.jsx,.java,.cpp,.c,.rs,.go,.rb,.php,.swift,.kt,.html,.css,.json,.yaml,.sql"
+              accept=".pdf,.docx,.doc,.txt,.md,.rtf,.xlsx,.xls,.csv,.pptx,.ppt,.png,.jpg,.jpeg,.gif,.webp,.py,.js,.ts,.tsx,.jsx,.java,.cpp,.c,.rs,.go,.rb,.php,.swift,.kt,.html,.css,.json,.yaml,.sql"
             />
             <p className="text-[11px] text-muted-foreground">PDFs, Docs, Code, Spreadsheets</p>
             <button
