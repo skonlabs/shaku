@@ -837,8 +837,9 @@ function getRuntimeKeys(): { anthropic?: string; openai?: string } {
     string | undefined
   >;
   return {
-    anthropic: runtimeEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY,
-    openai: runtimeEnv.OPENAI_API_KEY ?? process.env.OPENAI_API_KEY,
+    anthropic:
+      cloudflareEnv.ANTHROPIC_API_KEY ?? runtimeEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY,
+    openai: cloudflareEnv.OPENAI_API_KEY ?? runtimeEnv.OPENAI_API_KEY ?? process.env.OPENAI_API_KEY,
   };
 }
 
