@@ -348,6 +348,7 @@ export const Route = createFileRoute("/api/chat/stream")({
           assembled.convState.conversationTone.current,
           intentResult.isFollowUp,
           intentResult.followUpReference ?? undefined,
+          finalChunks.length > 0,
         );
         const formatHint = detectFormatHint(currentUserMessage);
 
