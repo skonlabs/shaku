@@ -295,7 +295,8 @@ export const Route = createFileRoute("/api/chat/stream")({
 
         // ---- Exhaustive strategy if retrieval quality is low ----
         let finalChunks = retrievalResult.chunks;
-        if (shouldRetrieve && retrievalResult.qualityScore < 0.4) {
+        // Trigger exhaustive when quality is low OR retrieval is too thin to ground a reply.
+        if (shouldRetrieve && (retrievalResult.qualityScore < 0.4 || retrievalResult.chunks.length < 3)) {
           const exhaustive = await exhaustiveRetrieve(
             userId,
             convo.id,
@@ -346,6 +347,12 @@ export const Route = createFileRoute("/api/chat/stream")({
             preloadedHistory.length * 4,
           countTokens(currentUserMessage),
         );
+        // Compute real momentum: avg complexity of last 3 user messages.
+        const recentUserMsgs = preloadedHistory.filter((m) => m.role === "user").slice(-3);
+        const momentumScore = recentUserMsgs.length
+          ? recentUserMsgs.reduce((s, m) => s + Math.min(1, m.content.length / 400), 0) /
+            recentUserMsgs.length
+          : 0;
         const routingDecision = route({
           intent: intentResult,
           estimatedContextTokens: estimatedCtxTokens,
@@ -353,7 +360,7 @@ export const Route = createFileRoute("/api/chat/stream")({
             (a) => a.kind === "image" || (a.type ?? "").startsWith("image/"),
           ),
           modelOverride,
-          conversationMomentum: 0.5,
+          conversationMomentum: momentumScore,
         });
         const selectedModel = routingDecision.selected;
 
@@ -444,7 +451,9 @@ export const Route = createFileRoute("/api/chat/stream")({
               hitFinalCap = false;
 
               try {
-                const PER_TURN_MAX_TOKENS = Math.min(16_000, candidateModel.maxOutputTokens);
+                // Use the model's full output capacity per turn — fewer auto-continues
+                // means we don't re-bill the entire input context multiple times.
+                const PER_TURN_MAX_TOKENS = candidateModel.maxOutputTokens;
                 const MAX_AUTO_CONTINUES = candidateModel.provider === "anthropic" ? 3 : 0;
 
                 if (candidateModel.provider === "anthropic") {
@@ -575,7 +584,14 @@ Do not add any preface, apology, or commentary.`,
                 streamError = err;
                 recordModelResult(candidateModel.id, true);
                 console.error("[chat.stream] stream error", { model: candidateModel.id, err });
-                if (assistantText.trim().length > 0) break;
+                // Previously: `if (assistantText.trim().length > 0) break;` —
+                // that delivered truncated replies. Now: surface a `partial` event so the
+                // client knows what was emitted, then continue to the next fallback model
+                // which will resume from a clean slate. Persisted message marks partial=true.
+                if (assistantText.trim().length > 0) {
+                  send("partial", { text: assistantText, model: candidateModel.id });
+                }
+                // Fall through to next candidateModel (do NOT break).
               }
             }
           }
