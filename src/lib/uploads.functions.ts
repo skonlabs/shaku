@@ -279,14 +279,10 @@ async function transcribeAudio(bytes: Uint8Array, name: string, mime: string): P
   return (await res.text()).trim();
 }
 
-async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    // Return a placeholder so the upload succeeds; the image is still stored and
-    // can be passed directly to multimodal models that have vision capability.
-    return `(Image file: ${name} — text extraction unavailable, but the image will be visible to the AI.)`;
-  }
+const OCR_SYSTEM =
+  "You are an OCR engine. Read the image and return ONLY the text content visible in it, preserving line breaks and reading order. Do NOT add commentary, headers, code fences, or explanations. If the image has no readable text, return a single short description line of what is shown.";
 
+async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<string> {
   const lowerName = name.toLowerCase();
   const lowerMime = (mime || "").toLowerCase();
   const isHeic =
@@ -298,17 +294,36 @@ async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<
     return "(HEIC images aren't supported for OCR yet — please convert to JPG or PNG and re-upload.)";
   }
 
-  let mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" = "image/jpeg";
-  if (lowerMime === "image/png" || lowerName.endsWith(".png")) mediaType = "image/png";
-  else if (lowerMime === "image/gif" || lowerName.endsWith(".gif")) mediaType = "image/gif";
-  else if (lowerMime === "image/webp" || lowerName.endsWith(".webp")) mediaType = "image/webp";
-
   let bin = "";
   const CHUNK = 0x8000;
   for (let i = 0; i < bytes.length; i += CHUNK) {
     bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
   }
   const b64 = btoa(bin);
+
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+
+  if (anthropicKey) {
+    return ocrImageAnthropic(b64, lowerName, lowerMime, anthropicKey);
+  }
+  if (openaiKey) {
+    return ocrImageOpenAI(b64, lowerName, lowerMime, openaiKey);
+  }
+  // Neither key available — image is still stored and passed to vision models directly.
+  return `(Image file: ${name} — text extraction unavailable, but the image will be visible to the AI.)`;
+}
+
+async function ocrImageAnthropic(
+  b64: string,
+  lowerName: string,
+  lowerMime: string,
+  apiKey: string,
+): Promise<string> {
+  let mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" = "image/jpeg";
+  if (lowerMime === "image/png" || lowerName.endsWith(".png")) mediaType = "image/png";
+  else if (lowerMime === "image/gif" || lowerName.endsWith(".gif")) mediaType = "image/gif";
+  else if (lowerMime === "image/webp" || lowerName.endsWith(".webp")) mediaType = "image/webp";
 
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
   const client = new Anthropic({ apiKey });
@@ -322,8 +337,7 @@ async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<
         {
           model: HAIKU_MODEL_ID,
           max_tokens: 2048,
-          system:
-            "You are an OCR engine. Read the image and return ONLY the text content visible in it, preserving line breaks and reading order. Do NOT add commentary, headers, code fences, or explanations. If the image has no readable text, return a single short description line of what is shown.",
+          system: OCR_SYSTEM,
           messages: [
             {
               role: "user",
@@ -355,7 +369,74 @@ async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<
       msg.includes("fetch failed") ||
       /\b(5\d\d)\b/.test(msg);
     if (!retriable) throw err;
-    console.warn("[ocrImage] retry after failure:", msg);
+    console.warn("[ocrImage:anthropic] retry after failure:", msg);
+    await new Promise((r) => setTimeout(r, 1500));
+    raw = await attempt();
+  }
+
+  const cleaned = postProcessOcr(raw);
+  return cleaned || "(No readable text found in the image.)";
+}
+
+async function ocrImageOpenAI(
+  b64: string,
+  lowerName: string,
+  lowerMime: string,
+  apiKey: string,
+): Promise<string> {
+  let mimeType = "image/jpeg";
+  if (lowerMime === "image/png" || lowerName.endsWith(".png")) mimeType = "image/png";
+  else if (lowerMime === "image/gif" || lowerName.endsWith(".gif")) mimeType = "image/gif";
+  else if (lowerMime === "image/webp" || lowerName.endsWith(".webp")) mimeType = "image/webp";
+
+  const TIMEOUT_MS = 60_000;
+  const attempt = async (): Promise<string> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          max_tokens: 2048,
+          messages: [
+            { role: "system", content: OCR_SYSTEM },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image_url",
+                  image_url: { url: `data:${mimeType};base64,${b64}`, detail: "high" },
+                },
+                { type: "text", text: "Extract all text from this image." },
+              ],
+            },
+          ],
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(`OpenAI OCR ${res.status}`);
+      const json = (await res.json()) as { choices: { message: { content: string } }[] };
+      return json.choices[0]?.message?.content ?? "";
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  let raw = "";
+  try {
+    raw = await attempt();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const retriable =
+      msg.includes("aborted") ||
+      msg.includes("timeout") ||
+      msg.includes("ECONNRESET") ||
+      msg.includes("fetch failed") ||
+      /\b(5\d\d)\b/.test(msg);
+    if (!retriable) throw err;
+    console.warn("[ocrImage:openai] retry after failure:", msg);
     await new Promise((r) => setTimeout(r, 1500));
     raw = await attempt();
   }
