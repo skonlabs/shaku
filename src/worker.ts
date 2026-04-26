@@ -23,7 +23,7 @@ export default {
   async fetch(request: Request, env: unknown, ctx: ExecutionContext): Promise<Response> {
     // Expose CF context so other handlers (callback, webhook) can call ctx.waitUntil()
     (globalThis as unknown as Record<string, unknown>).__cfContext = ctx;
-    return startFetch(request, { env, ctx });
+    return startFetch(request, {});
   },
 
   async scheduled(_event: ScheduledEvent, _env: unknown, ctx: ExecutionContext): Promise<void> {

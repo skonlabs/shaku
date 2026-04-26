@@ -231,15 +231,17 @@ export const Route = createFileRoute("/api/chat/stream")({
         }
 
         // ---- Load history ----
+        // Descending + limit ensures we always get the most recent 50 messages,
+        // including the just-inserted user message in long conversations.
         const { data: historyAll } = await supabase
           .from("messages")
           .select("id, role, content, created_at")
           .eq("conversation_id", convo.id)
           .eq("is_active", true)
-          .order("created_at", { ascending: true })
+          .order("created_at", { ascending: false })
           .limit(50);
 
-        let history = historyAll ?? [];
+        const history = (historyAll ?? []).reverse();
 
         // Regenerate: drop trailing assistant messages
         let priorVersion: { content: string; created_at: string } | null = null;
@@ -665,18 +667,20 @@ Do not add any preface, apology, or commentary.`,
                 (totalInputTokens / 1_000_000) * activeModel.costPerMTokInput +
                 (totalOutputTokens / 1_000_000) * activeModel.costPerMTokOutput;
               runAfterResponse(
-                supabase
-                  .from("usage_events")
-                  .insert({
-                    user_id: userId,
-                    event_type: "chat",
-                    model_used: activeModel.id,
-                    tokens_in: totalInputTokens,
-                    tokens_out: totalOutputTokens,
-                    cost_usd: costUsd,
-                    latency_ms: Date.now() - startTimeMs,
-                  })
-                  .then(() => {}),
+                Promise.resolve(
+                  supabase
+                    .from("usage_events")
+                    .insert({
+                      user_id: userId,
+                      event_type: "chat",
+                      model_used: activeModel.id,
+                      tokens_in: totalInputTokens,
+                      tokens_out: totalOutputTokens,
+                      cost_usd: costUsd,
+                      latency_ms: Date.now() - startTimeMs,
+                    })
+                    .then(() => {}),
+                ),
               );
             }
           }

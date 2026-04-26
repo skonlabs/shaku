@@ -46,7 +46,7 @@ const PATTERNS: { type: PiiType; regex: RegExp }[] = [
   },
   {
     type: "email",
-    regex: /\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b/g,
+    regex: /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g,
   },
   {
     type: "phone",

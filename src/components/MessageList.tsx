@@ -149,6 +149,8 @@ function MessageRow({
   const feedback = message.metadata?.feedback;
   const followups = message.metadata?.follow_ups ?? [];
   const attachments = message.metadata?.attachments ?? [];
+  // Must be called before any conditional return (Rules of Hooks)
+  const { openDocument } = usePanel();
 
   const editMut = useMutation({
     mutationFn: (content: string) => editMessageAndTrim({ data: { id: message.id, content } }),
@@ -255,7 +257,6 @@ function MessageRow({
 
   // Assistant
   const hasPriorVersion = !!message.metadata?.versions?.[0];
-  const { openDocument } = usePanel();
   const fullContent = displayContent();
   const isDocument =
     !!fullContent &&

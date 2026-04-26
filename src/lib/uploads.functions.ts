@@ -334,6 +334,7 @@ function postProcessOcr(text: string): string {
   if (!text) return "";
   let t = text.replace(/\r\n?/g, "\n");
   t = t.replace(/^\s*```[a-zA-Z]*\n([\s\S]*?)\n```\s*$/m, "$1");
+  // eslint-disable-next-line no-control-regex
   t = t.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
   t = t.replace(/[\uFFFD]+/g, "");
   t = t

@@ -20,6 +20,7 @@ import { Route as ApiDatasourcesProcessRouteImport } from './routes/api/datasour
 import { Route as ApiConnectorsCallbackRouteImport } from './routes/api/connectors.callback'
 import { Route as ApiChatStreamRouteImport } from './routes/api/chat.stream'
 import { Route as AppCIdRouteImport } from './routes/_app.c.$id'
+import { Route as ShareShareIdRouteImport } from './routes/share.$shareId'
 
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
@@ -75,6 +76,11 @@ const AppCIdRoute = AppCIdRouteImport.update({
   path: '/c/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const ShareShareIdRoute = ShareShareIdRouteImport.update({
+  id: '/share/$shareId',
+  path: '/share/$shareId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/api/feedback': typeof ApiFeedbackRoute
   '/c/$id': typeof AppCIdRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/api/feedback': typeof ApiFeedbackRoute
   '/': typeof AppIndexRoute
   '/c/$id': typeof AppCIdRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/api/feedback': typeof ApiFeedbackRoute
   '/_app/': typeof AppIndexRoute
   '/_app/c/$id': typeof AppCIdRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/api/feedback'
     | '/c/$id'
+    | '/share/$shareId'
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
     | '/api/feedback'
     | '/'
     | '/c/$id'
+    | '/share/$shareId'
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | '/api/feedback'
     | '/_app/'
     | '/_app/c/$id'
+    | '/share/$shareId'
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
@@ -159,6 +171,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   ApiFeedbackRoute: typeof ApiFeedbackRoute
+  ShareShareIdRoute: typeof ShareShareIdRoute
   ApiChatStreamRoute: typeof ApiChatStreamRoute
   ApiConnectorsCallbackRoute: typeof ApiConnectorsCallbackRoute
   ApiDatasourcesProcessRoute: typeof ApiDatasourcesProcessRoute
@@ -224,6 +237,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDatasourcesProcessRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/share/$shareId': {
+      id: '/share/$shareId'
+      path: '/share/$shareId'
+      fullPath: '/share/$shareId'
+      preLoaderRoute: typeof ShareShareIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/connectors/callback': {
       id: '/api/connectors/callback'
       path: '/api/connectors/callback'
@@ -265,6 +285,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   ApiFeedbackRoute: ApiFeedbackRoute,
+  ShareShareIdRoute: ShareShareIdRoute,
   ApiChatStreamRoute: ApiChatStreamRoute,
   ApiConnectorsCallbackRoute: ApiConnectorsCallbackRoute,
   ApiDatasourcesProcessRoute: ApiDatasourcesProcessRoute,

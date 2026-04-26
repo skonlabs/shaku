@@ -48,10 +48,7 @@ function SharedResponsePage() {
         )}
 
         <div className="rounded-xl border border-border bg-card px-5 py-4">
-          <MessageContent
-            content={response.assistant_message_content}
-            citations={(response.citations ?? []) as { index: number; title: string; url: string }[]}
-          />
+          <MessageContent content={response.assistant_message_content as string} />
         </div>
 
         <p className="text-center text-xs text-muted-foreground">
