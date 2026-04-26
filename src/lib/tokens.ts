@@ -1,15 +1,33 @@
-// Token estimation for Cloudflare Workers (no WASM js-tiktoken needed).
-// 1 token ≈ 4 characters for English text — close enough for context budget decisions.
-// Actual billing uses provider-reported counts from API responses.
+// Token estimation for Cloudflare Workers (no WASM / tiktoken required).
+//
+// Heuristic (tuned to be conservative — better to slightly over-estimate than
+// blow the model's context window):
+//   - Base ratio: 3.5 chars/token (closer to real BPE for English prose + code
+//     than the old 4.0; code/JSON have higher punctuation density).
+//   - Non-ASCII multiplier (1.6×): CJK and other non-Latin scripts tokenize
+//     to ~1 token per character. We blend by the share of non-ASCII chars.
+//   - Floor of 1 token for any non-empty string.
+//
+// Actual billing uses provider-reported counts from API responses; this is
+// only used for routing/budget decisions where over-estimating is safer.
 
-const CHARS_PER_TOKEN = 4;
+const BASE_CHARS_PER_TOKEN = 3.5;
+const NON_ASCII_MULTIPLIER = 1.6;
+// eslint-disable-next-line no-control-regex
+const NON_ASCII_RE = /[^\x00-\x7F]/g;
 
 export function countTokens(text: string): number {
-  return Math.ceil(text.length / CHARS_PER_TOKEN);
+  if (!text) return 0;
+  const len = text.length;
+  const nonAscii = (text.match(NON_ASCII_RE) ?? []).length;
+  const nonAsciiShare = nonAscii / len;
+  // Effective multiplier: 1.0 for pure ASCII, up to NON_ASCII_MULTIPLIER for all non-ASCII
+  const multiplier = 1 + (NON_ASCII_MULTIPLIER - 1) * nonAsciiShare;
+  return Math.max(1, Math.ceil((len / BASE_CHARS_PER_TOKEN) * multiplier));
 }
 
 export function countTokensMessages(messages: { role: string; content: string }[]): number {
-  // Every message adds ~4 tokens overhead (role framing)
+  // Every message adds ~4 tokens overhead (role framing); +3 for reply priming
   return messages.reduce((sum, m) => sum + countTokens(m.content) + 4, 3);
 }
 

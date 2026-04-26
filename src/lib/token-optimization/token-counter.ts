@@ -1,23 +1,22 @@
 /**
  * TokenCounter — deterministic token counting for Cloudflare Workers.
  *
- * Uses a 4 chars-per-token approximation consistent with the rest of the
- * project (src/lib/tokens.ts). No WASM / tiktoken required.
+ * Delegates to the canonical heuristic in src/lib/tokens.ts (3.5 chars/token
+ * with non-ASCII multiplier) so all budget decisions in the codebase agree.
  */
 
-const CHARS_PER_TOKEN = 4;
+import { countTokens } from "@/lib/tokens";
 
 /** Per-provider framing overhead (tokens added per message for role metadata). */
 const MSG_OVERHEAD: Record<string, number> = {
-  openai: 4,     // per OpenAI token-counting cookbook
-  anthropic: 5,  // slightly higher for Anthropic's XML-style framing
+  openai: 4, // per OpenAI token-counting cookbook
+  anthropic: 5, // slightly higher for Anthropic's XML-style framing
 };
 
 export class TokenCounter {
   /** Count tokens in a single text string. */
   count(text: string): number {
-    if (!text) return 0;
-    return Math.max(1, Math.ceil(text.length / CHARS_PER_TOKEN));
+    return countTokens(text ?? "");
   }
 
   /**
@@ -38,9 +37,10 @@ export class TokenCounter {
 
   /**
    * Convert a token budget into a safe character limit.
-   * Uses a slightly conservative 3.8 chars-per-token ratio.
+   * Uses a conservative 3.0 chars-per-token ratio so the resulting char cap
+   * never exceeds the token budget when re-counted.
    */
   estimateCharBudget(tokenBudget: number): number {
-    return Math.floor(tokenBudget * 3.8);
+    return Math.floor(tokenBudget * 3.0);
   }
 }
