@@ -850,11 +850,46 @@ async function getRuntimeKeys(): Promise<{ anthropic?: string; openai?: string }
     string | undefined
   >;
   const cfEnv = await getCloudflareEnv();
-  const mergedEnv = normalizeEnvKeys({ ...process.env, ...runtimeEnv, ...cfEnv });
+  const fileEnv = await getDevFileEnv();
+  const mergedEnv = normalizeEnvKeys({ ...fileEnv, ...process.env, ...runtimeEnv, ...cfEnv });
   return {
     anthropic: mergedEnv.ANTHROPIC_API_KEY,
     openai: mergedEnv.OPENAI_API_KEY,
   };
+}
+
+async function getDevFileEnv(): Promise<Record<string, string | undefined>> {
+  try {
+    const [{ readFile }, { join }] = await Promise.all([
+      import("node:fs/promises"),
+      import("node:path"),
+    ]);
+    const cwd = process.cwd?.() ?? ".";
+    for (const file of [join(cwd, ".dev.vars"), join(cwd, "dist/server/.dev.vars")]) {
+      try {
+        return parseEnvFile(await readFile(file, "utf8"));
+      } catch {
+        // Try the next dev-only location.
+      }
+    }
+  } catch {
+    // Non-Node runtimes use Cloudflare/process env instead.
+  }
+  return {};
+}
+
+function parseEnvFile(contents: string): Record<string, string | undefined> {
+  const parsed: Record<string, string | undefined> = {};
+  for (const line of contents.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator === -1) continue;
+    const key = trimmed.slice(0, separator).trim();
+    const value = trimmed.slice(separator + 1).trim().replace(/^['"]|['"]$/g, "");
+    if (key && value) parsed[key] = value;
+  }
+  return parsed;
 }
 
 function normalizeEnvKeys(env: Record<string, string | undefined>): Record<string, string | undefined> {
