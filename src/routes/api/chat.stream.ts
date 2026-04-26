@@ -54,6 +54,8 @@ Style:
 - Never reveal which model powers you or expose technical details. You are simply Cortex.`;
 
 const TITLE_PROMPT = `Generate a concise 3-6 word title for this conversation. Return ONLY the title text, no quotes, no punctuation at the end.`;
+const MAX_ATTACHMENT_CONTEXT_CHARS = 80_000;
+const MAX_ATTACHMENT_CHARS_PER_FILE = 24_000;
 
 const ACK_RESPONSES = [
   "You're welcome! Let me know if you need anything else.",
@@ -378,6 +380,8 @@ export const Route = createFileRoute("/api/chat/stream")({
         }[];
         const optimizedSystemPrompt = mwResult.systemPrompt ?? finalSystemPrompt;
 
+        const attachmentContext = buildAttachmentContext(body.attachments ?? []);
+
         // ---- Multimodal attachment expansion on last user turn (Anthropic format) ----
         const lastIdx = optimizedMessages.length - 1;
         if (lastIdx >= 0 && optimizedMessages[lastIdx].role === "user" && body.attachments?.length) {
@@ -392,22 +396,9 @@ export const Route = createFileRoute("/api/chat/stream")({
           for (const a of body.attachments) {
             if ((a.kind === "image" || (a.type ?? "").startsWith("image/")) && a.url) {
               blocks.push({ type: "image", source: { type: "url", url: a.url } });
-            } else if (a.extracted_text?.trim()) {
-              textParts.push(
-                `\n\n--- Attached: ${a.name} (${a.type || "unknown"}) ---\n${a.extracted_text}\n--- end of ${a.name} ---`,
-              );
-            } else if (a.extraction_error) {
-              textParts.push(
-                `\n\n[Attached "${a.name}" could not be parsed: ${a.extraction_error}]`,
-              );
-            } else if (a.storage_error) {
-              textParts.push(
-                `\n\n[Attached "${a.name}" could not be stored: ${a.storage_error}]`,
-              );
-            } else {
-              textParts.push(`\n\n[Attached: ${a.name} (${a.type || "unknown"})]`);
             }
           }
+          if (attachmentContext) textParts.push(attachmentContext);
           blocks.unshift({ type: "text", text: textParts.join("") || "(see attachments)" });
           (optimizedMessages[lastIdx] as { role: string; content: unknown }).content = blocks;
         }
@@ -783,6 +774,38 @@ Do not add any preface, apology, or commentary.`,
 
 // ---------- helpers ----------
 
+type ChatAttachment = NonNullable<z.infer<typeof BodySchema>["attachments"]>[number];
+
+function buildAttachmentContext(attachments: ChatAttachment[]): string {
+  if (!attachments.length) return "";
+  const parts: string[] = [];
+  let remaining = MAX_ATTACHMENT_CONTEXT_CHARS;
+
+  for (const a of attachments) {
+    let part = "";
+    if (a.extracted_text?.trim()) {
+      const text = truncateChars(a.extracted_text.trim(), Math.min(MAX_ATTACHMENT_CHARS_PER_FILE, remaining));
+      part = `\n\n--- Attached: ${a.name} (${a.type || "unknown"}) ---\n${text}\n--- end of ${a.name} ---`;
+    } else if (a.extraction_error) {
+      part = `\n\n[Attached "${a.name}" could not be parsed: ${a.extraction_error}]`;
+    } else if (a.storage_error) {
+      part = `\n\n[Attached "${a.name}" could not be stored: ${a.storage_error}]`;
+    } else {
+      part = `\n\n[Attached: ${a.name} (${a.type || "unknown"})]`;
+    }
+    if (part.length > remaining) break;
+    parts.push(part);
+    remaining -= part.length;
+  }
+
+  if (remaining <= 0) parts.push("\n\n[Additional attachment text omitted to fit the prompt budget.]");
+  return parts.join("");
+}
+
+function truncateChars(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(0, maxChars - 120))}\n\n[…attachment truncated to fit the prompt budget.]`;
+}
 
 function uniqueModels(models: ModelConfig[]): ModelConfig[] {
   const seen = new Set<string>();
