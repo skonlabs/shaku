@@ -459,7 +459,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                 if (candidateModel.provider === "anthropic") {
                   const apiKey = runtimeKeys.anthropic;
                   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
-                  const anthropic = new Anthropic({ apiKey });
+                  const anthropic = new Anthropic({ apiKey, ...gatewayOptionsFor(apiKey) });
                   const turnMessages = [...optimizedMessages];
                   let stopReason: string | null = null;
 
@@ -541,7 +541,7 @@ Do not add any preface, apology, or commentary.`,
                 } else {
                   const apiKey = runtimeKeys.openai;
                   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
-                  const openai = new OpenAI({ apiKey });
+                  const openai = new OpenAI({ apiKey, ...gatewayOptionsFor(apiKey) });
 
                   const oaiMessages = [
                     { role: "system" as const, content: optimizedSystemPrompt },
@@ -762,7 +762,7 @@ Do not add any preface, apology, or commentary.`,
                   try {
                     const titleApiKey = getRuntimeKeys().anthropic;
                     if (!titleApiKey) return;
-                    const anthropic = new Anthropic({ apiKey: titleApiKey });
+                    const anthropic = new Anthropic({ apiKey: titleApiKey, ...gatewayOptionsFor(titleApiKey) });
                     const titleRes = await anthropic.messages.create({
                       model: HAIKU_MODEL_ID,
                       max_tokens: 32,
@@ -844,15 +844,42 @@ function uniqueModels(models: ModelConfig[]): ModelConfig[] {
   });
 }
 
+// Lovable AI Gateway base URL — when only LOVABLE_API_KEY is available
+// (typical in dev sandbox where raw provider secrets aren't injected into
+// the dev-server process), we proxy provider SDK calls through this gateway
+// using the Lovable key. The gateway speaks both Anthropic and OpenAI wire
+// formats at /v1.
+export const LOVABLE_GATEWAY_BASE_URL = "https://ai.gateway.lovable.dev/v1";
+
+function getLovableKey(): string | undefined {
+  const runtimeEnv = ((globalThis as Record<string, unknown>).__runtimeEnv ?? {}) as Record<
+    string,
+    string | undefined
+  >;
+  return runtimeEnv.LOVABLE_API_KEY ?? process.env.LOVABLE_API_KEY;
+}
+
 function getRuntimeKeys(): { anthropic?: string; openai?: string } {
   const runtimeEnv = ((globalThis as Record<string, unknown>).__runtimeEnv ?? {}) as Record<
     string,
     string | undefined
   >;
+  const lovable = getLovableKey();
   return {
-    anthropic: runtimeEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY,
-    openai: runtimeEnv.OPENAI_API_KEY ?? process.env.OPENAI_API_KEY,
+    anthropic: runtimeEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? lovable,
+    openai: runtimeEnv.OPENAI_API_KEY ?? process.env.OPENAI_API_KEY ?? lovable,
   };
+}
+
+// Returns extra SDK options to route through the Lovable gateway when the
+// provided apiKey is actually the Lovable key (i.e. no native provider key
+// was found). Caller passes the resolved apiKey it intends to use.
+function gatewayOptionsFor(apiKey: string | undefined): { baseURL?: string } {
+  const lovable = getLovableKey();
+  if (apiKey && lovable && apiKey === lovable) {
+    return { baseURL: LOVABLE_GATEWAY_BASE_URL };
+  }
+  return {};
 }
 
 function modelHasRuntimeKey(
