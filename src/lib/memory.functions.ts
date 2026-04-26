@@ -69,6 +69,8 @@ export const deleteMemory = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+// TODO: deleteAllMemories is a destructive admin operation — ensure it is only
+// exposed in admin-only UI routes and never surfaced to general users.
 export const deleteAllMemories = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(z.object({ confirm: z.literal("DELETE") }))
@@ -110,30 +112,20 @@ export const getMemoryStats = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    const { data: convs } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("user_id", userId);
-
-    const convIds = (convs ?? []).map((c: { id: string }) => c.id);
-
-    if (convIds.length === 0) {
-      return { totalResponses: 0, responsesWithMemory: 0, totalMemoriesInjected: 0, avgMemoriesPerResponse: 0 };
-    }
-
+    // Query messages by user_id via join to avoid URL length limits from .in(convIds)
     const [{ count: totalResponses }, { data: withMemory }] = await Promise.all([
       supabase
         .from("messages")
         .select("id", { count: "exact", head: true })
-        .in("conversation_id", convIds)
         .eq("role", "assistant")
-        .eq("is_active", true),
+        .eq("is_active", true)
+        .eq("conversations.user_id", userId),
       supabase
         .from("messages")
         .select("metadata")
-        .in("conversation_id", convIds)
         .eq("role", "assistant")
         .eq("is_active", true)
+        .eq("conversations.user_id", userId)
         .not("metadata->memories_used", "is", null),
     ]);
 

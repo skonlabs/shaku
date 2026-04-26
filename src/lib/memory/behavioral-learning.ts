@@ -66,6 +66,8 @@ export async function processNegativeFeedback(
 }
 
 // Scenario 2: Process correction
+// TODO: processCorrection is exported but not yet wired to any caller in the pipeline.
+// Wire it to the feedback route or a correction-detection step before enabling.
 export async function processCorrection(
   userId: string,
   conversationId: string,
