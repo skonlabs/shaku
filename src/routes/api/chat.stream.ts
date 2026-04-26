@@ -845,7 +845,11 @@ function uniqueModels(models: ModelConfig[]): ModelConfig[] {
   });
 }
 
-async function getRuntimeKeys(): Promise<{ anthropic?: string; openai?: string }> {
+async function getRuntimeKeys(): Promise<{
+  anthropic?: string;
+  openai?: string;
+  sources: Record<string, boolean>;
+}> {
   const runtimeEnv = ((globalThis as Record<string, unknown>).__runtimeEnv ?? {}) as Record<
     string,
     string | undefined
@@ -856,6 +860,16 @@ async function getRuntimeKeys(): Promise<{ anthropic?: string; openai?: string }
   return {
     anthropic: mergedEnv.ANTHROPIC_API_KEY,
     openai: mergedEnv.OPENAI_API_KEY,
+    sources: {
+      fileAnthropic: Boolean(fileEnv.ANTHROPIC_API_KEY),
+      fileOpenAI: Boolean(fileEnv.OPENAI_API_KEY),
+      processAnthropic: Boolean(process.env.ANTHROPIC_API_KEY),
+      processOpenAI: Boolean(process.env.OPENAI_API_KEY),
+      runtimeAnthropic: Boolean(runtimeEnv.ANTHROPIC_API_KEY),
+      runtimeOpenAI: Boolean(runtimeEnv.OPENAI_API_KEY),
+      cfAnthropic: Boolean(cfEnv.ANTHROPIC_API_KEY),
+      cfOpenAI: Boolean(cfEnv.OPENAI_API_KEY),
+    },
   };
 }
 
