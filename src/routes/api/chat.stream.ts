@@ -621,7 +621,14 @@ Do not add any preface, apology, or commentary.`,
           });
 
           // ---- Persist assistant message ----
+          // Append a visible truncation note so the user knows the reply was cut.
+          let visibleFinal = visible;
           if (hitFinalCap) {
+            const note = "\n\n_…response continues — say \"continue\" for more._";
+            if (!visibleFinal.endsWith(note)) {
+              visibleFinal = visibleFinal + note;
+              send("delta", { text: note });
+            }
             const cont = "Continue generating";
             if (!followups.some((f) => f.toLowerCase().includes("continue"))) {
               followups.unshift(cont);
@@ -631,7 +638,7 @@ Do not add any preface, apology, or commentary.`,
 
           let assistantId: string | null = null;
           let assistantCreatedAt: string | null = null;
-          if (visible.trim().length > 0) {
+          if (visibleFinal.trim().length > 0) {
             const metadata: Record<string, unknown> = {
               model: activeModel.id,
               confidence,
@@ -655,7 +662,7 @@ Do not add any preface, apology, or commentary.`,
               .insert({
                 conversation_id: convo.id,
                 role: "assistant",
-                content: visible,
+                content: visibleFinal,
                 metadata,
               })
               .select("id, created_at")
