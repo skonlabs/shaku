@@ -1,11 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { HAIKU_MODEL_ID } from "@/lib/llm/registry";
-
-const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 const HARD_MAX_BYTES = 25 * 1024 * 1024; // 25 MB ceiling
 const BUCKET = "chat-uploads";
@@ -84,8 +80,7 @@ export const uploadChatFile = createServerFn({ method: "POST" })
     // ---- Upload to storage (can fail independently of parsing) ----
     let signedUrl: string | null = null;
     let storageError: string | null = null;
-    const storageClient = getStorageClient(supabase);
-    const { error: upErr } = await storageClient.storage.from(BUCKET).upload(path, bytes, {
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, bytes, {
       contentType: normalizedType,
       upsert: false,
     });
@@ -94,7 +89,7 @@ export const uploadChatFile = createServerFn({ method: "POST" })
       console.error("[uploadChatFile]", upErr);
       storageError = formatStorageError(upErr);
     } else {
-      const { data: signed, error: signErr } = await storageClient.storage
+      const { data: signed, error: signErr } = await supabase.storage
         .from(BUCKET)
         .createSignedUrl(path, 60 * 60 * 24 * 7);
       if (signErr || !signed) {
@@ -123,13 +118,6 @@ export const uploadChatFile = createServerFn({ method: "POST" })
   });
 
 // ---------------- helpers ----------------
-
-function getStorageClient(userClient: SupabaseClient): SupabaseClient {
-  if (!SUPABASE_SERVICE_ROLE_KEY) return userClient;
-  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
-}
 
 type Kind = "pdf" | "docx" | "spreadsheet" | "text" | "audio" | "image" | "other";
 
