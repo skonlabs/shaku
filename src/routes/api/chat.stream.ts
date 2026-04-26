@@ -669,6 +669,7 @@ Do not add any preface, apology, or commentary.`,
                   .from("usage_events")
                   .insert({
                     user_id: userId,
+                    event_type: "chat",
                     model_used: activeModel.id,
                     tokens_in: totalInputTokens,
                     tokens_out: totalOutputTokens,

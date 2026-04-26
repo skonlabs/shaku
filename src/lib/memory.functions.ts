@@ -112,20 +112,18 @@ export const getMemoryStats = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    // Query messages by user_id via join to avoid URL length limits from .in(convIds)
+    // RLS on messages (via conversations.user_id = auth.uid()) scopes these to the current user
     const [{ count: totalResponses }, { data: withMemory }] = await Promise.all([
       supabase
         .from("messages")
         .select("id", { count: "exact", head: true })
         .eq("role", "assistant")
-        .eq("is_active", true)
-        .eq("conversations.user_id", userId),
+        .eq("is_active", true),
       supabase
         .from("messages")
         .select("metadata")
         .eq("role", "assistant")
         .eq("is_active", true)
-        .eq("conversations.user_id", userId)
         .not("metadata->memories_used", "is", null),
     ]);
 

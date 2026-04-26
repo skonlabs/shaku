@@ -19,17 +19,17 @@ export const Route = createFileRoute("/api/connectors/callback")({
 
         // OAuth provider returned an error
         if (error) {
-          return redirect(`/chat?connector_error=${encodeURIComponent(error)}`);
+          return redirect(`/?connector_error=${encodeURIComponent(error)}`);
         }
 
         if (!code || !state) {
-          return redirect("/chat?connector_error=missing_params");
+          return redirect("/?connector_error=missing_params");
         }
 
         // Validate service param presence — it must be in the query string
         if (!service) {
           console.warn("[connectors.callback] Missing service param in callback URL");
-          return redirect("/chat?error=oauth_missing_service");
+          return redirect("/?error=oauth_missing_service");
         }
 
         // Use service-role client for the callback: the oauth_state UUID acts as the CSRF
@@ -51,13 +51,13 @@ export const Route = createFileRoute("/api/connectors/callback")({
             .maybeSingle();
 
           if (!connector) {
-            return redirect("/chat?connector_error=invalid_state");
+            return redirect("/?connector_error=invalid_state");
           }
 
           // Validate that the service in the URL matches the service stored in the DB
           if (connector.service !== service) {
             console.warn(`[connectors.callback] service mismatch: URL="${service}" DB="${connector.service}"`);
-            return redirect("/chat?error=oauth_state_mismatch");
+            return redirect("/?error=oauth_state_mismatch");
           }
 
           const userId = connector.user_id;
@@ -110,11 +110,11 @@ export const Route = createFileRoute("/api/connectors/callback")({
             await syncPromise;
           }
 
-          return redirect("/chat?connector_connected=true");
+          return redirect("/?connector_connected=true");
         } catch (e) {
           const msg = e instanceof Error ? e.message : "unknown";
           console.error("[connectors.callback]", msg);
-          return redirect(`/chat?connector_error=${encodeURIComponent("Connection failed")}`);
+          return redirect(`/?connector_error=${encodeURIComponent("Connection failed")}`);
         }
       },
     },

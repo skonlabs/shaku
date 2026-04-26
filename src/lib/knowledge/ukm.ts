@@ -40,7 +40,21 @@ export async function loadUkm(
     .eq("user_id", userId)
     .maybeSingle();
 
-  return (data as UserKnowledgeModel | null) ?? emptyUkm();
+  if (!data) return emptyUkm();
+
+  // DB stores snake_case columns; map to camelCase TypeScript interface
+  return {
+    identity: (data.identity as UserKnowledgeModel["identity"]) ?? {},
+    activeProjects: (data.active_projects as string[]) ?? [],
+    relationships: (data.relationships as UserKnowledgeModel["relationships"]) ?? [],
+    communicationStyle: (data.communication_style as UserKnowledgeModel["communicationStyle"]) ?? {},
+    preferences: (data.preferences as UserKnowledgeModel["preferences"]) ?? {},
+    antiPreferences: (data.anti_preferences as string[]) ?? [],
+    corrections: (data.corrections as string[]) ?? [],
+    responseStyleDislikes: (data.response_style_dislikes as string[]) ?? [],
+    expertise: (data.expertise as string[]) ?? [],
+    correctionCount: (data.correction_count as number) ?? 0,
+  };
 }
 
 export async function updateUkmFromMemory(
@@ -56,7 +70,20 @@ export async function updateUkmFromMemory(
   const updated = applyDiff(ukm, diff);
   try {
     await supabase.from("user_knowledge_models").upsert(
-      { user_id: userId, ...updated, updated_at: new Date().toISOString() },
+      {
+        user_id: userId,
+        identity: updated.identity,
+        active_projects: updated.activeProjects,
+        relationships: updated.relationships,
+        communication_style: updated.communicationStyle,
+        preferences: updated.preferences,
+        anti_preferences: updated.antiPreferences,
+        corrections: updated.corrections,
+        response_style_dislikes: updated.responseStyleDislikes,
+        expertise: updated.expertise,
+        correction_count: updated.correctionCount,
+        updated_at: new Date().toISOString(),
+      },
       { onConflict: "user_id" },
     );
   } catch (e) {
