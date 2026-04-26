@@ -376,6 +376,19 @@ function MessageRow({
                 {showOriginal ? "Show new response" : "Previous response"}
               </button>
             )}
+            {(() => {
+              const tin = message.metadata?.tokens_in as number | undefined;
+              const tout = message.metadata?.tokens_out as number | undefined;
+              if (!tin && !tout) return null;
+              return (
+                <span
+                  title={`Input: ${tin ?? 0} tokens · Output: ${tout ?? 0} tokens`}
+                  className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                >
+                  {fmtTok(tin)}↑ {fmtTok(tout)}↓
+                </span>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -517,4 +530,10 @@ function MemoryUsedChip({ memories }: { memories: MemoryChipEntry[] }) {
       </PopoverContent>
     </Popover>
   );
+}
+
+function fmtTok(n: number | undefined): string {
+  if (!n) return "0";
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
 }

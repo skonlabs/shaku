@@ -281,7 +281,11 @@ async function transcribeAudio(bytes: Uint8Array, name: string, mime: string): P
 
 async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("Image OCR unavailable right now.");
+  if (!apiKey) {
+    // Return a placeholder so the upload succeeds; the image is still stored and
+    // can be passed directly to multimodal models that have vision capability.
+    return `(Image file: ${name} — text extraction unavailable, but the image will be visible to the AI.)`;
+  }
 
   const lowerName = name.toLowerCase();
   const lowerMime = (mime || "").toLowerCase();

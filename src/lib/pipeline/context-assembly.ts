@@ -199,10 +199,12 @@ function buildRetrievalBlock(chunks: RetrievedChunk[], tokenBudget: number): str
 
 function buildMemoryBlock(memories: MemoryEntry[], tokenBudget: number): string {
   const charBudget = tokenBudget * 4;
+  // Rank by confidence descending so highest-quality memories survive truncation.
+  const ranked = [...memories].sort((a, b) => b.confidence - a.confidence);
   let used = 0;
   const parts: string[] = [];
 
-  for (const m of memories) {
+  for (const m of ranked) {
     const text = wrapMemory(m.type, m.content);
     if (used + text.length > charBudget) break;
     parts.push(text);

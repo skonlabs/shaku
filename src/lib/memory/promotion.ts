@@ -27,7 +27,7 @@ export async function promoteConversationMemories(
     .eq("is_active", true)
     .in("role", ["user", "assistant"])
     .order("created_at", { ascending: false })
-    .limit(4);
+    .limit(6);
 
   if (!rawMessages || rawMessages.length < 2) return { created: [], suggested: [] };
 
@@ -101,10 +101,7 @@ async function saveMemory(
   // Point superseded (lower-confidence) memories at the new one
   for (const contra of contradictions.filter((c) => c.confidence <= candidate.confidence)) {
     try {
-      await supabase
-        .from("memories")
-        .update({ superseded_by: data.id })
-        .eq("id", contra.id);
+      await supabase.from("memories").update({ superseded_by: data.id }).eq("id", contra.id);
     } catch (e) {
       console.error("[promotion] supersession update failed", contra.id, e);
     }

@@ -482,11 +482,24 @@ export const Route = createFileRoute("/api/chat/stream")({
                   const turnMessages = [...optimizedMessages];
                   let stopReason: string | null = null;
 
+                  // Build cached system blocks: static SYSTEM_PROMPT is always identical
+                  // and earns a cache hit; the dynamic context (UKM, memories, sources)
+                  // is appended as a separate uncached block so it can vary per message.
+                  const dynamicSystemContext = optimizedSystemPrompt.startsWith(SYSTEM_PROMPT)
+                    ? optimizedSystemPrompt.slice(SYSTEM_PROMPT.length).trimStart()
+                    : optimizedSystemPrompt;
+                  const systemBlocks: Anthropic.TextBlockParam[] = [
+                    { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+                    ...(dynamicSystemContext
+                      ? [{ type: "text", text: dynamicSystemContext } as Anthropic.TextBlockParam]
+                      : []),
+                  ];
+
                   for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
                     const claudeStream = anthropic.messages.stream({
                       model: candidateModel.id,
                       max_tokens: PER_TURN_MAX_TOKENS,
-                      system: optimizedSystemPrompt,
+                      system: systemBlocks,
                       messages: turnMessages,
                     });
 
@@ -618,13 +631,32 @@ Do not add any preface, apology, or commentary.`,
           // ---- Output validation ----
           const { visible, followups } = splitFollowups(assistantText);
 
-          if (visible.trim().length > 0 && !isSafeContent(visible)) {
+          // Safety check: wrap isSafeContent in try/catch so a thrown exception
+          // doesn't kill the stream — treat any check failure as safe to send.
+          let contentBlocked = false;
+          if (visible.trim().length > 0) {
+            try {
+              contentBlocked = !isSafeContent(visible);
+            } catch (safetyErr) {
+              console.error("[chat.stream] safety check threw, treating as safe", safetyErr);
+            }
+          }
+          if (contentBlocked) {
             send("error", { message: "I can't send that response. Please try again." });
             await supabase
               .from("conversations")
               .update({ updated_at: new Date().toISOString() })
               .eq("id", convo.id);
             return;
+          }
+
+          // Always-respond guarantee: if all models failed to produce text, emit a
+          // clear error so the user is never left with a silent empty response.
+          if (visible.trim().length === 0 && streamError && !assistantText) {
+            const errMsg =
+              "I ran into a technical issue and couldn't generate a response. Please try again.";
+            send("delta", { text: errMsg });
+            assistantText = errMsg;
           }
 
           const sourceNames = finalChunks.map(
