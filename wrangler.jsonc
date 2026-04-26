@@ -5,7 +5,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/worker.ts",
   "secrets": {
-    "required": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
+    "required": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "SUPABASE_SERVICE_ROLE_KEY"]
   },
   "triggers": {
     // Connector sync polling — matches POLLING_INTERVALS minimum (5 min)
