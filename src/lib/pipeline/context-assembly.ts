@@ -84,11 +84,16 @@ export async function assembleContext(opts: {
   const memoryBlock = buildMemoryBlock(memories, TOKEN_BUDGET_MEMORY);
   const historyMessages = truncateHistory(convHistory, TOKEN_BUDGET_HISTORY);
 
+  const summaryBlock = convState.summary
+    ? `Conversation summary (earlier messages): ${convState.summary}`
+    : "";
+
   // Build system prompt
   const systemPrompt = [
     systemInstructions,
     ukmSummary ? `\n## About the user\n${ukmSummary}` : "",
     antiPrefs ? `\n## Avoid (user dislikes)\n${antiPrefs}` : "",
+    summaryBlock ? `\n## Earlier conversation\n${summaryBlock}` : "",
     factsBlock ? `\n## Conversation context\n${factsBlock}` : "",
     memoryBlock ? `\n## Memory\n${memoryBlock}` : "",
     retrievalBlock ? `\n## Sources\n${retrievalBlock}` : "",

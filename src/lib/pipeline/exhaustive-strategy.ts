@@ -1,4 +1,4 @@
-// Exhaustive Response Strategy — triggered when retrieval quality < 0.4.
+// Exhaustive Response Strategy — triggered when retrieval quality < 0.015.
 // The AI NEVER says "I don't know." It exhausts 4 escalating levels.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -27,7 +27,7 @@ export async function exhaustiveRetrieve(
     includeConversationUploads: true,
   });
 
-  if (level1.qualityScore >= 0.4) {
+  if (level1.qualityScore >= 0.015) {
     return { chunks: level1.chunks, level: 1, webSearched: false };
   }
 
@@ -94,19 +94,43 @@ Query: ${query}`,
 }
 
 async function searchConversationHistory(
-  userId: string,
+  _userId: string,
   query: string,
   supabase: SupabaseClient,
 ): Promise<RetrievedChunk[]> {
+  // Build keyword fragments from the query for broad ilike matching.
+  // Limit to words ≥ 4 chars to avoid stop-word noise.
+  const keywords = query
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 4)
+    .slice(0, 5);
+
+  if (keywords.length === 0) return [];
+
+  // RLS scopes to the authenticated user's conversations automatically.
   const { data } = await supabase
     .from("messages")
-    .select("id, content, conversation_id, role, created_at, conversations!inner(user_id)")
-    .eq("conversations.user_id", userId)
+    .select("id, content, conversation_id, role, created_at")
     .eq("is_active", true)
-    .textSearch("search_vector", query, { config: "english" })
-    .limit(10);
+    .ilike("content", `%${keywords[0]}%`)
+    .limit(15);
 
-  return (data ?? []).map((m, i) => ({
+  if (!data?.length) return [];
+
+  // Re-rank by keyword overlap
+  const scored = data
+    .map((m) => {
+      const lower = m.content.toLowerCase();
+      const hits = keywords.filter((k) => lower.includes(k)).length;
+      return { m, hits };
+    })
+    .filter(({ hits }) => hits > 0)
+    .sort((a, b) => b.hits - a.hits)
+    .slice(0, 10);
+
+  return scored.map(({ m }, i) => ({
     id: `hist-${m.id}`,
     sourceType: "conversation_history",
     sourceId: m.conversation_id,

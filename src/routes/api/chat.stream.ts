@@ -42,14 +42,31 @@ const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_
 const SUPABASE_PUBLISHABLE_KEY =
   process.env.SUPABASE_PUBLISHABLE_KEY ?? (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
 
-const SYSTEM_PROMPT = `You are Cortex, a helpful, warm, and precise personal AI assistant.
+const SYSTEM_PROMPT = `You are Cortex, a highly capable personal AI assistant. You are direct, knowledgeable, and genuinely useful.
 
-Style:
-- Conversational and natural. Skip hedging and disclaimers.
-- Use Markdown when it helps (lists, code blocks, tables). Use plain prose for short answers.
-- Be concise; expand when asked.
-- If you're uncertain, say what you'd need to verify, then offer your best informed take. Never refuse with "I don't know."
-- Never reveal which model powers you or expose technical details. You are simply Cortex.`;
+## How to respond
+- Lead with the answer. No preamble like "Great question!" or "Certainly!".
+- Be specific: use exact names, numbers, dates when available in sources or your knowledge.
+- Think step-by-step for complex questions; show reasoning when it adds clarity.
+- Never say "I don't know" or refuse outright. Give your best-informed answer and note what you'd verify if uncertain.
+- If the question is ambiguous, answer the most likely interpretation and briefly note your assumption.
+
+## Using provided sources
+- When <source> blocks appear, ground your answer in them and cite the source name inline, e.g. [Document Name].
+- Synthesize across multiple sources; don't just quote one verbatim.
+- If sources contradict each other, note the discrepancy and give your assessment.
+- Distinguish clearly between what sources say versus your general knowledge.
+
+## Response quality
+- Use Markdown when structure helps: code blocks, tables, numbered steps, bullet lists.
+- Use plain prose for conversational or simple answers.
+- Match length to complexity: one sentence for simple facts, full structure for research tasks.
+- For multi-part questions, address each part in order.
+- Proofread before responding: check logic, completeness, and formatting.
+
+## Identity
+- Never reveal which AI model powers you or any technical implementation details.
+- You are simply Cortex.`;
 
 const TITLE_PROMPT = `Generate a concise 3-6 word title for this conversation. Return ONLY the title text, no quotes, no punctuation at the end.`;
 const MAX_ATTACHMENT_CONTEXT_CHARS = 80_000;
@@ -279,28 +296,30 @@ export const Route = createFileRoute("/api/chat/stream")({
         };
         const intent = intentResult.intent;
 
-        // ---- Parallel: retrieval + query rewrite ----
+        // ---- Query rewrite first, then retrieve with the better query ----
+        // Sequential so retrieval uses the rewritten query directly.
         const shouldRetrieve = currentUserMessage.trim().length > 10 && intent !== "acknowledgment";
-        const [retrievalResult, rewrittenQuery] = await Promise.all([
-          shouldRetrieve
-            ? retrieve(userId, currentUserMessage, intent, convo.id, supabase, { topK: 20 })
-            : Promise.resolve({
-                chunks: [],
-                sourcesSearched: [],
-                qualityScore: 1,
-                webSearchTriggered: false,
-              }),
-          rewriteQuery(currentUserMessage, intentResult),
-        ]);
+        const rewrittenQuery = shouldRetrieve
+          ? await rewriteQuery(currentUserMessage, intentResult)
+          : currentUserMessage;
+        const retrievalQuery = rewrittenQuery || currentUserMessage;
 
-        // ---- Exhaustive strategy if retrieval quality is low ----
+        const retrievalResult = shouldRetrieve
+          ? await retrieve(userId, retrievalQuery, intent, convo.id, supabase, { topK: 20 })
+          : { chunks: [], sourcesSearched: [], qualityScore: 1, webSearchTriggered: false };
+
+        // ---- Exhaustive strategy when retrieval is thin ----
+        // RRF scores max out at ~0.033 (1/(60+1) + 1/(60+1)); threshold 0.015 means
+        // only weak vector-only matches at rank >15 were found — worth escalating.
         let finalChunks = retrievalResult.chunks;
-        // Trigger exhaustive when quality is low OR retrieval is too thin to ground a reply.
-        if (shouldRetrieve && (retrievalResult.qualityScore < 0.4 || retrievalResult.chunks.length < 3)) {
+        if (
+          shouldRetrieve &&
+          (retrievalResult.qualityScore < 0.015 || retrievalResult.chunks.length < 3)
+        ) {
           const exhaustive = await exhaustiveRetrieve(
             userId,
             convo.id,
-            rewrittenQuery || currentUserMessage,
+            retrievalQuery,
             intent,
             supabase,
           );
@@ -314,7 +333,7 @@ export const Route = createFileRoute("/api/chat/stream")({
           userId,
           conversationId: convo.id,
           projectId,
-          currentMessage: rewrittenQuery || currentUserMessage,
+          currentMessage: retrievalQuery,
           retrievedChunks: finalChunks,
           supabase,
           systemInstructions: SYSTEM_PROMPT,
@@ -623,7 +642,7 @@ Do not add any preface, apology, or commentary.`,
           // Append a visible truncation note so the user knows the reply was cut.
           let visibleFinal = visible;
           if (hitFinalCap) {
-            const note = "\n\n_…response continues — say \"continue\" for more._";
+            const note = '\n\n_…response continues — say "continue" for more._';
             if (!visibleFinal.endsWith(note)) {
               visibleFinal = visibleFinal + note;
               send("delta", { text: note });
@@ -898,13 +917,18 @@ function parseEnvFile(contents: string): Record<string, string | undefined> {
     const separator = trimmed.indexOf("=");
     if (separator === -1) continue;
     const key = trimmed.slice(0, separator).trim();
-    const value = trimmed.slice(separator + 1).trim().replace(/^['"]|['"]$/g, "");
+    const value = trimmed
+      .slice(separator + 1)
+      .trim()
+      .replace(/^['"]|['"]$/g, "");
     if (key && value) parsed[key] = value;
   }
   return parsed;
 }
 
-function normalizeEnvKeys(env: Record<string, string | undefined>): Record<string, string | undefined> {
+function normalizeEnvKeys(
+  env: Record<string, string | undefined>,
+): Record<string, string | undefined> {
   const normalized: Record<string, string | undefined> = {};
   for (const [rawKey, rawValue] of Object.entries(env)) {
     const key = rawKey.trim();
