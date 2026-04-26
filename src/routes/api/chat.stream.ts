@@ -541,7 +541,7 @@ Do not add any preface, apology, or commentary.`,
                 } else {
                   const apiKey = runtimeKeys.openai;
                   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
-                  const openai = new OpenAI({ apiKey });
+                  const openai = new OpenAI({ apiKey, ...gatewayOptionsFor(apiKey) });
 
                   const oaiMessages = [
                     { role: "system" as const, content: optimizedSystemPrompt },
