@@ -69,19 +69,6 @@ export const deleteMemory = createServerFn({ method: "POST" })
     return { success: true };
   });
 
-// TODO: wire to UI — currently unused. deleteAllMemories is a destructive admin
-// operation — ensure it is only exposed in admin-only UI routes and never
-// surfaced to general users.
-export const deleteAllMemories = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ confirm: z.literal("DELETE") }))
-  .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const { error } = await supabase.from("memories").delete().eq("user_id", userId);
-    if (error) throw new Error("Couldn't delete memories.");
-    return { success: true };
-  });
-
 export const toggleMemory = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(z.object({ enabled: z.boolean() }))

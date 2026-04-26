@@ -13,7 +13,6 @@ const ALLOWED_EXTENSIONS = new Set([
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB for datasource files
 
-// TODO: wire to UI — currently unused
 export const listFolders = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -27,7 +26,6 @@ export const listFolders = createServerFn({ method: "POST" })
     return { folders: data ?? [], error: null };
   });
 
-// TODO: wire to UI — currently unused
 export const createFolder = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
@@ -47,7 +45,6 @@ export const createFolder = createServerFn({ method: "POST" })
     return { folder: row };
   });
 
-// TODO: wire to UI — currently unused
 export const deleteFolder = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(z.object({ id: z.string().uuid() }))
@@ -159,35 +156,5 @@ export const deleteDatasourceFile = createServerFn({ method: "POST" })
     // Delete file record
     await supabase.from("datasource_files").delete().eq("id", data.id).eq("user_id", userId);
 
-    return { success: true };
-  });
-
-// TODO: wire to UI — currently unused
-export const updateDatasourceFileStatus = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator(
-    z.object({
-      id: z.string().uuid(),
-      status: z.enum(["uploading", "processing", "ready", "error"]),
-      chunk_count: z.number().int().min(0).optional(),
-      content_hash: z.string().optional(),
-    }),
-  )
-  .handler(async ({ context, data }) => {
-    const { supabase, userId } = context;
-    const update: Record<string, unknown> = {
-      status: data.status,
-      last_refreshed_at: new Date().toISOString(),
-    };
-    if (data.chunk_count !== undefined) update.chunk_count = data.chunk_count;
-    if (data.content_hash) update.content_hash = data.content_hash;
-
-    const { error } = await supabase
-      .from("datasource_files")
-      .update(update)
-      .eq("id", data.id)
-      .eq("user_id", userId);
-
-    if (error) throw new Error("Couldn't update file status.");
     return { success: true };
   });

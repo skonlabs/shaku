@@ -41,6 +41,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -48,9 +58,10 @@ import {
   createConversation,
   togglePinConversation,
   deleteConversation,
+  renameConversation,
   searchMessages,
 } from "@/lib/conversations.functions";
-import { getUsageByConversation } from "@/lib/usage.functions";
+import { getUsageByConversation, getUsageSummary } from "@/lib/usage.functions";
 import {
   getMemories,
   createMemory,
@@ -60,7 +71,7 @@ import {
   getUkm,
   getMemoryStats,
 } from "@/lib/memory.functions";
-import { listProjects, createProject, deleteProject, listProjectConversations } from "@/lib/projects.functions";
+import { listProjects, createProject, deleteProject, updateProject, listProjectConversations } from "@/lib/projects.functions";
 import { listFiles, createDatasourceFile, deleteDatasourceFile } from "@/lib/datasources.functions";
 import { listConnectors, initiateConnectorAuth, pauseConnector, disconnectConnector, getConnectorAvailability } from "@/lib/connectors.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -168,12 +179,24 @@ function ChatsPanel() {
   const pinMut = useMutation({
     mutationFn: (v: { id: string; pinned: boolean }) => togglePinConversation({ data: v }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
+    onError: () => toast.error("Couldn't update pin."),
   });
 
   const delMut = useMutation({
     mutationFn: (id: string) => deleteConversation({ data: { id } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
+    onSuccess: (_result, id) => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (location.pathname === `/c/${id}`) navigate({ to: "/" });
+    },
+    onError: () => toast.error("Couldn't delete chat."),
   });
+
+  const renameMut = useMutation({
+    mutationFn: (v: { id: string; title: string }) => renameConversation({ data: v }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
+    onError: () => toast.error("Couldn't rename chat."),
+  });
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -244,7 +267,8 @@ function ChatsPanel() {
                     pinned
                     activePath={location.pathname}
                     onPin={(id, pinned) => pinMut.mutate({ id, pinned })}
-                    onDelete={(id) => delMut.mutate(id)}
+                    onDelete={(id) => setPendingDeleteId(id)}
+                    onRename={(id, title) => renameMut.mutate({ id, title })}
                     onNavigate={() => setActive(null)}
                   />
                 ))}
@@ -259,7 +283,8 @@ function ChatsPanel() {
                   pinned={false}
                   activePath={location.pathname}
                   onPin={(id, pinned) => pinMut.mutate({ id, pinned })}
-                  onDelete={(id) => delMut.mutate(id)}
+                  onDelete={(id) => setPendingDeleteId(id)}
+                  onRename={(id, title) => renameMut.mutate({ id, title })}
                   onNavigate={() => setActive(null)}
                 />
               ))}
@@ -267,6 +292,23 @@ function ChatsPanel() {
           </div>
         )}
       </ScrollArea>
+      <AlertDialog open={!!pendingDeleteId} onOpenChange={(o) => { if (!o) setPendingDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
+            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (pendingDeleteId) { delMut.mutate(pendingDeleteId); setPendingDeleteId(null); } }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -338,6 +380,7 @@ function ChatItem({
   activePath,
   onPin,
   onDelete,
+  onRename,
   onNavigate,
 }: {
   id: string;
@@ -346,9 +389,12 @@ function ChatItem({
   activePath: string;
   onPin: (id: string, pinned: boolean) => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => void;
   onNavigate: () => void;
 }) {
   const isActive = activePath === `/c/${id}`;
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(title);
   return (
     <div
       className={cn(
@@ -356,14 +402,31 @@ function ChatItem({
         isActive ? "bg-accent" : "hover:bg-accent/60",
       )}
     >
-      <Link
-        to="/c/$id"
-        params={{ id }}
-        onClick={onNavigate}
-        className="flex-1 truncate px-2 py-1.5 text-sm"
-      >
-        {title}
-      </Link>
+      {editing ? (
+        <form
+          className="flex-1 px-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const t = editTitle.trim();
+            if (t && t !== title) onRename(id, t);
+            setEditing(false);
+          }}
+        >
+          <input
+            autoFocus
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            onBlur={() => { const t = editTitle.trim(); if (t && t !== title) onRename(id, t); setEditing(false); }}
+            onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
+            maxLength={200}
+            className="h-7 w-full rounded border border-input bg-background px-2 text-sm outline-none focus:border-ring/60"
+          />
+        </form>
+      ) : (
+        <Link to="/c/$id" params={{ id }} onClick={onNavigate} className="flex-1 truncate px-2 py-1.5 text-sm">
+          {title}
+        </Link>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -376,6 +439,9 @@ function ChatItem({
         <DropdownMenuContent align="end" className="w-40">
           <DropdownMenuItem onClick={() => onPin(id, !pinned)}>
             <Pin className="mr-2 h-4 w-4" /> {pinned ? "Unpin" : "Pin"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { setEditing(true); setEditTitle(title); }}>
+            <Pencil className="mr-2 h-4 w-4" /> Rename
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => onDelete(id)}
@@ -473,6 +539,13 @@ function TokenUsageSection() {
     staleTime: 30_000,
   });
 
+  const { data: summaryData } = useQuery({
+    queryKey: ["usage-summary"],
+    queryFn: () => getUsageSummary({ data: undefined as never }),
+    enabled: !loading && !!user,
+    staleTime: 60_000,
+  });
+
   const events = (data?.events ?? []) as Array<{
     model_used: string | null;
     tokens_in: number | null;
@@ -523,6 +596,12 @@ function TokenUsageSection() {
             <UsageStat label="Output" value={formatTokens(totalOut)} tone="text-primary" />
             <UsageStat label="Cost" value={`$${totalCost.toFixed(4)}`} tone="text-foreground" />
           </div>
+          {summaryData && (
+            <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-border bg-card/60 p-3 text-center">
+              <UsageStat label="Msgs today" value={String(summaryData.messagesToday)} tone="text-foreground" />
+              <UsageStat label="30-day cost" value={`$${summaryData.totalCostUsd.toFixed(4)}`} tone="text-foreground" />
+            </div>
+          )}
           <div className="mt-3 space-y-1.5">
             {rows.map(([model, v]) => {
               const total = v.in + v.out || 1;
@@ -794,6 +873,7 @@ function ProjectsPanel() {
     },
     onError: () => toast.error("Couldn't archive project."),
   });
+  const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState<string | null>(null);
 
   return (
     <div className="flex h-full flex-col">
@@ -851,11 +931,28 @@ function ProjectsPanel() {
               project={p}
               isExpanded={expanded === p.id}
               onToggle={() => setExpanded(expanded === p.id ? null : p.id)}
-              onDelete={() => deleteMut.mutate(p.id)}
+              onDelete={() => setPendingDeleteProjectId(p.id)}
             />
           ))}
         </div>
       </ScrollArea>
+      <AlertDialog open={!!pendingDeleteProjectId} onOpenChange={(o) => { if (!o) setPendingDeleteProjectId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive this project?</AlertDialogTitle>
+            <AlertDialogDescription>The project's chats will remain accessible individually.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (pendingDeleteProjectId) { deleteMut.mutate(pendingDeleteProjectId); setPendingDeleteProjectId(null); } }}
+            >
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -892,6 +989,15 @@ function ProjectRow({
     onError: () => toast.error("Couldn't create chat."),
   });
 
+  const [editingName, setEditingName] = useState(false);
+  const [editName, setEditName] = useState(project.name);
+
+  const renameMut = useMutation({
+    mutationFn: (name: string) => updateProject({ data: { id: project.id, name } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
+    onError: () => toast.error("Couldn't rename project."),
+  });
+
   const convs = convData?.conversations ?? [];
 
   return (
@@ -904,7 +1010,30 @@ function ProjectRow({
             <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
           )}
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: project.color }} />
-          <span className="truncate text-sm">{project.name}</span>
+          {editingName ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const n = editName.trim();
+                if (n && n !== project.name) renameMut.mutate(n);
+                setEditingName(false);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="flex-1"
+            >
+              <input
+                autoFocus
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onBlur={() => { const n = editName.trim(); if (n && n !== project.name) renameMut.mutate(n); setEditingName(false); }}
+                onKeyDown={(e) => { if (e.key === "Escape") setEditingName(false); }}
+                maxLength={100}
+                className="h-6 w-full rounded border border-input bg-background px-1.5 text-sm outline-none focus:border-ring/60"
+              />
+            </form>
+          ) : (
+            <span className="truncate text-sm">{project.name}</span>
+          )}
         </button>
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <button
@@ -913,6 +1042,13 @@ function ProjectRow({
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Plus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setEditingName(true); setEditName(project.name); }}
+            title="Rename project"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <Pencil className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
@@ -1048,6 +1184,9 @@ function DatasourcesPanel() {
     onError: () => toast.error("Couldn't disconnect."),
   });
 
+  const [pendingDeleteFileId, setPendingDeleteFileId] = useState<string | null>(null);
+  const [pendingDisconnectId, setPendingDisconnectId] = useState<string | null>(null);
+
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -1081,11 +1220,16 @@ function DatasourcesPanel() {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
       if (token) {
-        await fetch("/api/datasources/process", {
+        const res = await fetch("/api/datasources/process", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ file_id: fileId, storage_path: storagePath, file_type: ext, file_name: file.name }),
         });
+        if (!res.ok) {
+          let errMsg = "Processing failed.";
+          try { const body = await res.json(); errMsg = body?.error ?? body?.message ?? errMsg; } catch { /* noop */ }
+          toast.error(errMsg);
+        }
       }
 
       qc.invalidateQueries({ queryKey: ["ds-files"] });
@@ -1198,7 +1342,7 @@ function DatasourcesPanel() {
                       </span>
                       {(f.status === "ready" || f.status === "error") && (
                         <button
-                          onClick={() => deleteMut.mutate(f.id)}
+                          onClick={() => setPendingDeleteFileId(f.id)}
                           className="hidden h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-destructive group-hover:flex"
                           title="Remove file"
                         >
@@ -1242,7 +1386,7 @@ function DatasourcesPanel() {
                         </p>
                         <div className="mt-2 flex gap-1.5">
                           <button
-                            onClick={() => disconnectMut.mutate(c.id)}
+                            onClick={() => setPendingDisconnectId(c.id)}
                             disabled={disconnectMut.isPending}
                             className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-destructive/50 hover:text-destructive disabled:opacity-50"
                           >
@@ -1299,6 +1443,36 @@ function DatasourcesPanel() {
           </div>
         </ScrollArea>
       )}
+      <AlertDialog open={!!pendingDeleteFileId} onOpenChange={(o) => { if (!o) setPendingDeleteFileId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this file?</AlertDialogTitle>
+            <AlertDialogDescription>This will remove the file and its indexed content.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (pendingDeleteFileId) { deleteMut.mutate(pendingDeleteFileId); setPendingDeleteFileId(null); } }}
+            >Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={!!pendingDisconnectId} onOpenChange={(o) => { if (!o) setPendingDisconnectId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect this service?</AlertDialogTitle>
+            <AlertDialogDescription>Indexed content from this service will be removed.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (pendingDisconnectId) { disconnectMut.mutate(pendingDisconnectId); setPendingDisconnectId(null); } }}
+            >Disconnect</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1382,6 +1556,8 @@ function ConnectorsPanel() {
     onError: () => toast.error("Couldn't disconnect."),
   });
 
+  const [pendingDisconnectId, setPendingDisconnectId] = useState<string | null>(null);
+
   const connectedServices = new Set(connected.map((c) => c.service));
 
   return (
@@ -1422,7 +1598,7 @@ function ConnectorsPanel() {
                         {isPaused ? "Resume" : "Pause"}
                       </button>
                       <button
-                        onClick={() => disconnectMut.mutate(c.id)}
+                        onClick={() => setPendingDisconnectId(c.id)}
                         disabled={disconnectMut.isPending}
                         className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-destructive/50 hover:text-destructive disabled:opacity-50"
                       >
@@ -1488,6 +1664,21 @@ function ConnectorsPanel() {
           <p className="py-2 text-center text-xs text-muted-foreground">Connect services to bring their data into your chats.</p>
         )}
       </div>
+      <AlertDialog open={!!pendingDisconnectId} onOpenChange={(o) => { if (!o) setPendingDisconnectId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect this service?</AlertDialogTitle>
+            <AlertDialogDescription>Indexed content from this service will be removed.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (pendingDisconnectId) { disconnectMut.mutate(pendingDisconnectId); setPendingDisconnectId(null); } }}
+            >Disconnect</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ScrollArea>
   );
 }
@@ -1545,6 +1736,8 @@ function MemoryPanel() {
     onError: () => toast.error("Couldn't delete memory."),
   });
 
+  const [pendingDeleteMemId, setPendingDeleteMemId] = useState<string | null>(null);
+
   const memoryEnabled = ukmData?.memoryEnabled ?? true;
   const memories = (memoriesData?.memories ?? []) as MemoryEntry[];
   const grouped = groupByType(memories);
@@ -1583,7 +1776,7 @@ function MemoryPanel() {
             memoryEnabled={memoryEnabled}
             isLoading={memoriesLoading}
             onToggle={(v) => toggleMut.mutate(v)}
-            onDelete={(id) => deleteMut.mutate(id)}
+            onDelete={(id) => setPendingDeleteMemId(id)}
             onRefresh={() => {
               qc.invalidateQueries({ queryKey: ["memories"] });
               qc.invalidateQueries({ queryKey: ["memory-stats"] });
@@ -1602,6 +1795,23 @@ function MemoryPanel() {
           />
         )}
       </ScrollArea>
+      <AlertDialog open={!!pendingDeleteMemId} onOpenChange={(o) => { if (!o) setPendingDeleteMemId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this memory?</AlertDialogTitle>
+            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (pendingDeleteMemId) { deleteMut.mutate(pendingDeleteMemId); setPendingDeleteMemId(null); } }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

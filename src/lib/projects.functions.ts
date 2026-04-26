@@ -38,7 +38,6 @@ export const createProject = createServerFn({ method: "POST" })
     return { project: row };
   });
 
-// TODO: expose project rename/color UI
 export const updateProject = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(

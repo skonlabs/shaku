@@ -12,6 +12,7 @@ import {
   Sparkles,
   PanelRightOpen,
   Brain,
+  Share2,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { MessageContent } from "@/components/MessageContent";
@@ -26,6 +27,7 @@ import {
   setMessageFeedback,
   updateAttachmentOcr,
 } from "@/lib/conversations.functions";
+import { shareResponse } from "@/lib/share.functions";
 import type { Message } from "@/integrations/supabase/client";
 import { AttachmentList } from "@/components/AttachmentList";
 
@@ -161,6 +163,17 @@ function MessageRow({
     mutationFn: (input: { rating: "up" | "down"; reasons?: string[]; note?: string }) =>
       setMessageFeedback({ data: { id: message.id, ...input } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversation", conversationId] }),
+    onError: () => toast.error("Couldn't save feedback."),
+  });
+
+  const shareMut = useMutation({
+    mutationFn: () => shareResponse({ data: { message_id: message.id } }),
+    onSuccess: ({ share_id }) => {
+      const url = `${window.location.origin}/share/${share_id}`;
+      navigator.clipboard.writeText(url).catch(() => {});
+      toast.success("Share link copied to clipboard.");
+    },
+    onError: () => toast.error("Couldn't create share link."),
   });
 
   const copy = async () => {
@@ -347,6 +360,16 @@ function MessageRow({
               active={feedback?.rating === "down"}
               onSubmit={(reasons, note) => fbMut.mutate({ rating: "down", reasons, note })}
             />
+            <IconBtn
+              label="Share"
+              onClick={() => shareMut.mutate()}
+            >
+              {shareMut.isPending ? (
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : (
+                <Share2 className="h-3.5 w-3.5" />
+              )}
+            </IconBtn>
             {hasPriorVersion && (
               <button
                 onClick={() => setShowOriginal((s) => !s)}
