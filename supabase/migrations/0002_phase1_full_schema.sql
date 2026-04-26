@@ -84,7 +84,8 @@ CREATE TABLE IF NOT EXISTS public.projects (
 
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own projects" ON public.projects
+DROP POLICY IF EXISTS "Own projects" ON public.projects;
+CREATE POLICY "Own projects" ON public.projects
   FOR ALL TO authenticated USING (user_id = auth.uid());
 
 DROP TRIGGER IF EXISTS set_projects_updated_at ON public.projects;
@@ -119,15 +120,18 @@ CREATE TABLE IF NOT EXISTS public.shared_responses (
 ALTER TABLE public.shared_responses ENABLE ROW LEVEL SECURITY;
 
 -- Public read: anyone (including unauthenticated) can view shared responses
-CREATE POLICY IF NOT EXISTS "Public read shared responses" ON public.shared_responses
+DROP POLICY IF EXISTS "Public read shared responses" ON public.shared_responses;
+CREATE POLICY "Public read shared responses" ON public.shared_responses
   FOR SELECT TO anon, authenticated USING (true);
 
 -- Owner insert: only the owner can create shares
-CREATE POLICY IF NOT EXISTS "Owner insert shared responses" ON public.shared_responses
+DROP POLICY IF EXISTS "Owner insert shared responses" ON public.shared_responses;
+CREATE POLICY "Owner insert shared responses" ON public.shared_responses
   FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
 
 -- Owner delete: only the owner can delete their shares
-CREATE POLICY IF NOT EXISTS "Owner delete shared responses" ON public.shared_responses
+DROP POLICY IF EXISTS "Owner delete shared responses" ON public.shared_responses;
+CREATE POLICY "Owner delete shared responses" ON public.shared_responses
   FOR DELETE TO authenticated USING (user_id = auth.uid());
 
 -- Atomic view count increment (avoids read-modify-write race, callable by anon)
@@ -152,7 +156,8 @@ CREATE TABLE IF NOT EXISTS public.conversation_states (
 
 ALTER TABLE public.conversation_states ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own conversation states" ON public.conversation_states
+DROP POLICY IF EXISTS "Own conversation states" ON public.conversation_states;
+CREATE POLICY "Own conversation states" ON public.conversation_states
   FOR ALL TO authenticated
   USING (
     conversation_id IN (
@@ -183,7 +188,8 @@ CREATE TABLE IF NOT EXISTS public.memories (
 
 ALTER TABLE public.memories ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own memories" ON public.memories
+DROP POLICY IF EXISTS "Own memories" ON public.memories;
+CREATE POLICY "Own memories" ON public.memories
   FOR ALL TO authenticated USING (user_id = auth.uid());
 
 DROP TRIGGER IF EXISTS set_memories_updated_at ON public.memories;
@@ -231,7 +237,8 @@ CREATE TABLE IF NOT EXISTS public.user_knowledge_models (
 
 ALTER TABLE public.user_knowledge_models ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own knowledge model" ON public.user_knowledge_models
+DROP POLICY IF EXISTS "Own knowledge model" ON public.user_knowledge_models;
+CREATE POLICY "Own knowledge model" ON public.user_knowledge_models
   FOR ALL TO authenticated USING (user_id = auth.uid());
 
 DROP TRIGGER IF EXISTS set_ukm_updated_at ON public.user_knowledge_models;
@@ -250,7 +257,8 @@ CREATE TABLE IF NOT EXISTS public.datasource_folders (
 
 ALTER TABLE public.datasource_folders ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own folders" ON public.datasource_folders
+DROP POLICY IF EXISTS "Own folders" ON public.datasource_folders;
+CREATE POLICY "Own folders" ON public.datasource_folders
   FOR ALL TO authenticated USING (user_id = auth.uid());
 
 -- ---- Datasource Files ----
@@ -274,7 +282,8 @@ CREATE TABLE IF NOT EXISTS public.datasource_files (
 
 ALTER TABLE public.datasource_files ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own datasource files" ON public.datasource_files
+DROP POLICY IF EXISTS "Own datasource files" ON public.datasource_files;
+CREATE POLICY "Own datasource files" ON public.datasource_files
   FOR ALL TO authenticated USING (user_id = auth.uid());
 
 DROP TRIGGER IF EXISTS set_datasource_files_updated_at ON public.datasource_files;
@@ -303,7 +312,8 @@ CREATE TABLE IF NOT EXISTS public.connectors (
 
 ALTER TABLE public.connectors ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own connectors" ON public.connectors
+DROP POLICY IF EXISTS "Own connectors" ON public.connectors;
+CREATE POLICY "Own connectors" ON public.connectors
   FOR ALL TO authenticated USING (user_id = auth.uid());
 
 DROP TRIGGER IF EXISTS set_connectors_updated_at ON public.connectors;
@@ -330,7 +340,8 @@ CREATE TABLE IF NOT EXISTS public.chunks (
 
 ALTER TABLE public.chunks ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own chunks" ON public.chunks
+DROP POLICY IF EXISTS "Own chunks" ON public.chunks;
+CREATE POLICY "Own chunks" ON public.chunks
   FOR ALL TO authenticated USING (user_id = auth.uid());
 
 DROP TRIGGER IF EXISTS set_chunks_updated_at ON public.chunks;
@@ -379,7 +390,8 @@ CREATE TABLE IF NOT EXISTS public.feedback_events (
 
 ALTER TABLE public.feedback_events ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own feedback events" ON public.feedback_events
+DROP POLICY IF EXISTS "Own feedback events" ON public.feedback_events;
+CREATE POLICY "Own feedback events" ON public.feedback_events
   FOR ALL TO authenticated USING (user_id = auth.uid());
 
 CREATE INDEX IF NOT EXISTS idx_feedback_user_processed
@@ -405,7 +417,8 @@ CREATE TABLE IF NOT EXISTS public.actions (
 
 ALTER TABLE public.actions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own actions" ON public.actions
+DROP POLICY IF EXISTS "Own actions" ON public.actions;
+CREATE POLICY "Own actions" ON public.actions
   FOR ALL TO authenticated USING (user_id = auth.uid());
 
 DROP TRIGGER IF EXISTS set_actions_updated_at ON public.actions;
@@ -428,7 +441,8 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
 
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own audit logs (read)" ON public.audit_logs
+DROP POLICY IF EXISTS "Own audit logs (read)" ON public.audit_logs;
+CREATE POLICY "Own audit logs (read)" ON public.audit_logs
   FOR SELECT TO authenticated USING (user_id = auth.uid());
 
 -- Only service role can insert audit logs (enforced by not granting INSERT to authenticated)
@@ -453,7 +467,8 @@ CREATE TABLE IF NOT EXISTS public.usage_events (
 
 ALTER TABLE public.usage_events ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own usage events (read)" ON public.usage_events
+DROP POLICY IF EXISTS "Own usage events (read)" ON public.usage_events;
+CREATE POLICY "Own usage events (read)" ON public.usage_events
   FOR SELECT TO authenticated USING (user_id = auth.uid());
 
 CREATE INDEX IF NOT EXISTS idx_usage_events_user_date
@@ -472,7 +487,8 @@ CREATE TABLE IF NOT EXISTS public.proactive_triggers (
 
 ALTER TABLE public.proactive_triggers ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Own triggers" ON public.proactive_triggers
+DROP POLICY IF EXISTS "Own triggers" ON public.proactive_triggers;
+CREATE POLICY "Own triggers" ON public.proactive_triggers
   FOR ALL TO authenticated USING (user_id = auth.uid());
 
 -- ====================================================================

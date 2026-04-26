@@ -10,5 +10,6 @@ ALTER TABLE public.datasource_files
 
 -- 3. usage_events: add INSERT policy (previously only SELECT existed)
 --    Allows authenticated users to insert their own usage events
-CREATE POLICY IF NOT EXISTS "Own usage events (insert)" ON public.usage_events
+DROP POLICY IF EXISTS "Own usage events (insert)" ON public.usage_events;
+CREATE POLICY "Own usage events (insert)" ON public.usage_events
   FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
