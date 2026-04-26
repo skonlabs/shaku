@@ -5,6 +5,7 @@
 //   - RTF: proper control-sequence stripping (was just toString('utf-8'))
 //   - PPTX: full implementation via fflate ZIP + OpenXML parsing
 //   - Images: describe via vision model → text chunk for searchability
+import { HAIKU_MODEL_ID } from "@/lib/llm/registry";
 
 export async function extractContent(
   bytes: Uint8Array,
@@ -236,7 +237,7 @@ async function describeImageForSearch(
     const client = new Anthropic({ apiKey });
 
     const res = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: HAIKU_MODEL_ID,
       max_tokens: 512,
       system:
         "You are indexing an image for search. Describe its content comprehensively: what is shown, any text visible, charts or data, people, logos, locations. Be specific and use keywords a person would search for. Do not use markdown.",

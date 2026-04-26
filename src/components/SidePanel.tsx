@@ -389,15 +389,6 @@ function ChatItem({
   );
 }
 
-function ComingSoon({ label }: { label: string }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <p className="text-sm font-medium">{label}</p>
-      <p className="text-xs text-muted-foreground">Coming in a future sprint.</p>
-    </div>
-  );
-}
-
 type DatasourceFile = {
   id: string;
   name: string;
@@ -1079,7 +1070,13 @@ function DatasourcesPanel() {
         throw new Error(upErr.message);
       }
 
-      await supabase.from("datasource_files").update({ storage_path: storagePath }).eq("id", fileId);
+      const { error: pathUpdateErr } = await supabase.from("datasource_files").update({ storage_path: storagePath }).eq("id", fileId);
+      if (pathUpdateErr) {
+        // Surface error to user rather than proceeding to process with missing path
+        toast.error("Failed to record file path. Please try again.");
+        await deleteDatasourceFile({ data: { id: fileId } });
+        return;
+      }
 
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
@@ -1105,8 +1102,10 @@ function DatasourcesPanel() {
   );
 
   const sorted = [...files].sort((a, b) => {
-    const ord: Record<string, number> = { processing: 0, uploading: 0, error: 1, ready: 2 };
-    return (ord[a.status] ?? 2) - (ord[b.status] ?? 2);
+    const ord: Record<string, number> = { uploading: 0, processing: 0, error: 1, ready: 2 };
+    // Unknown statuses go to the end
+    const getOrd = (status: string) => ord[status] ?? 3;
+    return getOrd(a.status) - getOrd(b.status);
   });
 
   return (
@@ -1224,7 +1223,6 @@ function DatasourcesPanel() {
                 <div className="space-y-2">
                   {connectedStorage.map((c) => {
                     const svc = CLOUD_STORAGE_SERVICES.find((s) => s.service === c.service);
-                    const isPaused = c.status === "paused";
                     return (
                       <div key={c.id} className="rounded-lg border border-border bg-background p-3">
                         <div className="flex items-center justify-between gap-2">

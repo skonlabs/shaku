@@ -164,20 +164,15 @@ export const completeConnectorAuth = createServerFn({ method: "POST" })
 
 // Returns which services have OAuth credentials configured server-side.
 // Used by the UI to show "Connect" vs "Not configured" without leaking secrets.
+// Derives availability from CONNECTOR_CONFIGS.implemented rather than hard-coding each service.
 export const getConnectorAvailability = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async () => {
-    return {
+    const envConfigured: Record<string, boolean> = {
       google_drive: !!(process.env.GOOGLE_DRIVE_CLIENT_ID && process.env.GOOGLE_DRIVE_CLIENT_SECRET),
       slack: !!(process.env.SLACK_CLIENT_ID && process.env.SLACK_CLIENT_SECRET),
-      onedrive: false,
-      dropbox: false,
-      teams: false,
-      gmail: false,
-      google_calendar: false,
-      jira: false,
-      github: false,
-      notion: false,
-      confluence: false,
-    } as Record<string, boolean>;
+    };
+    return Object.fromEntries(
+      CONNECTOR_CONFIGS.map(c => [c.service, c.implemented && (envConfigured[c.service] ?? false)])
+    ) as Record<string, boolean>;
   });
