@@ -459,7 +459,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                 if (candidateModel.provider === "anthropic") {
                   const apiKey = runtimeKeys.anthropic;
                   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
-                  const anthropic = new Anthropic({ apiKey });
+                  const anthropic = new Anthropic({ apiKey, ...gatewayOptionsFor(apiKey) });
                   const turnMessages = [...optimizedMessages];
                   let stopReason: string | null = null;
 
