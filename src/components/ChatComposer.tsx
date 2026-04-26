@@ -145,10 +145,6 @@ export function ChatComposer({
     if (!conversationId) return;
     const maxBytes = maxMb * 1024 * 1024;
     for (const file of files) {
-      if (file.size === 0) {
-        toast.error(`${file.name} is empty.`);
-        continue;
-      }
       if (file.size > maxBytes) {
         toast.error(`${file.name} is too large (max ${maxMb} MB — change in Settings).`);
         continue;
@@ -163,7 +159,7 @@ export function ChatComposer({
       ]);
       try {
         const data_b64 = await fileToBase64(file);
-        if (!data_b64) throw new Error("File reader returned empty data.");
+        if (!data_b64 && file.size > 0) throw new Error("File reader returned empty data.");
         // Once bytes are encoded, the server-side OCR / parsing kicks in.
         // Switch the indicator to a clearer "Reading…" stage.
         setPending((cur) =>
@@ -181,7 +177,8 @@ export function ChatComposer({
         setAttachments((cur) => [...cur, result]);
       } catch (err) {
         console.error(err);
-        toast.error(`Couldn't upload ${file.name}.`);
+        const message = err instanceof Error ? err.message : "Unknown upload error";
+        toast.error(`Couldn't upload ${file.name}: ${message}`);
       } finally {
         setPending((cur) => cur.filter((p) => p.id !== id));
       }
