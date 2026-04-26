@@ -850,10 +850,21 @@ async function getRuntimeKeys(): Promise<{ anthropic?: string; openai?: string }
     string | undefined
   >;
   const cfEnv = await getCloudflareEnv();
+  const mergedEnv = normalizeEnvKeys({ ...process.env, ...runtimeEnv, ...cfEnv });
   return {
-    anthropic: cfEnv.ANTHROPIC_API_KEY ?? runtimeEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY,
-    openai: cfEnv.OPENAI_API_KEY ?? runtimeEnv.OPENAI_API_KEY ?? process.env.OPENAI_API_KEY,
+    anthropic: mergedEnv.ANTHROPIC_API_KEY,
+    openai: mergedEnv.OPENAI_API_KEY,
   };
+}
+
+function normalizeEnvKeys(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  const normalized: Record<string, string | undefined> = {};
+  for (const [rawKey, rawValue] of Object.entries(env)) {
+    const key = rawKey.trim();
+    const value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
+    if (key && value) normalized[key] = value;
+  }
+  return normalized;
 }
 
 async function getCloudflareEnv(): Promise<Record<string, string | undefined>> {
