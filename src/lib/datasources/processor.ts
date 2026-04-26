@@ -28,19 +28,22 @@ export async function processFile(
   fileType: string,
   opts: ProcessingOptions,
   supabase: any,
-): Promise<{ chunkCount: number; contentHash: string }> {
+): Promise<{ chunkCount: number; contentHash: string; skipped?: boolean }> {
   const contentHash = await hashBytes(bytes);
 
-  // Check if we already indexed this exact content (deduplication)
+  // Check if we already indexed this exact content for this specific source (deduplication).
+  // Both content_hash AND source_id are required: identical content from different sources
+  // should each be indexed independently.
   const { count: existingCount } = await supabase
     .from("chunks")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
     .eq("source_type", opts.sourceType)
-    .eq("content_hash", contentHash);
+    .eq("content_hash", contentHash)
+    .eq("source_id", opts.sourceId); // add source_id to dedup check
 
-  if (existingCount && existingCount > 0) {
-    return { chunkCount: existingCount, contentHash };
+  if ((existingCount ?? 0) > 0) {
+    return { chunkCount: 0, contentHash, skipped: true }; // return 0, not old count
   }
 
   // 1. Extract text content
@@ -61,13 +64,15 @@ export async function processFile(
   const chunks = chunkByFileType(content, fileType);
   if (!chunks.length) return { chunkCount: 0, contentHash };
 
-  // 3. Generate embeddings in batch
-  let embeddings: number[][];
+  // 3. Generate embeddings in batch.
+  // Don't fall back to empty embeddings on failure — instead flag chunks so they
+  // can be re-embedded on the next sync. This prevents the dedup hash from
+  // permanently locking out chunks that were inserted without embeddings.
+  let embeddings: number[][] | null = null;
   try {
     embeddings = await embedBatch(chunks);
-  } catch {
-    // Proceed without embeddings (text search still works)
-    embeddings = chunks.map(() => []);
+  } catch (e) {
+    console.error("[processor] embedBatch failed, inserting with needs_embedding flag", e);
   }
 
   // 4. Index in PostgreSQL
@@ -89,7 +94,8 @@ export async function processFile(
       total_chunks: chunks.length,
     },
     content_hash: contentHash,
-    embedding: embeddings[i]?.length ? `[${embeddings[i].join(",")}]` : null,
+    embedding: embeddings?.[i]?.length ? `[${embeddings[i].join(",")}]` : null,
+    needs_embedding: !embeddings, // flag for retry when embedBatch failed
     expires_at: expiresAt,
   }));
 
@@ -140,21 +146,6 @@ export async function processUrl(
   );
 
   return { chunkCount };
-}
-
-// Delete all chunks for a datasource file or connector
-export async function deleteChunks(
-  userId: string,
-  sourceType: string,
-  sourceId: string,
-  supabase: any,
-): Promise<void> {
-  await supabase
-    .from("chunks")
-    .delete()
-    .eq("user_id", userId)
-    .eq("source_type", sourceType)
-    .eq("source_id", sourceId);
 }
 
 // SHA-256 hash of bytes (CF Workers has native crypto.subtle)

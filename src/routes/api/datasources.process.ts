@@ -65,7 +65,9 @@ export const Route = createFileRoute("/api/datasources/process")({
           .update({ status: "processing" })
           .eq("id", body.file_id);
 
-        // Start processing async
+        // Start processing async — always return 202 immediately regardless of environment.
+        // In CF Workers, use waitUntil so the worker stays alive for the full pipeline.
+        // In dev (non-CF), run the promise without awaiting to avoid blocking the response.
         const processPromise = processFileAsync(
           userId,
           body.file_id,
@@ -75,15 +77,15 @@ export const Route = createFileRoute("/api/datasources/process")({
           supabase,
         );
 
-        const ctx = (globalThis as unknown as { __cfContext?: { waitUntil: (p: Promise<unknown>) => void } }).__cfContext;
-        if (ctx?.waitUntil) {
-          ctx.waitUntil(processPromise);
+        const cfCtx = (globalThis as Record<string, unknown>).__cfContext as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+        if (cfCtx?.waitUntil) {
+          cfCtx.waitUntil(processPromise);
         } else {
-          // Not in CF Workers — await directly (dev mode)
-          await processPromise;
+          // In non-CF environments (dev), still run async but don't block response
+          processPromise.catch(e => console.error("[datasources.process] async error", e));
         }
 
-        return new Response(JSON.stringify({ status: "processing" }), {
+        return new Response(JSON.stringify({ ok: true, status: "processing" }), {
           status: 202,
           headers: { "Content-Type": "application/json" },
         });
@@ -101,7 +103,8 @@ async function processFileAsync(
   supabase: any,
 ): Promise<void> {
   try {
-    // Download from Supabase Storage
+    // Download from Supabase Storage.
+    // Note: storage bucket is "datasource-files" (hyphen), table is "datasource_files" (underscore)
     const { data: fileData, error: dlErr } = await supabase.storage
       .from("datasource-files")
       .download(storagePath);
@@ -129,6 +132,7 @@ async function processFileAsync(
     console.error("[datasources.process] processing failed:", e);
     await supabase.from("datasource_files").update({
       status: "error",
+      error_message: e instanceof Error ? e.message : "Processing failed",
     }).eq("id", fileId);
   }
 }

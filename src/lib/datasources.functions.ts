@@ -139,7 +139,8 @@ export const deleteDatasourceFile = createServerFn({ method: "POST" })
 
     if (!file) throw new Error("File not found.");
 
-    // Delete from storage if it has a path
+    // Delete from storage if it has a path.
+    // Note: storage bucket is "datasource-files" (hyphen), table is "datasource_files" (underscore)
     if (file.storage_path) {
       await supabase.storage.from("datasource-files").remove([file.storage_path]);
     }

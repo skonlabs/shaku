@@ -236,7 +236,7 @@ async function describeImageForSearch(
     const client = new Anthropic({ apiKey });
 
     const res = await client.messages.create({
-      model: "claude-haiku-4-5",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 512,
       system:
         "You are indexing an image for search. Describe its content comprehensively: what is shown, any text visible, charts or data, people, logos, locations. Be specific and use keywords a person would search for. Do not use markdown.",

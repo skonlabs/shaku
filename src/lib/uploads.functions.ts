@@ -285,7 +285,7 @@ async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<
     try {
       const res = await client.messages.create(
         {
-          model: "claude-haiku-4-5",
+          model: "claude-haiku-4-5-20251001",
           max_tokens: 2048,
           system:
             "You are an OCR engine. Read the image and return ONLY the text content visible in it, preserving line breaks and reading order. Do NOT add commentary, headers, code fences, or explanations. If the image has no readable text, return a single short description line of what is shown.",
