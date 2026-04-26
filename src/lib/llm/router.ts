@@ -143,6 +143,7 @@ export function estimatePreRetrievalTokens(
 }
 
 // Build provider adapter for a model (async for CF Workers ESM compatibility)
+// TODO: wire to UI — currently unused
 export async function getProvider(modelId: string) {
   if (modelId.startsWith("claude-")) {
     const { AnthropicProvider } = await import("./anthropic");

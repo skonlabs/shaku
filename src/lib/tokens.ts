@@ -23,6 +23,7 @@ export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
 };
 
 // Model output limits
+// TODO: wire to UI — currently unused; not imported anywhere.
 export const MODEL_MAX_OUTPUT: Record<string, number> = {
   "claude-haiku-4-5-20251001": 8_192,
   "claude-sonnet-4-6": 64_000,

@@ -131,6 +131,10 @@ export function detectTone(
 }
 
 // Generate conversation summary when needed (>15 turns or >8 new messages since last)
+// NOTE: messageCount is passed as history.length + 2 from chat.stream.ts, which
+// includes soft-deleted messages in the count (they're in history[] before the
+// is_active filter). This makes the threshold slightly imprecise but is harmless —
+// it may trigger summary regeneration one exchange earlier than strictly needed.
 export async function maybeRegenerateSummary(
   conversationId: string,
   messageCount: number,

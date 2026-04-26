@@ -1004,7 +1004,7 @@ function DatasourcesPanel() {
   });
 
   const { data: connData } = useQuery({
-    queryKey: ["connectors"],
+    queryKey: ["connectors", "list"],
     queryFn: () => listConnectors({ data: undefined as never }),
   });
 
@@ -1042,7 +1042,7 @@ function DatasourcesPanel() {
   const disconnectMut = useMutation({
     mutationFn: (id: string) => disconnectConnector({ data: { id } }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["connectors"] });
+      qc.invalidateQueries({ queryKey: ["connectors", "list"] });
       toast.success("Disconnected.");
     },
     onError: () => toast.error("Couldn't disconnect."),
@@ -1337,7 +1337,7 @@ function ConnectorsPanel() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["connectors"],
+    queryKey: ["connectors", "available"],
     queryFn: () => listConnectors({ data: undefined as never }),
   });
 
@@ -1369,14 +1369,14 @@ function ConnectorsPanel() {
   const pauseMut = useMutation({
     mutationFn: ({ id, paused }: { id: string; paused: boolean }) =>
       pauseConnector({ data: { id, paused } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["connectors"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["connectors", "available"] }),
     onError: () => toast.error("Couldn't update connector."),
   });
 
   const disconnectMut = useMutation({
     mutationFn: (id: string) => disconnectConnector({ data: { id } }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["connectors"] });
+      qc.invalidateQueries({ queryKey: ["connectors", "available"] });
       toast.success("Connector disconnected.");
     },
     onError: () => toast.error("Couldn't disconnect."),

@@ -96,9 +96,15 @@ const errorCounts: Record<string, { errors: number; total: number; windowStart: 
 export function recordModelResult(modelId: string, isError: boolean): void {
   const now = Date.now();
   const entry = errorCounts[modelId] ?? { errors: 0, total: 0, windowStart: now };
-  // Reset window every 60 seconds
+  // Reset window every 60 seconds; count the current event in the new window.
+  // The current event is counted inside the reset branch (total: 1) so the
+  // first event after a window reset is never skipped.
   if (now - entry.windowStart > 60_000) {
-    errorCounts[modelId] = { errors: 0, total: 0, windowStart: now };
+    errorCounts[modelId] = {
+      errors: isError ? 1 : 0,
+      total: 1,
+      windowStart: now,
+    };
     return;
   }
   entry.total++;

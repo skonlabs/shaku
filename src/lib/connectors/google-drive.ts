@@ -152,7 +152,10 @@ export async function syncGoogleDrive(
       const refreshed = await refreshAccessToken(refreshToken);
       accessToken = refreshed.accessToken;
       const encryptedNew = await encryptToken(accessToken);
-      await supabase.from("connectors").update({ oauth_token_encrypted: encryptedNew }).eq("id", connectorId);
+      await supabase.from("connectors").update({
+        oauth_token_encrypted: encryptedNew,
+        oauth_state: null, // clear stale CSRF token after refresh
+      }).eq("id", connectorId);
       res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     }
     return res;

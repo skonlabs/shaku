@@ -131,7 +131,7 @@ export const editMessageAndTrim = createServerFn({ method: "POST" })
       )
       .eq("id", data.id)
       .single();
-    // @ts-expect-error joined relation
+    // @ts-expect-error — Supabase type inference doesn't resolve nested join types yet
     if (!msg || msg.conversations.user_id !== userId) throw new Error("Not allowed");
 
     const { error: updateErr } = await supabase
@@ -172,7 +172,7 @@ export const setMessageFeedback = createServerFn({ method: "POST" })
       .select("id, conversation_id, metadata, conversations!inner(user_id)")
       .eq("id", data.id)
       .single();
-    // @ts-expect-error joined relation
+    // @ts-expect-error — Supabase type inference doesn't resolve nested join types yet
     if (!msg || msg.conversations.user_id !== userId) throw new Error("Not allowed");
 
     const metadata = {
@@ -253,7 +253,7 @@ export const updateAttachmentOcr = createServerFn({ method: "POST" })
       .select("id, metadata, conversations!inner(user_id)")
       .eq("id", data.message_id)
       .single();
-    // @ts-expect-error joined relation
+    // @ts-expect-error — Supabase type inference doesn't resolve nested join types yet
     if (!msg || msg.conversations.user_id !== userId) throw new Error("Not allowed");
 
     const meta = (msg.metadata as Record<string, unknown> | null) ?? {};

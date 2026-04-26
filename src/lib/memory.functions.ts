@@ -69,8 +69,9 @@ export const deleteMemory = createServerFn({ method: "POST" })
     return { success: true };
   });
 
-// TODO: deleteAllMemories is a destructive admin operation — ensure it is only
-// exposed in admin-only UI routes and never surfaced to general users.
+// TODO: wire to UI — currently unused. deleteAllMemories is a destructive admin
+// operation — ensure it is only exposed in admin-only UI routes and never
+// surfaced to general users.
 export const deleteAllMemories = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(z.object({ confirm: z.literal("DELETE") }))

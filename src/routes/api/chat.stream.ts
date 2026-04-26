@@ -277,7 +277,7 @@ export const Route = createFileRoute("/api/chat/stream")({
         const intent = intentResult.intent;
 
         // ---- Parallel: retrieval + query rewrite ----
-        const shouldRetrieve = currentUserMessage.trim().length > 10;
+        const shouldRetrieve = currentUserMessage.trim().length > 10 && intent !== "acknowledgment";
         const [retrievalResult, rewrittenQuery] = await Promise.all([
           shouldRetrieve
             ? retrieve(userId, currentUserMessage, intent, convo.id, supabase, { topK: 20 })
@@ -341,7 +341,7 @@ export const Route = createFileRoute("/api/chat/stream")({
         // ---- Model routing ----
         const estimatedCtxTokens = estimatePreRetrievalTokens(
           countTokens(SYSTEM_PROMPT),
-          countTokens(preloadedHistory.map((m) => m.content).join(" ")),
+          countTokens(preloadedHistory.map((m) => m.content).join(" ")) + (preloadedHistory.length * 4),
           countTokens(currentUserMessage),
         );
         const routingDecision = route({

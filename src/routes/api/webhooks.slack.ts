@@ -64,6 +64,9 @@ export const Route = createFileRoute("/api/webhooks/slack")({
             // Connector metadata should store team_id (set during OAuth exchange).
             // If team_id isn't stored yet, fall back to syncing only the first connector to
             // avoid hammering all workspaces on every message.
+            if (!teamId) {
+              console.warn("[webhooks.slack] team_id not found in event, falling back to first connector");
+            }
             const matching = teamId
               ? (connectors ?? []).filter(
                   (c) => (c.metadata as Record<string, unknown> | null)?.team_id === teamId,

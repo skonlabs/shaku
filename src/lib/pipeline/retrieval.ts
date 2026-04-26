@@ -61,7 +61,11 @@ export async function retrieve(
   if (includeConversationUploads) {
     sourceTypes.push("conversation_upload");
   }
-  sourceTypes.push("url_in_message");
+  // URL chunks are only relevant for information-seeking intents; skip for creative
+  // and acknowledgment intents where they add noise without value.
+  if (intent !== "creative" && intent !== "acknowledgment") {
+    sourceTypes.push("url_in_message");
+  }
 
   // Generate query embedding
   let queryEmbedding: number[];
