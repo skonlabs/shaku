@@ -2,6 +2,7 @@
 // Updated incrementally after each conversation and rebuilt weekly.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { HAIKU_MODEL_ID } from "@/lib/llm/registry";
 
 export interface UserKnowledgeModel {
   identity: {
@@ -93,7 +94,7 @@ Allowed fields: identity (name/role/company/team), expertise (array), activeProj
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
+          model: HAIKU_MODEL_ID,
           max_tokens: 300,
           messages: [{ role: "user", content: prompt }],
         }),

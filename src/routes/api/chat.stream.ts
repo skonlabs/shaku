@@ -22,7 +22,7 @@ import {
   scoreAmbiguity,
 } from "@/lib/pipeline/output-validation";
 import { route, estimatePreRetrievalTokens } from "@/lib/llm/router";
-import { recordModelResult } from "@/lib/llm/registry";
+import { recordModelResult, HAIKU_MODEL_ID } from "@/lib/llm/registry";
 import { promoteConversationMemories } from "@/lib/memory/promotion";
 import {
   extractConversationFacts,
@@ -745,7 +745,7 @@ Do not add any preface, apology, or commentary.`,
                     if (!process.env.ANTHROPIC_API_KEY) return;
                     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
                     const titleRes = await anthropic.messages.create({
-                      model: "claude-haiku-4-5-20251001",
+                      model: HAIKU_MODEL_ID,
                       max_tokens: 32,
                       system: TITLE_PROMPT,
                       messages: [
@@ -872,12 +872,26 @@ function sse(start: (send: (event: string, data: unknown) => void) => Promise<vo
 }
 
 function stripFollowupsTagPartial(_delta: string, accumulated: string): string {
+  // Check for complete tag
   const tagStart = accumulated.indexOf("<followups>");
-  if (tagStart === -1) return _delta;
-  const visibleBeforeTag = accumulated.slice(0, tagStart);
-  const alreadyStreamed = accumulated.length - _delta.length;
-  if (alreadyStreamed >= visibleBeforeTag.length) return "";
-  return visibleBeforeTag.slice(alreadyStreamed);
+  if (tagStart !== -1) {
+    const visibleBeforeTag = accumulated.slice(0, tagStart);
+    const alreadyStreamed = accumulated.length - _delta.length;
+    if (alreadyStreamed >= visibleBeforeTag.length) return "";
+    return visibleBeforeTag.slice(alreadyStreamed);
+  }
+  // Check for partial opening tag at the end of accumulated (to suppress early chars)
+  const partialTag = "<followups>";
+  for (let len = Math.min(partialTag.length - 1, accumulated.length); len >= 1; len--) {
+    if (accumulated.endsWith(partialTag.slice(0, len))) {
+      // Suppress the last `len` chars that might be the start of the tag
+      const safe = accumulated.slice(0, accumulated.length - len);
+      const alreadyStreamed = accumulated.length - _delta.length;
+      if (alreadyStreamed >= safe.length) return "";
+      return safe.slice(alreadyStreamed);
+    }
+  }
+  return _delta;
 }
 
 function splitFollowups(text: string): { visible: string; followups: string[] } {

@@ -50,11 +50,11 @@ const PATTERNS: { type: PiiType; regex: RegExp }[] = [
   },
   {
     type: "phone",
-    regex: /(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)?\d{3}[\s.-]?\d{4}\b/g,
+    regex: /(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g,
   },
   {
     type: "zip",
-    regex: /\b\d{5}(?:-\d{4})?\b/g,
+    regex: /\b\d{5}(?:-\d{4})?\b(?!\d)/g,
   },
 ];
 

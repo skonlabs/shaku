@@ -70,6 +70,9 @@ export const MODEL_REGISTRY: ModelConfig[] = [
   },
 ];
 
+export const HAIKU_MODEL_ID = "claude-haiku-4-5-20251001";
+export const SONNET_MODEL_ID = "claude-sonnet-4-6";
+
 export const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
 export function getModel(id: string): ModelConfig | undefined {

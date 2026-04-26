@@ -71,6 +71,7 @@ export const getConversation = createServerFn({ method: "POST" })
     return { conversation: convo, messages: messages ?? [] };
   });
 
+// TODO: expose rename in conversation context menu
 export const renameConversation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(z.object({ id: z.string().uuid(), title: z.string().min(1).max(200) }))

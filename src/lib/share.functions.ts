@@ -1,3 +1,4 @@
+// TODO: wire share feature — frontend route missing
 // Share response: generates a public shared_responses record.
 // The share feature IS implemented in Phase 1 (Sprint 6).
 // Public page lives at /share/[shareId] with no auth required.
