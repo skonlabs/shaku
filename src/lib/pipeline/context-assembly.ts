@@ -10,7 +10,6 @@
 //   6. Memory entries (0–500 tokens)
 //   7. Conversation history (0–3,000 tokens)
 
-import { embed } from "@/lib/embeddings";
 import { loadUkm, compressUkmForPrompt, buildAntiPreferenceBlock } from "@/lib/knowledge/ukm";
 import { wrapSource, wrapMemory } from "@/lib/pipeline/prompt-optimization";
 import { retrieveMemories as retrieveMemoriesCanonical } from "@/lib/memory/retrieval";
