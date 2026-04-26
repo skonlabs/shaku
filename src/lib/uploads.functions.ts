@@ -124,6 +124,13 @@ export const uploadChatFile = createServerFn({ method: "POST" })
 
 // ---------------- helpers ----------------
 
+function getStorageClient(userClient: SupabaseClient): SupabaseClient {
+  if (!SUPABASE_SERVICE_ROLE_KEY) return userClient;
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
+
 type Kind = "pdf" | "docx" | "spreadsheet" | "text" | "audio" | "image" | "other";
 
 function classify(name: string, mime: string): Kind {
