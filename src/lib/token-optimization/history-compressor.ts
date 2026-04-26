@@ -51,11 +51,21 @@ export class ExtractiveSummarizer {
   // ------------------------------------------------------------------
 
   private splitSentences(text: string): string[] {
-    return text
+    // Sentence splitter that protects common abbreviations, decimals, and URLs.
+    // Strategy: temporarily mask "fragile" dots, split, then unmask.
+    const ABBREV = /\b(?:Mr|Mrs|Ms|Dr|Prof|Jr|Sr|St|Inc|Ltd|Co|Corp|vs|etc|e\.g|i\.e|a\.m|p\.m|U\.S|U\.K)\.\s+/gi;
+    const URL_DOT = /(https?:\/\/[^\s]*?)\.(\s)/g;
+    const DECIMAL = /(\d)\.(\d)/g;
+    let masked = text
+      .replace(ABBREV, (m) => m.replace(/\./g, "§DOT§"))
+      .replace(URL_DOT, (_, a, b) => `${a}§DOT§${b}`)
+      .replace(DECIMAL, (_, a, b) => `${a}§DOT§${b}`);
+    const sentences = masked
       .trim()
       .split(/(?<=[.!?])\s+/)
-      .map((s) => s.trim())
+      .map((s) => s.trim().replace(/§DOT§/g, "."))
       .filter(Boolean);
+    return sentences;
   }
 
   private scoreSentences(sentences: string[]): number[] {
@@ -81,7 +91,8 @@ export class ExtractiveSummarizer {
   }
 
   private tokenize(text: string): string[] {
-    return (text.toLowerCase().match(/\b[a-z]{3,}\b/g) ?? []).filter(
+    // Allow 2+ char alphanumeric tokens (was [a-z]{3,} which dropped "go", "ai", "sdk").
+    return (text.toLowerCase().match(/\b[a-z0-9]{2,}\b/g) ?? []).filter(
       (w) => !STOP_WORDS.has(w),
     );
   }
@@ -132,9 +143,11 @@ export class HistoryCompressor {
     const recentTurns = turns.slice(-this.keepTurns);
 
     const summaryText = this.summarizeTurns(oldTurns);
+    // Use assistant role to preserve user/assistant alternation when the next real
+    // message is also "user" — Anthropic rejects two consecutive user messages.
     const memoryMsg: Message = {
-      role: "user",
-      content: `[Earlier conversation summary]\n${summaryText}`,
+      role: "assistant",
+      content: `[Earlier conversation summary — for context only, do not respond to this]\n${summaryText}`,
     };
 
     const recentMsgs = recentTurns.flatMap(([u, a]) => (a ? [u, a] : [u]));
