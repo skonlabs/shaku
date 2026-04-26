@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import { env as cloudflareEnv } from "cloudflare:workers";
 import { z } from "zod";
 import { checkRateLimit } from "@/lib/utils/rate-limit";
 import { TokenOptimizationMiddleware } from "@/lib/token-optimization";
