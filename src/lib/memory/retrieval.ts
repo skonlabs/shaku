@@ -19,9 +19,14 @@ export async function retrieveMemories(
   userId: string,
   query: string,
   supabase: SupabaseClient,
-  opts: { projectId?: string | null; limit?: number } = {},
+  opts: {
+    projectId?: string | null;
+    limit?: number;
+    /** Defer access-count increment via this callback (e.g. ctx.waitUntil). */
+    runAfterResponse?: (p: Promise<unknown>) => void;
+  } = {},
 ): Promise<RetrievedMemory[]> {
-  const { projectId = null, limit = 10 } = opts;
+  const { projectId = null, limit = 10, runAfterResponse } = opts;
 
   try {
     const embedding = await embed(query);
@@ -34,10 +39,16 @@ export async function retrieveMemories(
 
     if (error || !data) return [];
 
-    // Update access metrics atomically via RPC to avoid race conditions on access_count
+    // Update access metrics atomically. In CF Workers we MUST keep the request
+    // alive via ctx.waitUntil — bare `void` lets the runtime cancel mid-flight
+    // when the response stream closes. Caller passes runAfterResponse for that.
     const ids = data.map((m: { id: string }) => m.id);
     if (ids.length) {
-      void supabase.rpc("increment_memory_access", { memory_ids: ids });
+      const incrementPromise = Promise.resolve(
+        supabase.rpc("increment_memory_access", { memory_ids: ids }).then(() => {}),
+      );
+      if (runAfterResponse) runAfterResponse(incrementPromise);
+      else void incrementPromise;
     }
 
     return data.map((m: Record<string, unknown>) => ({

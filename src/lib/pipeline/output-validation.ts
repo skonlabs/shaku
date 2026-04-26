@@ -26,14 +26,16 @@ export function reInjectPiiChunk(
 }
 
 // 9a. Auto-redact PII in output that was NOT from user input or retrieved context.
-// Only SSN and credit cards are auto-redacted — everything else needs user consent.
+// Covers SSN, credit cards, phone numbers, and email addresses.
+// Names and structured business data still require explicit user consent.
+const OUTPUT_PII_TYPES = new Set(["ssn", "credit_card", "phone", "email"]);
+
 export function redactOutputPii(
   text: string,
   allowedPiiValues: Set<string>,
 ): { text: string; redacted: boolean } {
   const tags = detectStructuredPii(text).filter(
-    (t) =>
-      (t.type === "ssn" || t.type === "credit_card") && !allowedPiiValues.has(t.value),
+    (t) => OUTPUT_PII_TYPES.has(t.type) && !allowedPiiValues.has(t.value),
   );
   if (tags.length === 0) return { text, redacted: false };
   const { redacted } = redactText(text, tags);
@@ -55,22 +57,61 @@ export function scoreConfidence(opts: {
   );
 }
 
-// 9b. Verify citations exist in retrieved context.
-// Returns ratio of verified claims (simplified: check if source names appear in chunks).
+// 9b. Verify citations are grounded in the retrieved context.
+// A citation [Foo] is "verified" only when:
+//   1. The bracket label contains a known source name as a substring, AND
+//   2. The 80 chars of text immediately preceding the bracket share ≥3
+//      non-stopword tokens with the cited source's content.
+// Caller passes an array of {name, content} so we can do the overlap check;
+// the legacy string[] form is kept for backward compatibility (loose match only).
+const STOPWORDS = new Set([
+  "the","a","an","and","or","of","to","in","on","at","for","with","by","is",
+  "are","was","were","be","been","this","that","it","its","as","from","but",
+  "if","then","so","not","no",
+]);
+
+function tokenize(text: string): string[] {
+  return (text.toLowerCase().match(/\b[a-z0-9]{3,}\b/g) ?? []).filter(
+    (w) => !STOPWORDS.has(w),
+  );
+}
+
 export function verifyCitations(
   responseText: string,
-  retrievedSourceNames: string[],
+  retrievedSources: string[] | { name: string; content: string }[],
 ): number {
-  const citationPattern = /\[([^\]]+)\]/g;
-  const cited: string[] = [];
-  for (const match of responseText.matchAll(citationPattern)) {
-    cited.push(match[1].toLowerCase());
-  }
+  const sources =
+    retrievedSources.length > 0 && typeof retrievedSources[0] === "string"
+      ? (retrievedSources as string[]).map((s) => ({ name: s, content: "" }))
+      : (retrievedSources as { name: string; content: string }[]);
 
-  if (cited.length === 0) return 1; // no citations = no unverified claims
-  const sourceNamesLower = retrievedSourceNames.map((s) => s.toLowerCase());
-  const verified = cited.filter((c) => sourceNamesLower.some((s) => c.includes(s)));
-  return verified.length / cited.length;
+  const sourceNamesLower = sources.map((s) => s.name.toLowerCase());
+  const sourceTokens = sources.map((s) => new Set(tokenize(s.content ?? "")));
+
+  const citationRe = /\[([^\]]+)\]/g;
+  const matches = [...responseText.matchAll(citationRe)];
+  if (matches.length === 0) return 1; // no citations = no unverified claims
+
+  let verified = 0;
+  for (const m of matches) {
+    const label = m[1].toLowerCase();
+    const sourceIdx = sourceNamesLower.findIndex((s) => label.includes(s));
+    if (sourceIdx === -1) continue;
+
+    const ctx = responseText.slice(Math.max(0, m.index! - 80), m.index!);
+    const ctxTokens = new Set(tokenize(ctx));
+    const target = sourceTokens[sourceIdx];
+
+    // If we don't have source content (legacy callers), accept name-only match.
+    if (target.size === 0) {
+      verified++;
+      continue;
+    }
+    let overlap = 0;
+    for (const t of ctxTokens) if (target.has(t)) overlap++;
+    if (overlap >= 3) verified++;
+  }
+  return verified / matches.length;
 }
 
 // 9e. Basic content safety check (pattern-based for Phase 1)

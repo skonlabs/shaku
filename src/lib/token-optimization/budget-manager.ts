@@ -33,10 +33,14 @@ export class BudgetManager {
     private readonly counter: TokenCounter,
   ) {}
 
-  /** Recommended max_tokens for the given task type, capped by budget. */
-  getOutputTokens(taskType?: TaskType): number {
+  /**
+   * Recommended max_tokens for the given task type.
+   * Caps by both model's max output AND remaining context (input + output ≤ total).
+   */
+  getOutputTokens(taskType?: TaskType, currentInputTokens = 0): number {
     const limit = taskType ? (TASK_OUTPUT_TOKENS[taskType] ?? DEFAULT_OUTPUT_TOKENS) : DEFAULT_OUTPUT_TOKENS;
-    return Math.min(limit, this.budget.maxOutputTokens);
+    const remaining = this.budget.maxTotalTokens - currentInputTokens;
+    return Math.max(256, Math.min(limit, this.budget.maxOutputTokens, remaining));
   }
 
   checkInput(tokens: number): boolean { return tokens <= this.budget.maxInputTokens; }

@@ -78,41 +78,61 @@ Return a JSON array of strings. Return [] if nothing new.`;
   }
 }
 
-// Detect conversation tone from user messages
+// Detect conversation tone from user messages.
+// To avoid spuriously flipping tone on a single matched word, require:
+//   - "frustrated"/"urgent" classifications need ≥2 distinct signal hits OR a
+//     long enough message (>200 chars) where one strong signal is reliable.
+//   - Otherwise tone falls through to previous/casual.
 export function detectTone(
   messages: { role: string; content: string }[],
   previousTone: ToneState,
 ): ToneState {
-  const recentUser = messages
-    .filter((m) => m.role === "user")
-    .slice(-5)
-    .map((m) => m.content)
-    .join(" ");
+  const recentUserMsgs = messages.filter((m) => m.role === "user").slice(-5);
+  const recentUser = recentUserMsgs.map((m) => m.content).join(" ");
+  const longEnough = recentUser.length > 200;
 
-  const signals: string[] = [];
+  // Count distinct signal hits per tone
+  const signalsFor = (patterns: RegExp[]): number =>
+    patterns.reduce((n, re) => n + (re.test(recentUser) ? 1 : 0), 0);
+
+  const urgentPatterns = [
+    /\burgent\b/i, /\basap\b/i, /\bimmediately\b/i, /\bright now\b/i,
+    /\bemergency\b/i, /\bdeadline\b/i,
+  ];
+  const frustratedPatterns = [
+    /\bdoesn't make sense\b/i, /\bthis is useless\b/i, /\btry again\b/i,
+    /\bwrong\b/i, /\bfrustrated\b/i, /\bnot what i (asked|wanted)\b/i,
+    /\bstop (doing|saying)\b/i,
+  ];
+  const exploratoryPatterns = [
+    /\bexplore\b/i, /\bwhat else\b/i, /\btell me more\b/i,
+    /\bcurious\b/i, /\binteresting\b/i,
+  ];
+
+  const urgentHits = signalsFor(urgentPatterns);
+  const frustratedHits = signalsFor(frustratedPatterns);
+  const exploratoryHits = signalsFor(exploratoryPatterns);
+
   let current: ToneState["current"] = "casual";
   let confidence = 0.5;
+  const signals: string[] = [];
 
-  if (
-    /\b(urgent|asap|immediately|right now|emergency|deadline)\b/i.test(recentUser)
-  ) {
+  if (urgentHits >= 2 || (urgentHits >= 1 && longEnough)) {
     current = "urgent";
     confidence = 0.9;
-    signals.push("urgency keywords");
-  } else if (
-    /\b(doesn't make sense|this is useless|try again|wrong|frustrated)\b/i.test(recentUser)
-  ) {
+    signals.push(`urgency keywords (${urgentHits})`);
+  } else if (frustratedHits >= 2 || (frustratedHits >= 1 && longEnough)) {
     current = "frustrated";
     confidence = 0.8;
-    signals.push("frustration language");
+    signals.push(`frustration language (${frustratedHits})`);
   } else if (
-    messages.filter((m) => m.role === "user").slice(-3).length >= 2 &&
-    messages.filter((m) => m.role === "user").slice(-3).every((m) => m.content.length < 50)
+    recentUserMsgs.slice(-3).length >= 2 &&
+    recentUserMsgs.slice(-3).every((m) => m.content.length < 50)
   ) {
     current = "focused";
     confidence = 0.7;
     signals.push("short messages", "rapid pace");
-  } else if (/\b(explore|what else|tell me more|curious|interesting)\b/i.test(recentUser)) {
+  } else if (exploratoryHits >= 1) {
     current = "exploratory";
     confidence = 0.7;
     signals.push("exploratory language");

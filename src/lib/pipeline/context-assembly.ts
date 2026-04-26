@@ -10,9 +10,9 @@
 //   6. Memory entries (0–500 tokens)
 //   7. Conversation history (0–3,000 tokens)
 
-import { embed } from "@/lib/embeddings";
 import { loadUkm, compressUkmForPrompt, buildAntiPreferenceBlock } from "@/lib/knowledge/ukm";
 import { wrapSource, wrapMemory } from "@/lib/pipeline/prompt-optimization";
+import { retrieveMemories as retrieveMemoriesCanonical } from "@/lib/memory/retrieval";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RetrievedChunk } from "./retrieval";
 
@@ -76,8 +76,8 @@ export async function assembleContext(opts: {
     retrieveMemories(userId, projectId, currentMessage, supabase),
   ]);
 
-  // Build context sections
-  const ukmSummary = compressUkmForPrompt(ukm);
+  // Build context sections (pass currentMessage so projects can be ranked by relevance)
+  const ukmSummary = compressUkmForPrompt(ukm, currentMessage);
   const antiPrefs = buildAntiPreferenceBlock(ukm);
   const factsBlock = buildFactsBlock(convState);
   const retrievalBlock = buildRetrievalBlock(retrievedChunks, TOKEN_BUDGET_RETRIEVAL);
@@ -125,6 +125,9 @@ export async function loadConversationState(
   };
 }
 
+// Delegates to the canonical retrieveMemories module so we have one embed call
+// path and consistent semantics. The `incrementAccess` side-effect is performed
+// inside retrieveMemories (best-effort fire-and-forget).
 async function retrieveMemories(
   userId: string,
   projectId: string | null,
@@ -132,49 +135,15 @@ async function retrieveMemories(
   supabase: SupabaseClient,
 ): Promise<MemoryEntry[]> {
   try {
-    let embedding: number[] | null = null;
-    try {
-      embedding = await embed(query);
-    } catch {
-      // No embedding available; fall back to FTS
-    }
-
-    if (embedding) {
-      const { data: memories, error: memErr } = await supabase.rpc("search_memories", {
-        query_embedding: `[${embedding.join(",")}]`,
-        target_user_id: userId,
-        target_project_id: projectId,
-        match_count: 10,
-      });
-      if (memErr) console.error("[context-assembly] search_memories failed", memErr);
-
-      if (memories?.length) {
-        const ids = memories.map((m: { id: string }) => m.id);
-        void supabase.rpc("increment_memory_access", { memory_ids: ids });
-      }
-
-      return (memories ?? []).map((m: Record<string, unknown>) => ({
-        id: m.id as string,
-        type: m.type as string,
-        content: m.content as string,
-        confidence: m.confidence as number,
-      }));
-    }
-
-    // FTS fallback when embedding is unavailable
-    const { data: ftsMemories, error: ftsErr } = await supabase
-      .from("memories")
-      .select("id, type, content, confidence")
-      .eq("user_id", userId)
-      .textSearch("content", query.slice(0, 100))
-      .limit(5);
-    if (ftsErr) console.error("[context-assembly] FTS memories fallback failed", ftsErr);
-
-    return (ftsMemories ?? []).map((m: Record<string, unknown>) => ({
-      id: m.id as string,
-      type: m.type as string,
-      content: m.content as string,
-      confidence: m.confidence as number,
+    const results = await retrieveMemoriesCanonical(userId, query, supabase, {
+      projectId,
+      limit: 10,
+    });
+    return results.map((m) => ({
+      id: m.id,
+      type: m.type,
+      content: m.content,
+      confidence: m.confidence,
     }));
   } catch {
     return [];
@@ -197,7 +166,11 @@ function buildFactsBlock(state: ConversationState): string {
     parts.push(`Current tone: ${state.conversationTone.current}`);
   }
   const text = parts.join(". ");
-  return text.slice(0, TOKEN_BUDGET_FACTS * 4);
+  // Conservative ~3 chars/token (matches token-counter.estimateCharBudget) and cut at word boundary.
+  const charLimit = TOKEN_BUDGET_FACTS * 3;
+  if (text.length <= charLimit) return text;
+  const cutAt = text.lastIndexOf(" ", charLimit);
+  return (cutAt > 0 ? text.slice(0, cutAt) : text.slice(0, charLimit)) + "…";
 }
 
 function buildRetrievalBlock(chunks: RetrievedChunk[], tokenBudget: number): string {
