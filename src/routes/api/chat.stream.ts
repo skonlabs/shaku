@@ -437,6 +437,7 @@ export const Route = createFileRoute("/api/chat/stream")({
             console.error("[chat.stream] no runnable models", {
               hasAnthropicKey: Boolean(runtimeKeys.anthropic),
               hasOpenAIKey: Boolean(runtimeKeys.openai),
+              keySources: runtimeKeys.sources,
               selectedProvider: selectedModel.provider,
               fallbackProviders: routingDecision.fallback.map((model) => model.provider),
             });
