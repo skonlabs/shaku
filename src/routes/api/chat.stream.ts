@@ -437,6 +437,12 @@ export const Route = createFileRoute("/api/chat/stream")({
           );
 
           if (runnableModels.length === 0) {
+            console.error("[chat.stream] no runnable models", {
+              hasAnthropicKey: Boolean(runtimeKeys.anthropic),
+              hasOpenAIKey: Boolean(runtimeKeys.openai),
+              selectedProvider: selectedModel.provider,
+              fallbackProviders: routingDecision.fallback.map((model) => model.provider),
+            });
             usedStaticFallback = true;
             assistantText =
               "I can’t connect to the AI service right now. Please try again in a moment.";
