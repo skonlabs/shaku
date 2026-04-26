@@ -57,15 +57,44 @@ export async function loadUkm(
   };
 }
 
+/**
+ * Update the UKM from a new memory observation.
+ *
+ * @param opts.minConfidence  Minimum confidence (0-1) the LLM diff must report
+ *                            for any field to be applied. Default 0.7.
+ * @param opts.allowIdentityChange  If false, identity fields (name/role/company/team)
+ *                                  are dropped from the diff unless already-set
+ *                                  values are being corroborated. Default false.
+ */
 export async function updateUkmFromMemory(
   userId: string,
   memoryContent: string,
   memoryType: string,
   supabase: SupabaseClient,
+  opts: { minConfidence?: number; allowIdentityChange?: boolean } = {},
 ): Promise<void> {
+  const minConfidence = opts.minConfidence ?? 0.7;
+  const allowIdentityChange = opts.allowIdentityChange ?? false;
+
   const ukm = await loadUkm(userId, supabase);
   const diff = await inferUkmDiff(memoryContent, memoryType, ukm);
   if (!diff) return;
+
+  // Confidence gate: drop the whole diff if the LLM reported low confidence.
+  const reportedConf = (diff as { confidence?: number }).confidence;
+  if (typeof reportedConf === "number" && reportedConf < minConfidence) return;
+
+  // Identity fields require explicit allowance OR corroboration of existing values.
+  if (!allowIdentityChange && diff.identity) {
+    const filtered: typeof diff.identity = {};
+    for (const k of Object.keys(diff.identity) as Array<keyof typeof diff.identity>) {
+      const incoming = diff.identity[k];
+      const existing = ukm.identity[k];
+      // Allow set-from-empty, or corroboration (same value); reject overwrites.
+      if (!existing || existing === incoming) filtered[k] = incoming;
+    }
+    diff.identity = filtered;
+  }
 
   const updated = applyDiff(ukm, diff);
   try {
