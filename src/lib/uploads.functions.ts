@@ -26,7 +26,7 @@ export const uploadChatFile = createServerFn({ method: "POST" })
       conversation_id: z.string().uuid(),
       name: z.string().trim().min(1).max(255),
       type: z.string().trim().max(120),
-      data_b64: z.string().min(1),
+      data_b64: z.string(),
       max_mb: z.number().int().min(1).max(25).optional(),
     }),
   )
@@ -53,6 +53,19 @@ export const uploadChatFile = createServerFn({ method: "POST" })
 
     const normalizedType = normalizeMimeType(data.name, data.type);
     const kind = classify(data.name, normalizedType);
+    if (bytes.byteLength === 0) {
+      return {
+        name: data.name,
+        size: 0,
+        type: normalizedType,
+        url: null,
+        path: null,
+        kind,
+        extracted_text: `(Attached file "${data.name}" is empty.)`,
+        extraction_error: null,
+        storage_error: "The file is empty, so there was nothing to store.",
+      };
+    }
     const safeName = data.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-180);
     const path = `${userId}/${data.conversation_id}/${crypto.randomUUID()}-${safeName}`;
 
@@ -98,10 +111,6 @@ export const uploadChatFile = createServerFn({ method: "POST" })
       } else {
         signedUrl = signed.signedUrl;
       }
-    }
-
-    if (!signedUrl && !extractedText && !extractionError) {
-      throw new Error(storageError ?? "I couldn't upload that file. Please try again.");
     }
 
     return {
