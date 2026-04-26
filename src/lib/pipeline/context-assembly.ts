@@ -12,6 +12,7 @@
 
 import { embed } from "@/lib/embeddings";
 import { loadUkm, compressUkmForPrompt, buildAntiPreferenceBlock } from "@/lib/knowledge/ukm";
+import { wrapSource, wrapMemory } from "@/lib/pipeline/prompt-optimization";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RetrievedChunk } from "./retrieval";
 
@@ -206,7 +207,7 @@ function buildRetrievalBlock(chunks: RetrievedChunk[], tokenBudget: number): str
 
   for (const chunk of chunks) {
     const sourceName = (chunk.metadata?.title as string | undefined) ?? chunk.sourceType;
-    const text = `<source name="${sourceName}" type="${chunk.sourceType}">\n${chunk.content}\n</source>`;
+    const text = wrapSource(sourceName, chunk.sourceType, chunk.content);
     if (used + text.length > charBudget) break;
     parts.push(text);
     used += text.length;
@@ -221,7 +222,7 @@ function buildMemoryBlock(memories: MemoryEntry[], tokenBudget: number): string 
   const parts: string[] = [];
 
   for (const m of memories) {
-    const text = `<memory type="${m.type}">${m.content}</memory>`;
+    const text = wrapMemory(m.type, m.content);
     if (used + text.length > charBudget) break;
     parts.push(text);
     used += text.length;

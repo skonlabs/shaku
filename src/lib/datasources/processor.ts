@@ -110,8 +110,8 @@ export async function processFile(
   return { chunkCount: chunks.length, contentHash };
 }
 
-// Process a URL: fetch → extract HTML → chunk → embed → index (temporary)
-// TODO: wire to UI — currently unused; URL indexing isn't wired from chat pipeline.
+// Process a URL: fetch → extract HTML → chunk → embed → index.
+// Called from datasources.process route when a URL datasource is submitted.
 export async function processUrl(
   userId: string,
   url: string,

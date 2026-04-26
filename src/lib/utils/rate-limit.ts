@@ -60,8 +60,7 @@ export async function checkRateLimit(
   return { allowed, remaining, limit, resetAt, windowMs };
 }
 
-// Warning threshold: emit a banner at 80% usage
-// TODO: wire to UI — currently unused
+// Warning threshold check — used by RateLimitBanner
 export function shouldWarnAboutLimit(
   used: number,
   limit: number,

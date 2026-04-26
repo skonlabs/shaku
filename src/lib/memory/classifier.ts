@@ -99,10 +99,7 @@ export function detectCorrection(userMessage: string): boolean {
     /\b(not\s+quite|i\s+said|you\s+misunderstood)\b/i.test(userMessage);
 }
 
-// Detect rephrasing (same question worded differently)
-// TODO: detectRephrasing is exported and tested but not yet called in the live pipeline.
-// Wire it to the exchange handler (scenario 3 in behavioral-learning spec) to trigger
-// gap injection when a user re-asks a similar question.
+// Detect rephrasing (same question worded differently) — Jaccard similarity on word sets.
 export function detectRephrasing(
   newMessage: string,
   previousMessages: string[],

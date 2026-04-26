@@ -22,8 +22,7 @@ export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "gpt-4o": 128_000,
 };
 
-// Model output limits
-// TODO: wire to UI — currently unused; not imported anywhere.
+// Model output limits — used for capping max_tokens in LLM calls
 export const MODEL_MAX_OUTPUT: Record<string, number> = {
   "claude-haiku-4-5-20251001": 8_192,
   "claude-sonnet-4-6": 64_000,

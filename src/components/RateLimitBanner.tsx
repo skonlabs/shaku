@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { getRateLimitStatus } from "@/lib/conversations.functions";
+import { shouldWarnAboutLimit } from "@/lib/utils/rate-limit";
 import { useAuth } from "@/lib/auth-context";
 
 /**
@@ -19,10 +20,8 @@ export function RateLimitBanner() {
   });
 
   if (loading || !user || !data) return null;
-  const pct = data.limit > 0 ? data.used / data.limit : 0;
-  if (pct < 0.8 || pct >= 1) return null;
-
-  const remaining = Math.max(0, data.limit - data.used);
+  const { warn, remaining } = shouldWarnAboutLimit(data.used, data.limit);
+  if (!warn || data.used >= data.limit) return null;
   return (
     <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />

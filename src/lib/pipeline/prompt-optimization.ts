@@ -122,18 +122,15 @@ const TONE_INSTRUCTIONS: Record<string, string> = {
   exploratory: "Provide extra detail and context. Suggest related topics.",
 };
 
-// 7d. Safety framing wrappers for context injection
-// TODO: wire to UI — currently unused
+// XML wrappers for structured context injection — used by context-assembly.ts
 export function wrapUserMessage(content: string): string {
   return `<user_message>${content}</user_message>`;
 }
 
-// TODO: wire to UI — currently unused
 export function wrapSource(name: string, type: string, content: string): string {
   return `<source name="${name}" type="${type}">${content}</source>`;
 }
 
-// TODO: wire to UI — currently unused
 export function wrapMemory(type: string, content: string): string {
   return `<memory type="${type}">${content}</memory>`;
 }
