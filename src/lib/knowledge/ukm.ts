@@ -53,11 +53,14 @@ export async function updateUkmFromMemory(
   if (!diff) return;
 
   const updated = applyDiff(ukm, diff);
-  await supabase.from("user_knowledge_models").upsert({
-    user_id: userId,
-    ...updated,
-    updated_at: new Date().toISOString(),
-  });
+  try {
+    await supabase.from("user_knowledge_models").upsert(
+      { user_id: userId, ...updated, updated_at: new Date().toISOString() },
+      { onConflict: "user_id" },
+    );
+  } catch (e) {
+    console.error("[ukm] upsert failed", e);
+  }
 }
 
 async function inferUkmDiff(

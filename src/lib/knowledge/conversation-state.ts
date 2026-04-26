@@ -12,34 +12,66 @@ export interface ToneState {
 // Extract new facts from the AI response (called post-exchange)
 export async function extractConversationFacts(
   userMessage: string,
-  aiResponse: string,
+  assistantReply: string,
 ): Promise<string[]> {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return [];
+  const prompt = `Extract factual statements about the user from this exchange:
+User: ${userMessage.slice(0, 500)}
+Assistant: ${assistantReply.slice(0, 500)}
+Return a JSON array of strings. Return [] if nothing new.`;
+
+  // Try Anthropic first
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey) {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 200,
+          messages: [{ role: "user", content: prompt }],
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { content: { type: string; text: string }[] };
+        const text = json.content.find((b) => b.type === "text")?.text?.trim() ?? "[]";
+        const match = text.match(/\[[\s\S]*\]/);
+        if (match) {
+          const parsed = JSON.parse(match[0]) as string[];
+          return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
+        }
+      }
+    } catch { /* fall through */ }
+  }
+
+  // Fallback to OpenAI
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) return [];
 
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "gpt-4o-mini",
         max_tokens: 256,
         temperature: 0,
-        messages: [
-          {
-            role: "user",
-            content: `Extract factual statements established in this exchange that are relevant to continue the conversation (NOT general knowledge). Return JSON string array. Max 5 items. Return [] if nothing.
-User: ${userMessage.slice(0, 400)}
-Assistant: ${aiResponse.slice(0, 400)}`,
-          },
-        ],
+        messages: [{ role: "user", content: prompt }],
       }),
       signal: AbortSignal.timeout(4000),
     });
 
     if (!res.ok) return [];
     const json = (await res.json()) as { choices: { message: { content: string } }[] };
-    const parsed = JSON.parse(json.choices[0]?.message?.content?.trim() ?? "[]");
+    const raw = json.choices[0]?.message?.content?.trim() ?? "[]";
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) return [];
+    const parsed = JSON.parse(match[0]) as string[];
     return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
   } catch {
     return [];

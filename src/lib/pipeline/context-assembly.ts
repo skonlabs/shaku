@@ -65,12 +65,12 @@ export async function assembleContext(opts: {
     preloadedHistory,
   } = opts;
 
-  // Load everything in parallel; skip history DB query if caller preloaded it
+  // Load everything in parallel; always use preloadedHistory (callers always provide it)
   const [convState, convHistory, ukm, memories] = await Promise.all([
     loadConversationState(conversationId, supabase),
     preloadedHistory
       ? Promise.resolve(preloadedHistory)
-      : loadConversationHistory(conversationId, supabase),
+      : Promise.resolve([] as { role: "user" | "assistant"; content: string; createdAt: string }[]),
     loadUkm(userId, supabase),
     retrieveMemories(userId, projectId, currentMessage, supabase),
   ]);
@@ -124,26 +124,6 @@ export async function loadConversationState(
   };
 }
 
-async function loadConversationHistory(
-  conversationId: string,
-  supabase: SupabaseClient,
-): Promise<{ role: "user" | "assistant"; content: string; createdAt: string }[]> {
-  const { data } = await supabase
-    .from("messages")
-    .select("role, content, created_at")
-    .eq("conversation_id", conversationId)
-    .eq("is_active", true)
-    .in("role", ["user", "assistant"])
-    .order("created_at", { ascending: true })
-    .limit(50);
-
-  return (data ?? []).map((m) => ({
-    role: m.role as "user" | "assistant",
-    content: m.content,
-    createdAt: m.created_at,
-  }));
-}
-
 async function retrieveMemories(
   userId: string,
   projectId: string | null,
@@ -151,20 +131,45 @@ async function retrieveMemories(
   supabase: SupabaseClient,
 ): Promise<MemoryEntry[]> {
   try {
-    const embedding = await embed(query);
-    const { data } = await supabase.rpc("search_memories", {
-      query_embedding: `[${embedding.join(",")}]`,
-      target_user_id: userId,
-      target_project_id: projectId,
-      match_count: 10,
-    });
-
-    if (data?.length) {
-      const ids = data.map((m: { id: string }) => m.id);
-      void supabase.rpc("increment_memory_access", { memory_ids: ids });
+    let embedding: number[] | null = null;
+    try {
+      embedding = await embed(query);
+    } catch {
+      // No embedding available; fall back to FTS
     }
 
-    return (data ?? []).map((m: Record<string, unknown>) => ({
+    if (embedding) {
+      const { data: memories, error: memErr } = await supabase.rpc("search_memories", {
+        query_embedding: `[${embedding.join(",")}]`,
+        target_user_id: userId,
+        target_project_id: projectId,
+        match_count: 10,
+      });
+      if (memErr) console.error("[context-assembly] search_memories failed", memErr);
+
+      if (memories?.length) {
+        const ids = memories.map((m: { id: string }) => m.id);
+        void supabase.rpc("increment_memory_access", { memory_ids: ids });
+      }
+
+      return (memories ?? []).map((m: Record<string, unknown>) => ({
+        id: m.id as string,
+        type: m.type as string,
+        content: m.content as string,
+        confidence: m.confidence as number,
+      }));
+    }
+
+    // FTS fallback when embedding is unavailable
+    const { data: ftsMemories, error: ftsErr } = await supabase
+      .from("memories")
+      .select("id, type, content, confidence")
+      .eq("user_id", userId)
+      .textSearch("content", query.slice(0, 100))
+      .limit(5);
+    if (ftsErr) console.error("[context-assembly] FTS memories fallback failed", ftsErr);
+
+    return (ftsMemories ?? []).map((m: Record<string, unknown>) => ({
       id: m.id as string,
       type: m.type as string,
       content: m.content as string,

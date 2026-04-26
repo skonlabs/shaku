@@ -30,8 +30,11 @@ export async function promoteConversationMemories(
 
   if (!messages || messages.length < 2) return { created: [], suggested: [] };
 
-  const userMsg = messages.find((m) => m.role === "user")?.content ?? "";
-  const assistantMsg = messages.find((m) => m.role === "assistant")?.content ?? "";
+  // Find the last user message and the most recent assistant reply before it
+  const lastUserIdx = messages.findLastIndex((m) => m.role === "user");
+  const lastAsstIdx = messages.findLastIndex((m, i) => m.role === "assistant" && i < lastUserIdx + 2);
+  const userMsg = lastUserIdx !== -1 ? (messages[lastUserIdx]?.content ?? "") : "";
+  const assistantMsg = lastAsstIdx !== -1 ? (messages[lastAsstIdx]?.content ?? "") : "";
 
   const candidates = await extractMemories(userMsg, assistantMsg);
   const created: string[] = [];
@@ -56,13 +59,14 @@ async function saveMemory(
   candidate: { type: string; content: string; confidence: number },
   supabase: SupabaseClient,
 ): Promise<string | null> {
-  // Check for contradictions before saving
+  // Check ALL contradictions before deciding whether to save
   const contradictions = await detectContradictions(userId, candidate.content, supabase);
 
-  // If any existing memory has higher confidence, skip this candidate
-  for (const contra of contradictions) {
-    if (candidate.confidence <= contra.confidence) return null;
-  }
+  // If any existing memory has higher or equal confidence, the existing knowledge wins
+  const blockedByHigherConfidence = contradictions.some(
+    (contra) => contra.confidence > candidate.confidence,
+  );
+  if (blockedByHigherConfidence) return null;
 
   let embedding: number[] | undefined;
   try {
@@ -82,14 +86,15 @@ async function saveMemory(
       confidence: candidate.confidence,
       importance: 0.5,
       embedding: embedding ? `[${embedding.join(",")}]` : null,
+      search_fallback: !embedding, // flag for FTS-only retrieval when embedding unavailable
     })
     .select("id")
     .single();
 
   if (error || !data) return null;
 
-  // Point superseded memories at the new one (valid UUID now available)
-  for (const contra of contradictions) {
+  // Point superseded (lower-confidence) memories at the new one
+  for (const contra of contradictions.filter((c) => c.confidence <= candidate.confidence)) {
     try {
       await supabase
         .from("memories")

@@ -100,6 +100,9 @@ export function detectCorrection(userMessage: string): boolean {
 }
 
 // Detect rephrasing (same question worded differently)
+// TODO: detectRephrasing is exported and tested but not yet called in the live pipeline.
+// Wire it to the exchange handler (scenario 3 in behavioral-learning spec) to trigger
+// gap injection when a user re-asks a similar question.
 export function detectRephrasing(
   newMessage: string,
   previousMessages: string[],
