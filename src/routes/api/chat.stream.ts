@@ -740,8 +740,9 @@ Do not add any preface, apology, or commentary.`,
               runAfterResponse(
                 (async () => {
                   try {
-                    if (!process.env.ANTHROPIC_API_KEY) return;
-                    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+                    const titleApiKey = getRuntimeKeys().anthropic;
+                    if (!titleApiKey) return;
+                    const anthropic = new Anthropic({ apiKey: titleApiKey });
                     const titleRes = await anthropic.messages.create({
                       model: HAIKU_MODEL_ID,
                       max_tokens: 32,
@@ -823,9 +824,23 @@ function uniqueModels(models: ModelConfig[]): ModelConfig[] {
   });
 }
 
-function modelHasRuntimeKey(model: ModelConfig): boolean {
-  if (model.provider === "anthropic") return Boolean(process.env.ANTHROPIC_API_KEY);
-  if (model.provider === "openai") return Boolean(process.env.OPENAI_API_KEY);
+function getRuntimeKeys(): { anthropic?: string; openai?: string } {
+  const runtimeEnv = ((globalThis as Record<string, unknown>).__runtimeEnv ?? {}) as Record<
+    string,
+    string | undefined
+  >;
+  return {
+    anthropic: runtimeEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY,
+    openai: runtimeEnv.OPENAI_API_KEY ?? process.env.OPENAI_API_KEY,
+  };
+}
+
+function modelHasRuntimeKey(
+  model: ModelConfig,
+  runtimeKeys: { anthropic?: string; openai?: string },
+): boolean {
+  if (model.provider === "anthropic") return Boolean(runtimeKeys.anthropic);
+  if (model.provider === "openai") return Boolean(runtimeKeys.openai);
   return false;
 }
 
