@@ -74,24 +74,35 @@ export const Route = createFileRoute("/api/feedback")({
         const userMessage =
           (prevMsgs ?? []).find((m) => m.role === "user")?.content ?? "";
 
+        // Capture CF context if available (Workers runtime)
+        const cfCtx = (globalThis as Record<string, unknown>).__cfContext as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+        const runAfterResponse = (p: Promise<unknown>) => {
+          if (cfCtx?.waitUntil) cfCtx.waitUntil(p);
+          // else just let it run (dev/Node environments)
+        };
+
         if (body.feedback_type === "thumbs_down") {
-          void processNegativeFeedback(
-            userId,
-            body.conversation_id,
-            body.message_id,
-            userMessage,
-            assistantContent,
-            (body.reason ?? "not_helpful") as FeedbackReason,
-            body.free_text ?? null,
-            supabase,
-          ).catch((e) => console.error("[feedback] processNegativeFeedback", e));
+          runAfterResponse(
+            processNegativeFeedback(
+              userId,
+              body.conversation_id,
+              body.message_id,
+              userMessage,
+              assistantContent,
+              (body.reason ?? "not_helpful") as FeedbackReason,
+              body.free_text ?? null,
+              supabase,
+            ).catch((e) => console.error("[feedback] processNegativeFeedback", e)),
+          );
         } else {
-          void processPositiveFeedback(
-            userId,
-            body.conversation_id,
-            body.message_id,
-            supabase,
-          ).catch((e) => console.error("[feedback] processPositiveFeedback", e));
+          runAfterResponse(
+            processPositiveFeedback(
+              userId,
+              body.conversation_id,
+              body.message_id,
+              supabase,
+            ).catch((e) => console.error("[feedback] processPositiveFeedback", e)),
+          );
         }
 
         return json({ ok: true });

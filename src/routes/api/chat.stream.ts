@@ -36,7 +36,7 @@ import {
   updateUkmFromMemory,
 } from "@/lib/knowledge/ukm";
 import { redactText } from "@/lib/utils/pii";
-import { countTokens, countTokensMessages, estimateCost } from "@/lib/tokens";
+import { countTokens } from "@/lib/tokens";
 import type { ModelConfig } from "@/lib/llm/types";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
@@ -130,12 +130,14 @@ export const Route = createFileRoute("/api/chat/stream")({
         const modelOverride: string | null = convo.model_override ?? null;
 
         // ---- Rate limit ----
+        let memoryEnabled = true;
         if (!body.regenerate) {
           const { data: userRow } = await supabase
             .from("users")
-            .select("plan")
+            .select("plan, memory_enabled")
             .eq("id", userId)
-            .single();
+            .maybeSingle();
+          memoryEnabled = userRow?.memory_enabled !== false;
           const plan = userRow?.plan ?? "free";
           const rl = await checkRateLimit(userId, plan, supabase);
           if (!rl.allowed) {
@@ -150,6 +152,15 @@ export const Route = createFileRoute("/api/chat/stream")({
               { status: 429, headers: { "Content-Type": "application/json" } },
             );
           }
+        }
+
+        if (body.regenerate && memoryEnabled === true) {
+          const { data: uRow } = await supabase
+            .from("users")
+            .select("memory_enabled")
+            .eq("id", userId)
+            .maybeSingle();
+          memoryEnabled = uRow?.memory_enabled !== false;
         }
 
         // ---- Input processing: PII, intent, adversarial check ----
@@ -408,6 +419,13 @@ export const Route = createFileRoute("/api/chat/stream")({
 
         // ---- Stream ----
         return sse(async (send) => {
+          // Capture CF context if available (Workers runtime)
+          const cfCtx = (globalThis as Record<string, unknown>).__cfContext as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+          const runAfterResponse = (p: Promise<unknown>) => {
+            if (cfCtx?.waitUntil) cfCtx.waitUntil(p);
+            // else just let it run (dev/Node environments)
+          };
+
           if (userMsg) send("user_message", userMsg);
 
           let activeModel = selectedModel;
@@ -644,16 +662,21 @@ Do not add any preface, apology, or commentary.`,
             // Record usage event (fire-and-forget; non-blocking)
             if (totalInputTokens > 0 || totalOutputTokens > 0) {
               const costUsd =
-                (totalInputTokens / 1_000_000) * selectedModel.costPerMTokInput +
-                (totalOutputTokens / 1_000_000) * selectedModel.costPerMTokOutput;
-              void supabase.from("usage_events").insert({
-                user_id: userId,
-                model_used: selectedModel.id,
-                tokens_in: totalInputTokens,
-                tokens_out: totalOutputTokens,
-                cost_usd: costUsd,
-                latency_ms: Date.now() - startTimeMs,
-              });
+                (totalInputTokens / 1_000_000) * activeModel.costPerMTokInput +
+                (totalOutputTokens / 1_000_000) * activeModel.costPerMTokOutput;
+              runAfterResponse(
+                supabase
+                  .from("usage_events")
+                  .insert({
+                    user_id: userId,
+                    model_used: activeModel.id,
+                    tokens_in: totalInputTokens,
+                    tokens_out: totalOutputTokens,
+                    cost_usd: costUsd,
+                    latency_ms: Date.now() - startTimeMs,
+                  })
+                  .then(() => {}),
+              );
             }
           }
 
@@ -677,65 +700,74 @@ Do not add any preface, apology, or commentary.`,
 
           // ---- Async post-processing (fire and forget) ----
           if (visible.trim().length > 0) {
-            void (async () => {
-              try {
-                const msgCount = history.length + 2;
-                const [facts] = await Promise.all([
-                  extractConversationFacts(currentUserMessage, visible),
-                  promoteConversationMemories(userId, convo.id, projectId, supabase),
-                  maybeRegenerateSummary(convo.id, msgCount, supabase),
-                ]);
+            runAfterResponse(
+              (async () => {
+                try {
+                  const msgCount = history.length + 2;
+                  const results = await Promise.allSettled([
+                    extractConversationFacts(currentUserMessage, visible),
+                    memoryEnabled
+                      ? promoteConversationMemories(userId, convo.id, projectId, supabase)
+                      : Promise.resolve([]),
+                    maybeRegenerateSummary(convo.id, msgCount, supabase),
+                  ]);
+                  const facts = results[0].status === "fulfilled" ? results[0].value : [];
 
-                if (facts.length > 0) {
-                  await updateConversationState(convo.id, facts, [], supabase);
+                  if (facts.length > 0) {
+                    await updateConversationState(convo.id, facts, [], supabase);
+                  }
+
+                  const newTone = detectTone(
+                    [...preloadedHistory, { role: "user", content: currentUserMessage }],
+                    assembled.convState.conversationTone as ToneState,
+                  );
+                  await supabase
+                    .from("conversation_states")
+                    .update({ conversation_tone: newTone, updated_at: new Date().toISOString() })
+                    .eq("conversation_id", convo.id);
+
+                  if (memoryEnabled) {
+                    // Include user message context so UKM can extract identity/style signals
+                    const ukmContext = `User: ${currentUserMessage.slice(0, 500)}\nAssistant: ${visible.slice(0, 1500)}`;
+                    await updateUkmFromMemory(userId, ukmContext, "episodic", supabase);
+                  }
+                } catch (e) {
+                  console.error("[chat.stream] post-processing error", e);
                 }
-
-                const newTone = detectTone(
-                  [...preloadedHistory, { role: "user", content: currentUserMessage }],
-                  assembled.convState.conversationTone as ToneState,
-                );
-                await supabase
-                  .from("conversation_states")
-                  .update({ conversation_tone: newTone, updated_at: new Date().toISOString() })
-                  .eq("conversation_id", convo.id);
-
-                // Include user message context so UKM can extract identity/style signals
-                const ukmContext = `User: ${currentUserMessage.slice(0, 500)}\nAssistant: ${visible.slice(0, 1500)}`;
-                await updateUkmFromMemory(userId, ukmContext, "episodic", supabase);
-              } catch (e) {
-                console.error("[chat.stream] post-processing error", e);
-              }
-            })();
+              })(),
+            );
 
             // Auto-title via Haiku on first exchange
             if (!convo.title) {
-              void (async () => {
-                try {
-                  if (!process.env.ANTHROPIC_API_KEY) return;
-                  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-                  const titleRes = await anthropic.messages.create({
-                    model: "claude-haiku-4-5-20251001",
-                    max_tokens: 32,
-                    system: TITLE_PROMPT,
-                    messages: [
-                      {
-                        role: "user",
-                        content: `User: ${currentUserMessage.slice(0, 300)}\n\nAssistant: ${visible.slice(0, 400)}`,
-                      },
-                    ],
-                  });
-                  const block = titleRes.content[0];
-                  const text = block?.type === "text" ? block.text.trim().slice(0, 80) : null;
-                  if (text) {
-                    await supabase
-                      .from("conversations")
-                      .update({ title: text })
-                      .eq("id", convo.id);
+              runAfterResponse(
+                (async () => {
+                  try {
+                    if (!process.env.ANTHROPIC_API_KEY) return;
+                    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+                    const titleRes = await anthropic.messages.create({
+                      model: "claude-haiku-4-5-20251001",
+                      max_tokens: 32,
+                      system: TITLE_PROMPT,
+                      messages: [
+                        {
+                          role: "user",
+                          content: `User: ${currentUserMessage.slice(0, 300)}\n\nAssistant: ${visible.slice(0, 400)}`,
+                        },
+                      ],
+                    });
+                    const block = titleRes.content[0];
+                    const text = block?.type === "text" ? block.text.trim().slice(0, 80) : null;
+                    if (text) {
+                      await supabase
+                        .from("conversations")
+                        .update({ title: text })
+                        .eq("id", convo.id);
+                    }
+                  } catch (e) {
+                    console.error("[chat.stream] title gen", e);
                   }
-                } catch (e) {
-                  console.error("[chat.stream] title gen", e);
-                }
-              })();
+                })(),
+              );
             }
           }
         });
@@ -775,18 +807,6 @@ function messageContentToText(content: unknown): string {
     })
     .filter(Boolean)
     .join("\n");
-}
-
-function estimateInputTokens(
-  systemPrompt: string,
-  messages: { role: "user" | "assistant"; content: unknown }[],
-): number {
-  return (
-    countTokens(systemPrompt) +
-    countTokensMessages(
-      messages.map((m) => ({ role: m.role, content: messageContentToText(m.content) })),
-    )
-  );
 }
 
 function stripOverlapPrefix(buffer: string, priorTail: string): string | null {
