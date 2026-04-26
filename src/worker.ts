@@ -25,11 +25,17 @@ function hydrateProcessEnv(env: unknown): void {
   // Copy string-valued bindings into process.env so library code that reads
   // process.env.* (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY) works correctly.
   const target = process.env as Record<string, string | undefined>;
+  const runtimeEnv = ((globalThis as Record<string, unknown>).__runtimeEnv ?? {}) as Record<
+    string,
+    string | undefined
+  >;
   for (const [key, value] of Object.entries(env as Record<string, unknown>)) {
-    if (typeof value === "string" && target[key] === undefined) {
+    if (typeof value === "string" && value.length > 0) {
       target[key] = value;
+      runtimeEnv[key] = value;
     }
   }
+  (globalThis as Record<string, unknown>).__runtimeEnv = runtimeEnv;
 }
 
 export default {
