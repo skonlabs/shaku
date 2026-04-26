@@ -18,7 +18,7 @@ export interface RetrievedChunk {
 export interface RetrievalResult {
   chunks: RetrievedChunk[];
   sourcesSearched: { name: string; type: string; itemsSearched: number }[];
-  qualityScore: number; // avg score of top-5; <0.4 triggers exhaustive strategy
+  qualityScore: number; // avg score of top-5; <0.015 triggers exhaustive strategy
   webSearchTriggered: boolean;
 }
 
@@ -31,7 +31,7 @@ const INTENT_SOURCE_MAP: Record<string, string[] | null> = {
   follow_up: null,
   casual_chat: [], // empty = no retrieval needed
   acknowledgment: [],
-  creative: [],
+  creative: ["conversation_upload", "datasource"], // search user's own content for creative tasks
 };
 
 export async function retrieve(
@@ -103,9 +103,7 @@ export async function retrieve(
   // Compute quality floor
   const topFive = chunks.slice(0, 5);
   const qualityScore =
-    topFive.length === 0
-      ? 0
-      : topFive.reduce((s, c) => s + c.score, 0) / topFive.length;
+    topFive.length === 0 ? 0 : topFive.reduce((s, c) => s + c.score, 0) / topFive.length;
 
   // Group by source for the "sources searched" footer
   const sourceGroups = new Map<string, number>();
@@ -150,7 +148,12 @@ async function retrieveTextOnly(
     score: 1 / (i + 1),
   }));
 
-  return { chunks, sourcesSearched: [], qualityScore: chunks.length > 0 ? 0.5 : 0, webSearchTriggered: false };
+  return {
+    chunks,
+    sourcesSearched: [],
+    qualityScore: chunks.length > 0 ? 0.5 : 0,
+    webSearchTriggered: false,
+  };
 }
 
 // Format retrieved chunks into an XML block for injection into the system prompt.

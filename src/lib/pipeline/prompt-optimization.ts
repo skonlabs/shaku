@@ -70,7 +70,9 @@ export function buildSystemAdditions(
 
   // Follow-up handling
   if (isFollowUp && followUpReference) {
-    parts.push(`This is a follow-up to: "${followUpReference.slice(0, 100)}". Go deeper on this specific aspect.`);
+    parts.push(
+      `This is a follow-up to: "${followUpReference.slice(0, 100)}". Go deeper on this specific aspect.`,
+    );
   }
 
   // Style profile injection
@@ -88,10 +90,10 @@ export function buildSystemAdditions(
     );
   }
 
-  // Follow-up question instruction (7f) — skip for trivial/social intents
-  if (intent !== "acknowledgment" && intent !== "casual_chat") {
+  // Follow-up question instruction (7f) — only for information/analysis intents
+  if (intent === "question" || intent === "search" || intent === "analysis") {
     parts.push(
-      'After substantive responses, suggest 2-3 natural follow-up questions. Format as JSON array in a <followups>["q1","q2"]</followups> tag at the very end. Omit for short/acknowledging replies.',
+      'If your response is longer than 3 sentences, suggest 2-3 natural follow-up questions the user might want to ask. Format as a JSON array in a <followups>["q1","q2"]</followups> tag at the very end of your response. Skip this for short or conversational replies.',
     );
   }
 
@@ -107,13 +109,15 @@ const INTENT_INSTRUCTIONS: Partial<Record<Intent, string>> = {
   // Citation contract: ALWAYS use [<source name>] exactly as it appears in <source name="...">.
   // verifyCitations() in output-validation.ts substring-matches the bracket label
   // against the source name AND requires ≥3 token overlap with the cited content.
-  question: 'Cite sources for every factual claim using [<source name>] format, where <source name> matches the name attribute of a <source> tag in the context.',
+  question:
+    "Cite sources for every factual claim using [<source name>] format, where <source name> matches the name attribute of a <source> tag in the context.",
   action:
     "Show a clear preview of the proposed action. Do not execute without user approval. Present as an action card with [Approve] [Edit] [Cancel] options.",
   analysis:
     "Include specific numbers. Compare to available benchmarks. Present data as tables. Cite all sources using [<source name>] format.",
   creative: "Be creative and original. Citations not needed unless referencing user's data.",
-  search: "Search thoroughly and cite all relevant sources using [<source name>] format. Rank by relevance.",
+  search:
+    "Search thoroughly and cite all relevant sources using [<source name>] format. Rank by relevance.",
 };
 
 const TONE_INSTRUCTIONS: Record<string, string> = {
