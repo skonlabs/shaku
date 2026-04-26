@@ -30,19 +30,14 @@ import {
   maybeRegenerateSummary,
 } from "@/lib/knowledge/conversation-state";
 import type { ToneState } from "@/lib/knowledge/conversation-state";
-import {
-  loadUkm,
-  buildAntiPreferenceBlock,
-  updateUkmFromMemory,
-} from "@/lib/knowledge/ukm";
+import { updateUkmFromMemory } from "@/lib/knowledge/ukm";
 import { redactText } from "@/lib/utils/pii";
 import { countTokens } from "@/lib/tokens";
 import type { ModelConfig } from "@/lib/llm/types";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
 const SUPABASE_PUBLISHABLE_KEY =
-  process.env.SUPABASE_PUBLISHABLE_KEY ??
-  (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
+  process.env.SUPABASE_PUBLISHABLE_KEY ?? (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
 
 const SYSTEM_PROMPT = `You are Cortex, a helpful, warm, and precise personal AI assistant.
 
@@ -250,7 +245,8 @@ export const Route = createFileRoute("/api/chat/stream")({
         if (body.regenerate) {
           while (history.length > 0 && history[history.length - 1].role === "assistant") {
             const last = history[history.length - 1];
-            if (!priorVersion) priorVersion = { content: last.content, created_at: last.created_at };
+            if (!priorVersion)
+              priorVersion = { content: last.content, created_at: last.created_at };
             await supabase.from("messages").update({ is_active: false }).eq("id", last.id);
             history.pop();
           }
@@ -321,9 +317,8 @@ export const Route = createFileRoute("/api/chat/stream")({
           preloadedHistory,
         });
 
-        // ---- Anti-preferences + system additions + format hint ----
-        const ukm = await loadUkm(userId, supabase);
-        const antiPrefs = buildAntiPreferenceBlock(ukm);
+        // ---- System additions + format hint ----
+        // (Anti-preferences already included in assembled.systemPrompt via assembleContext)
         const systemAdditions = buildSystemAdditions(
           intent,
           assembled.convState.styleProfile,
@@ -335,7 +330,6 @@ export const Route = createFileRoute("/api/chat/stream")({
 
         const finalSystemPrompt = [
           assembled.systemPrompt,
-          antiPrefs ? `\n## Things to avoid\n${antiPrefs}` : "",
           systemAdditions ? `\n## Response guidance\n${systemAdditions}` : "",
           formatHint ? `\n## Format\n${formatHint}` : "",
         ]
@@ -345,7 +339,8 @@ export const Route = createFileRoute("/api/chat/stream")({
         // ---- Model routing ----
         const estimatedCtxTokens = estimatePreRetrievalTokens(
           countTokens(SYSTEM_PROMPT),
-          countTokens(preloadedHistory.map((m) => m.content).join(" ")) + (preloadedHistory.length * 4),
+          countTokens(preloadedHistory.map((m) => m.content).join(" ")) +
+            preloadedHistory.length * 4,
           countTokens(currentUserMessage),
         );
         const routingDecision = route({
@@ -384,7 +379,11 @@ export const Route = createFileRoute("/api/chat/stream")({
 
         // ---- Multimodal attachment expansion on last user turn (Anthropic format) ----
         const lastIdx = optimizedMessages.length - 1;
-        if (lastIdx >= 0 && optimizedMessages[lastIdx].role === "user" && body.attachments?.length) {
+        if (
+          lastIdx >= 0 &&
+          optimizedMessages[lastIdx].role === "user" &&
+          body.attachments?.length
+        ) {
           const blocks: Anthropic.MessageParam["content"] = [];
           const textParts: string[] = [];
           const baseText =
@@ -413,7 +412,9 @@ export const Route = createFileRoute("/api/chat/stream")({
         // ---- Stream ----
         return sse(async (send) => {
           // Capture CF context if available (Workers runtime)
-          const cfCtx = (globalThis as Record<string, unknown>).__cfContext as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+          const cfCtx = (globalThis as Record<string, unknown>).__cfContext as
+            | { waitUntil?: (p: Promise<unknown>) => void }
+            | undefined;
           const runAfterResponse = (p: Promise<unknown>) => {
             if (cfCtx?.waitUntil) cfCtx.waitUntil(p);
             // else just let it run (dev/Node environments)
@@ -784,7 +785,10 @@ function buildAttachmentContext(attachments: ChatAttachment[]): string {
   for (const a of attachments) {
     let part = "";
     if (a.extracted_text?.trim()) {
-      const text = truncateChars(a.extracted_text.trim(), Math.min(MAX_ATTACHMENT_CHARS_PER_FILE, remaining));
+      const text = truncateChars(
+        a.extracted_text.trim(),
+        Math.min(MAX_ATTACHMENT_CHARS_PER_FILE, remaining),
+      );
       part = `\n\n--- Attached: ${a.name} (${a.type || "unknown"}) ---\n${text}\n--- end of ${a.name} ---`;
     } else if (a.extraction_error) {
       part = `\n\n[Attached "${a.name}" could not be parsed: ${a.extraction_error}]`;
@@ -798,7 +802,8 @@ function buildAttachmentContext(attachments: ChatAttachment[]): string {
     remaining -= part.length;
   }
 
-  if (remaining <= 0) parts.push("\n\n[Additional attachment text omitted to fit the prompt budget.]");
+  if (remaining <= 0)
+    parts.push("\n\n[Additional attachment text omitted to fit the prompt budget.]");
   return parts.join("");
 }
 
@@ -806,6 +811,7 @@ function truncateChars(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   return `${text.slice(0, Math.max(0, maxChars - 120))}\n\n[…attachment truncated to fit the prompt budget.]`;
 }
+
 
 function uniqueModels(models: ModelConfig[]): ModelConfig[] {
   const seen = new Set<string>();
@@ -869,9 +875,7 @@ function sse(start: (send: (event: string, data: unknown) => void) => Promise<vo
       const send = (event: string, data: unknown) => {
         if (closed) return;
         try {
-          controller.enqueue(
-            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
-          );
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
         } catch {
           closed = true;
         }

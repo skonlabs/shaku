@@ -100,9 +100,7 @@ function ChatPage() {
           setStreamingId(null);
           toast.error(msg);
           setStreamingMessages((cur) =>
-            cur.map((m) =>
-              m.id === tempAsstId ? { ...m, content: msg, pending: false } : m,
-            ),
+            cur.map((m) => (m.id === tempAsstId ? { ...m, content: msg, pending: false } : m)),
           );
         },
         onRateLimit: (resetAt) => setRateLimitedUntil(resetAt),
@@ -114,9 +112,7 @@ function ChatPage() {
   const regenerate = async () => {
     const tempAsstId = `temp-asst-${Date.now()}`;
     // Hide the existing last assistant message optimistically by appending a fresh streaming row
-    setStreamingMessages([
-      { id: tempAsstId, role: "assistant", content: "", pending: true },
-    ]);
+    setStreamingMessages([{ id: tempAsstId, role: "assistant", content: "", pending: true }]);
     setStreamingId(tempAsstId);
     const controller = await streamChat(
       { conversationId: id, regenerate: true },
@@ -238,9 +234,7 @@ function ChatPage() {
           abortRef.current?.abort();
           sendInFlightRef.current = false;
           setStreamingId(null);
-          setStreamingMessages((cur) =>
-            cur.map((m) => (m.pending ? { ...m, pending: false } : m)),
-          );
+          setStreamingMessages((cur) => cur.map((m) => (m.pending ? { ...m, pending: false } : m)));
         }}
         isStreaming={streamingId !== null}
         draftKey={`cortex.draft.${id}`}

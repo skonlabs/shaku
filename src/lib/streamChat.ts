@@ -3,7 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 export interface StreamCallbacks {
   onUserMessage: (id: string, createdAt: string) => void;
   onDelta: (text: string) => void;
-  onDone: (info: { assistantMessageId?: string; followups?: string[]; memoriesUsed?: number; tokensIn?: number; tokensOut?: number }) => void;
+  onDone: (info: {
+    assistantMessageId?: string;
+    followups?: string[];
+    memoriesUsed?: number;
+    tokensIn?: number;
+    tokensOut?: number;
+  }) => void;
   onInterrupted?: () => void;
   onError: (message: string) => void;
   onRateLimit?: (resetAt: string) => void;
@@ -31,7 +37,10 @@ export interface StreamRequest {
  * for transient network failures BEFORE any tokens are received.
  * Once the stream has started, we don't retry — the partial reply is preserved.
  */
-export async function streamChat(req: StreamRequest, cb: StreamCallbacks): Promise<AbortController> {
+export async function streamChat(
+  req: StreamRequest,
+  cb: StreamCallbacks,
+): Promise<AbortController> {
   const controller = new AbortController();
 
   const { data: sessionData } = await supabase.auth.getSession();

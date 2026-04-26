@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, Square, Paperclip, X, FileText, Loader2, ScanLine, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from "lucide-react";
+import {
+  ArrowUp,
+  Square,
+  Paperclip,
+  X,
+  FileText,
+  Loader2,
+  ScanLine,
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { uploadChatFile } from "@/lib/uploads.functions";
@@ -145,10 +157,9 @@ export function ChatComposer({
         (file.type || "").startsWith("image/") ||
         /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(file.name);
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const initialStage: PendingUpload["stage"] = isImage ? "uploading" : "uploading";
       setPending((cur) => [
         ...cur,
-        { id, name: file.name, size: file.size, type: file.type, isImage, stage: initialStage },
+        { id, name: file.name, size: file.size, type: file.type, isImage, stage: "uploading" },
       ]);
       try {
         const data_b64 = await fileToBase64(file);
@@ -354,11 +365,17 @@ function ComposerAttachmentPreview({
     ? { label: "Extraction failed", tone: "text-destructive", Icon: AlertTriangle }
     : hasText
       ? {
-          label: isImage ? `OCR · ${a.extracted_text!.length.toLocaleString()} chars` : `Parsed · ${a.extracted_text!.length.toLocaleString()} chars`,
+          label: isImage
+            ? `OCR · ${a.extracted_text!.length.toLocaleString()} chars`
+            : `Parsed · ${a.extracted_text!.length.toLocaleString()} chars`,
           tone: "text-emerald-600 dark:text-emerald-400",
           Icon: CheckCircle2,
         }
-      : { label: isImage ? "Image" : "No text extracted", tone: "text-muted-foreground", Icon: FileText };
+      : {
+          label: isImage ? "Image" : "No text extracted",
+          tone: "text-muted-foreground",
+          Icon: FileText,
+        };
 
   return (
     <div className="self-start w-full max-w-[520px] overflow-hidden rounded-lg border border-border bg-card text-xs">
@@ -384,7 +401,10 @@ function ComposerAttachmentPreview({
         <button
           onClick={onRemove}
           aria-label="Remove attachment"
-          className={cn("text-muted-foreground transition hover:text-foreground", !(hasText || hasError) && "ml-auto")}
+          className={cn(
+            "text-muted-foreground transition hover:text-foreground",
+            !(hasText || hasError) && "ml-auto",
+          )}
         >
           <X className="h-3 w-3" />
         </button>

@@ -65,12 +65,15 @@ export const getSharedResponse = createServerFn({ method: "POST" })
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
       process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string),
-      process.env.SUPABASE_PUBLISHABLE_KEY ?? (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string),
+      process.env.SUPABASE_PUBLISHABLE_KEY ??
+        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string),
     );
 
     const { data: shared, error } = await supabase
       .from("shared_responses")
-      .select("id, user_message_content, assistant_message_content, citations, created_at, view_count")
+      .select(
+        "id, user_message_content, assistant_message_content, citations, created_at, view_count",
+      )
       .eq("id", data.share_id)
       .single();
 

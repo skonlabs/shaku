@@ -196,8 +196,7 @@ function MessageRow({
   };
 
   if (isUser) {
-    const isPlaceholder =
-      message.content.trim() === "(attachment)" && attachments.length > 0;
+    const isPlaceholder = message.content.trim() === "(attachment)" && attachments.length > 0;
     return (
       <div className="group flex flex-col items-end gap-1.5">
         {editing ? (
@@ -335,10 +334,11 @@ function MessageRow({
         )}
 
         {/* Memory usage indicator */}
-        {!isStreaming && Array.isArray(message.metadata?.memories_used) &&
+        {!isStreaming &&
+          Array.isArray(message.metadata?.memories_used) &&
           (message.metadata!.memories_used as MemoryChipEntry[]).length > 0 && (
-          <MemoryUsedChip memories={message.metadata!.memories_used as MemoryChipEntry[]} />
-        )}
+            <MemoryUsedChip memories={message.metadata!.memories_used as MemoryChipEntry[]} />
+          )}
 
         {!isStreaming && message.content && !message.pending && (
           <div className="mt-1 flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
@@ -361,10 +361,7 @@ function MessageRow({
               active={feedback?.rating === "down"}
               onSubmit={(reasons, note) => fbMut.mutate({ rating: "down", reasons, note })}
             />
-            <IconBtn
-              label="Share"
-              onClick={() => shareMut.mutate()}
-            >
+            <IconBtn label="Share" onClick={() => shareMut.mutate()}>
               {shareMut.isPending ? (
                 <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
               ) : (
