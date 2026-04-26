@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { HAIKU_MODEL_ID } from "@/lib/llm/registry";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 
 const HARD_MAX_BYTES = 25 * 1024 * 1024; // 25 MB ceiling
 const BUCKET = "chat-uploads";
@@ -255,7 +256,8 @@ async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<stri
 }
 
 async function transcribeAudio(bytes: Uint8Array, name: string, mime: string): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const env = await getRuntimeEnv();
+  const apiKey = env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("Audio transcription unavailable right now.");
   }
@@ -301,8 +303,9 @@ async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<
   }
   const b64 = btoa(bin);
 
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
+  const env = await getRuntimeEnv();
+  const anthropicKey = env.ANTHROPIC_API_KEY;
+  const openaiKey = env.OPENAI_API_KEY;
 
   if (anthropicKey) {
     return ocrImageAnthropic(b64, lowerName, lowerMime, anthropicKey);
@@ -310,6 +313,11 @@ async function ocrImage(bytes: Uint8Array, name: string, mime: string): Promise<
   if (openaiKey) {
     return ocrImageOpenAI(b64, lowerName, lowerMime, openaiKey);
   }
+  console.error("[ocrImage] No vision API key resolved from runtime env", {
+    hasProcessAnthropic: Boolean(process.env.ANTHROPIC_API_KEY),
+    hasProcessOpenAI: Boolean(process.env.OPENAI_API_KEY),
+    resolvedKeys: Object.keys(env).filter((k) => k.includes("API_KEY")),
+  });
   // Neither key available — image is still stored and passed to vision models directly.
   return `(Image file: ${name} — text extraction unavailable, but the image will be visible to the AI.)`;
 }
