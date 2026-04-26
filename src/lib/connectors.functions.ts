@@ -147,6 +147,10 @@ export const completeConnectorAuth = createServerFn({ method: "POST" })
       const result = await exchangeSlackCode(data.code, data.redirect_uri);
       encryptedToken = await encryptToken(result.accessToken);
       encryptedRefresh = await encryptToken(""); // Slack uses long-lived tokens
+      // Store team_id in metadata for webhook workspace filtering
+      await supabase.from("connectors").update({
+        metadata: { team_id: result.teamId, team_name: result.teamName },
+      }).eq("id", connector.id);
     } else {
       throw new Error("Unknown service");
     }

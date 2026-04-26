@@ -55,7 +55,7 @@ export async function syncConnector(
       // Service not yet implemented in Phase 1
       await supabase
         .from("connectors")
-        .update({ status: "connected", error_message: "Sync not yet implemented" })
+        .update({ status: "error", error_message: "Sync not implemented for this service" })
         .eq("id", connectorId);
       return;
     }
@@ -96,14 +96,20 @@ export async function runDueConnectorSyncs(supabase: SupabaseClient): Promise<vo
   if (!connectors?.length) return;
 
   const now = Date.now();
+  const startTime = now;
   const due = connectors.filter((c) => {
     const interval = POLLING_INTERVALS[c.service] ?? 30 * 60 * 1000;
     const lastSync = c.last_synced_at ? new Date(c.last_synced_at).getTime() : 0;
     return now - lastSync >= interval;
   });
 
-  // Run syncs sequentially to avoid overloading external APIs
+  // Run syncs sequentially to avoid overloading external APIs.
+  // Stop before 25 s to stay well within CF Workers' 30 s CPU limit.
   for (const connector of due) {
+    if (Date.now() - startTime >= 25_000) {
+      console.warn("[runDueConnectorSyncs] Time budget reached; deferring remaining connectors to next cron run");
+      break;
+    }
     try {
       await syncConnector(connector.id, connector.user_id, connector.service, supabase);
     } catch {
