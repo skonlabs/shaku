@@ -1,7 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { HAIKU_MODEL_ID } from "@/lib/llm/registry";
+
+const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 const HARD_MAX_BYTES = 25 * 1024 * 1024; // 25 MB ceiling
 const BUCKET = "chat-uploads";
@@ -32,6 +36,17 @@ export const uploadChatFile = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
+
+    const { data: conversation, error: conversationError } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("id", data.conversation_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (conversationError || !conversation) {
+      throw new Error("Conversation not found.");
+    }
 
     const bytes = decodeBase64(data.data_b64);
     const limitBytes = Math.min((data.max_mb ?? 1) * 1024 * 1024, HARD_MAX_BYTES);
@@ -69,7 +84,8 @@ export const uploadChatFile = createServerFn({ method: "POST" })
     // ---- Upload to storage (can fail independently of parsing) ----
     let signedUrl: string | null = null;
     let storageError: string | null = null;
-    const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, bytes, {
+    const storageClient = getStorageClient(supabase);
+    const { error: upErr } = await storageClient.storage.from(BUCKET).upload(path, bytes, {
       contentType: normalizedType,
       upsert: false,
     });
@@ -78,7 +94,7 @@ export const uploadChatFile = createServerFn({ method: "POST" })
       console.error("[uploadChatFile]", upErr);
       storageError = formatStorageError(upErr);
     } else {
-      const { data: signed, error: signErr } = await supabase.storage
+      const { data: signed, error: signErr } = await storageClient.storage
         .from(BUCKET)
         .createSignedUrl(path, 60 * 60 * 24 * 7);
       if (signErr || !signed) {
