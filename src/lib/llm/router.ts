@@ -97,14 +97,17 @@ function computeScore(
   costRange: { min: number; max: number },
   latencyRange: { min: number; max: number },
 ): number {
+  // Weights: quality 0.55, cost 0.20, latency 0.15, domain 0.10
+  // Quality is the dominant lever so under-powered models can't outrank capable ones on price alone.
   const qualityMatch =
     m.capability >= complexity
-      ? 0.4 * (m.capability - complexity * 0.1)
-      : 0.4 * m.capability * 0.3; // heavy penalty for under-powered model
+      ? 0.55 * (m.capability - complexity * 0.1)
+      : 0.55 * m.capability * 0.3; // heavy penalty for under-powered model
 
-  const costScore = 0.3 * (1 - normalize(m.costPerMTokInput, costRange.min, costRange.max));
-  const latencyScore = 0.2 * (1 - normalize(m.latencyP50Ms, latencyRange.min, latencyRange.max));
-  const domainScore = 0.1 * (m.domains[domain] ?? m.domains["general"] ?? m.capability);
+  const costScore = 0.2 * (1 - normalize(m.costPerMTokInput, costRange.min, costRange.max));
+  const latencyScore = 0.15 * (1 - normalize(m.latencyP50Ms, latencyRange.min, latencyRange.max));
+  // Domain fallback: 0.5 (neutral) instead of m.capability so missing entries don't inflate score
+  const domainScore = 0.1 * (m.domains[domain] ?? m.domains["general"] ?? 0.5);
 
   return qualityMatch + costScore + latencyScore + domainScore;
 }

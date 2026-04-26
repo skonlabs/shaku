@@ -18,8 +18,9 @@ export async function promoteConversationMemories(
   projectId: string | null,
   supabase: SupabaseClient,
 ): Promise<PromotionResult> {
-  // Load the most recent exchange (last user + assistant message pair)
-  const { data: messages } = await supabase
+  // Load the most recent exchange (last user + assistant message pair).
+  // Fetch descending then reverse to get chronological order [..., user, assistant].
+  const { data: rawMessages } = await supabase
     .from("messages")
     .select("role, content")
     .eq("conversation_id", conversationId)
@@ -28,13 +29,14 @@ export async function promoteConversationMemories(
     .order("created_at", { ascending: false })
     .limit(4);
 
-  if (!messages || messages.length < 2) return { created: [], suggested: [] };
+  if (!rawMessages || rawMessages.length < 2) return { created: [], suggested: [] };
 
-  // Find the last user message and the most recent assistant reply before it
-  const lastUserIdx = messages.findLastIndex((m) => m.role === "user");
-  const lastAsstIdx = messages.findLastIndex((m, i) => m.role === "assistant" && i < lastUserIdx + 2);
-  const userMsg = lastUserIdx !== -1 ? (messages[lastUserIdx]?.content ?? "") : "";
-  const assistantMsg = lastAsstIdx !== -1 ? (messages[lastAsstIdx]?.content ?? "") : "";
+  // Reverse to chronological (oldest → newest) so findLast returns the truly most recent.
+  const messages = [...rawMessages].reverse();
+  const userMsg = messages.findLast((m) => m.role === "user")?.content ?? "";
+  const assistantMsg = messages.findLast((m) => m.role === "assistant")?.content ?? "";
+
+  if (!userMsg || !assistantMsg) return { created: [], suggested: [] };
 
   const candidates = await extractMemories(userMsg, assistantMsg);
   const created: string[] = [];
@@ -43,6 +45,7 @@ export async function promoteConversationMemories(
   for (const candidate of candidates) {
     if (candidate.shouldPromote) {
       const id = await saveMemory(userId, conversationId, projectId, candidate, supabase);
+      // (projectId is also threaded into contradiction detection inside saveMemory)
       if (id) created.push(id);
     } else {
       suggested.push(candidate.content);
@@ -59,8 +62,10 @@ async function saveMemory(
   candidate: { type: string; content: string; confidence: number },
   supabase: SupabaseClient,
 ): Promise<string | null> {
-  // Check ALL contradictions before deciding whether to save
-  const contradictions = await detectContradictions(userId, candidate.content, supabase);
+  // Check contradictions scoped to this project (or global memories when projectId is null)
+  const contradictions = await detectContradictions(userId, candidate.content, supabase, {
+    projectId,
+  });
 
   // If any existing memory has higher or equal confidence, the existing knowledge wins
   const blockedByHigherConfidence = contradictions.some(

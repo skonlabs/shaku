@@ -572,8 +572,9 @@ Do not add any preface, apology, or commentary.`,
                       if (visible) send("delta", { text: visible });
                     }
                     if (chunk.usage) {
-                      totalInputTokens = chunk.usage.prompt_tokens ?? 0;
-                      totalOutputTokens = chunk.usage.completion_tokens ?? 0;
+                      // Accumulate (not overwrite) so prior fallback attempts are preserved.
+                      totalInputTokens += chunk.usage.prompt_tokens ?? 0;
+                      totalOutputTokens += chunk.usage.completion_tokens ?? 0;
                     }
                   }
                 }
