@@ -762,7 +762,7 @@ Do not add any preface, apology, or commentary.`,
                   try {
                     const titleApiKey = getRuntimeKeys().anthropic;
                     if (!titleApiKey) return;
-                    const anthropic = new Anthropic({ apiKey: titleApiKey });
+                    const anthropic = new Anthropic({ apiKey: titleApiKey, ...gatewayOptionsFor(titleApiKey) });
                     const titleRes = await anthropic.messages.create({
                       model: HAIKU_MODEL_ID,
                       max_tokens: 32,
