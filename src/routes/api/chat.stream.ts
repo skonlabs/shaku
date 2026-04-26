@@ -774,6 +774,38 @@ Do not add any preface, apology, or commentary.`,
 
 // ---------- helpers ----------
 
+type ChatAttachment = NonNullable<z.infer<typeof BodySchema>["attachments"]>[number];
+
+function buildAttachmentContext(attachments: ChatAttachment[]): string {
+  if (!attachments.length) return "";
+  const parts: string[] = [];
+  let remaining = MAX_ATTACHMENT_CONTEXT_CHARS;
+
+  for (const a of attachments) {
+    let part = "";
+    if (a.extracted_text?.trim()) {
+      const text = truncateChars(a.extracted_text.trim(), Math.min(MAX_ATTACHMENT_CHARS_PER_FILE, remaining));
+      part = `\n\n--- Attached: ${a.name} (${a.type || "unknown"}) ---\n${text}\n--- end of ${a.name} ---`;
+    } else if (a.extraction_error) {
+      part = `\n\n[Attached "${a.name}" could not be parsed: ${a.extraction_error}]`;
+    } else if (a.storage_error) {
+      part = `\n\n[Attached "${a.name}" could not be stored: ${a.storage_error}]`;
+    } else {
+      part = `\n\n[Attached: ${a.name} (${a.type || "unknown"})]`;
+    }
+    if (part.length > remaining) break;
+    parts.push(part);
+    remaining -= part.length;
+  }
+
+  if (remaining <= 0) parts.push("\n\n[Additional attachment text omitted to fit the prompt budget.]");
+  return parts.join("");
+}
+
+function truncateChars(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(0, maxChars - 120))}\n\n[…attachment truncated to fit the prompt budget.]`;
+}
 
 function uniqueModels(models: ModelConfig[]): ModelConfig[] {
   const seen = new Set<string>();
