@@ -93,11 +93,12 @@ async function refreshAccessToken(
 
 // ---- Token Encryption ----
 // Simple AES-GCM encryption using CF Workers Web Crypto API.
-// Key derived from SUPABASE_SERVICE_ROLE_KEY (first 32 bytes of SHA-256).
+// Key derived from CONNECTOR_ENCRYPTION_KEY (preferred) or SUPABASE_SERVICE_ROLE_KEY (fallback).
 
 async function deriveEncryptionKey(): Promise<CryptoKey> {
-  const keyMaterial = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "fallback-key-change-me";
-  const encoded = new TextEncoder().encode(keyMaterial);
+  const encryptionKey = process.env.CONNECTOR_ENCRYPTION_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!encryptionKey) throw new Error("CONNECTOR_ENCRYPTION_KEY env var is required for OAuth token encryption");
+  const encoded = new TextEncoder().encode(encryptionKey);
   const hash = await crypto.subtle.digest("SHA-256", encoded);
   return crypto.subtle.importKey("raw", hash, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
@@ -117,6 +118,7 @@ export async function encryptToken(token: string): Promise<string> {
 }
 
 export async function decryptToken(stored: string): Promise<string> {
+  if (!stored) return ""; // Slack uses empty refresh tokens; guard against decrypt crash
   const key = await deriveEncryptionKey();
   const [ivB64, ctB64] = stored.split(":");
   const iv = Uint8Array.from(atob(ivB64), (c) => c.charCodeAt(0));
@@ -162,47 +164,55 @@ export async function syncGoogleDrive(
   let newCursor: string | null = null;
 
   if (!connector.sync_cursor) {
-    // ---- Initial sync: list all existing files via files.list ----
-    const params = new URLSearchParams({
-      pageSize: "50",
-      fields: "files(id,name,mimeType,modifiedTime,webViewLink)",
-      q: "trashed=false and mimeType!='application/vnd.google-apps.folder'",
-    });
-    const res = await fetchWithAuth(`${GOOGLE_DRIVE_API}/files?${params}`);
-    if (!res.ok) throw new Error(`Drive API error: ${res.status}`);
+    // ---- Initial sync: list all existing files via files.list (paginated) ----
+    let pageToken: string | undefined;
+    do {
+      const params = new URLSearchParams({
+        pageSize: "100",
+        fields: "files(id,name,mimeType,modifiedTime,webViewLink),nextPageToken",
+        q: "trashed=false and mimeType!='application/vnd.google-apps.folder'",
+      });
+      if (pageToken) params.set("pageToken", pageToken);
 
-    const json = (await res.json()) as {
-      files: { id: string; name: string; mimeType: string; modifiedTime: string; webViewLink?: string }[];
-    };
+      const res = await fetchWithAuth(`${GOOGLE_DRIVE_API}/files?${params}`);
+      if (!res.ok) throw new Error(`Drive API error: ${res.status}`);
 
-    for (const file of json.files ?? []) {
-      try {
-        const content = await downloadFileContent(file.id, file.mimeType, accessToken);
-        if (!content) continue;
-        await processFile(
-          userId,
-          new TextEncoder().encode(content),
-          file.name,
-          mimeToExtension(file.mimeType),
-          {
-            sourceType: "connector",
-            sourceId: connectorId,
-            sourceItemId: file.id,
-            metadata: {
-              title: file.name,
-              url: file.webViewLink,
-              source_name: "Google Drive",
-              modified_at: file.modifiedTime,
-              permissions: { canAccess: true },
+      const json = (await res.json()) as {
+        files: { id: string; name: string; mimeType: string; modifiedTime: string; webViewLink?: string }[];
+        nextPageToken?: string;
+      };
+
+      for (const file of json.files ?? []) {
+        try {
+          const content = await downloadFileContent(file.id, file.mimeType, accessToken);
+          if (!content) continue;
+          await processFile(
+            userId,
+            new TextEncoder().encode(content),
+            file.name,
+            mimeToExtension(file.mimeType),
+            {
+              sourceType: "connector",
+              sourceId: connectorId,
+              sourceItemId: file.id,
+              metadata: {
+                title: file.name,
+                url: file.webViewLink,
+                source_name: "Google Drive",
+                modified_at: file.modifiedTime,
+                permissions: { canAccess: true },
+              },
             },
-          },
-          supabase,
-        );
-        itemsProcessed++;
-      } catch (e) {
-        errors.push(`${file.name}: ${e instanceof Error ? e.message : "unknown"}`);
+            supabase,
+          );
+          itemsProcessed++;
+        } catch (e) {
+          errors.push(`${file.name}: ${e instanceof Error ? e.message : "unknown"}`);
+        }
       }
-    }
+
+      pageToken = json.nextPageToken;
+    } while (pageToken);
 
     // Fetch a Changes API startPageToken so the next sync uses incremental changes
     const startRes = await fetchWithAuth(`${GOOGLE_DRIVE_API}/changes/startPageToken`);

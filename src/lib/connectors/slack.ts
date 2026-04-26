@@ -109,20 +109,38 @@ export async function syncSlack(
   const errors: string[] = [];
   let itemsProcessed = 0;
 
-  // Get public channels
-  const channelsRes = await fetch(`${SLACK_API}/conversations.list?types=public_channel&limit=50`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  const channelsJson = (await channelsRes.json()) as {
-    ok: boolean;
-    channels?: { id: string; name: string; is_member: boolean }[];
-  };
+  // Save the sync start time BEFORE fetching so we don't miss messages that
+  // arrive during the sync window. Subtract a 60-second buffer to handle
+  // clock skew and ensure overlap between sync windows.
+  const newCursor = Math.floor(Date.now() / 1000 - 60).toString();
 
-  const channels = (channelsJson.channels ?? []).filter((c) => c.is_member);
+  // Get all public channels via cursor-based pagination
+  const channels: { id: string; name: string; is_member: boolean }[] = [];
+  let channelCursor: string | undefined;
+
+  do {
+    const params = new URLSearchParams({ types: "public_channel", limit: "200" });
+    if (channelCursor) params.set("cursor", channelCursor);
+
+    const channelsRes = await fetch(`${SLACK_API}/conversations.list?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const channelsJson = (await channelsRes.json()) as {
+      ok: boolean;
+      channels?: { id: string; name: string; is_member: boolean }[];
+      response_metadata?: { next_cursor?: string };
+    };
+
+    if (!channelsJson.ok) break;
+    channels.push(...(channelsJson.channels ?? []));
+    channelCursor = channelsJson.response_metadata?.next_cursor || undefined;
+  } while (channelCursor);
+
+  const memberChannels = channels.filter((c) => c.is_member);
 
   const { processFile } = await import("@/lib/datasources/processor");
 
-  for (const channel of channels.slice(0, 20)) {
+  for (const channel of memberChannels) {
     try {
       // Get recent messages
       const historyParams = new URLSearchParams({
@@ -136,40 +154,52 @@ export async function syncSlack(
       });
       const histJson = (await histRes.json()) as {
         ok: boolean;
-        messages?: { text: string; ts: string; user?: string; thread_ts?: string }[];
+        messages?: { text?: string; ts?: string; user?: string; thread_ts?: string }[];
       };
 
       if (!histJson.ok || !histJson.messages?.length) continue;
 
-      // Combine messages into a document
-      const content = histJson.messages
-        .filter((m) => m.text?.trim())
-        .map((m) => m.text)
-        .join("\n---\n");
+      const messages = histJson.messages.filter((m) => m.text?.trim());
+      if (!messages.length) continue;
 
-      if (!content.trim()) continue;
+      // Chunk messages by day so each day becomes an independent, replaceable document.
+      // Using channel:day as source_item_id means re-syncing the same day replaces
+      // the old content rather than creating duplicates.
+      const byDay = new Map<string, typeof messages>();
+      for (const msg of messages) {
+        const day = new Date(parseFloat(msg.ts ?? "0") * 1000).toISOString().slice(0, 10);
+        if (!byDay.has(day)) byDay.set(day, []);
+        byDay.get(day)!.push(msg);
+      }
 
-      const bytes = new TextEncoder().encode(content);
-      await processFile(userId, bytes, `#${channel.name}`, "txt", {
-        sourceType: "connector",
-        sourceId: connectorId,
-        sourceItemId: channel.id,
-        metadata: {
-          title: `#${channel.name}`,
-          source_name: "Slack",
-          channel_id: channel.id,
-          permissions: { canAccess: true },
-        },
-      }, supabase);
+      for (const [day, dayMsgs] of byDay) {
+        const content = dayMsgs
+          .map((m) => `[${m.user ?? "unknown"}]: ${m.text ?? ""}`)
+          .join("\n");
 
-      itemsProcessed++;
+        if (!content.trim()) continue;
+
+        const sourceItemId = `${channel.id}:${day}`;
+        const bytes = new TextEncoder().encode(content);
+
+        await processFile(userId, bytes, `#${channel.name}-${day}`, "txt", {
+          sourceType: "connector",
+          sourceId: connectorId,
+          sourceItemId,
+          metadata: {
+            title: `#${channel.name} — ${day}`,
+            source_name: "Slack",
+            channel_id: channel.id,
+            permissions: { canAccess: true },
+          },
+        }, supabase);
+
+        itemsProcessed++;
+      }
     } catch (e) {
       errors.push(`#${channel.name}: ${e instanceof Error ? e.message : "unknown"}`);
     }
   }
-
-  // Update sync cursor to now (Unix timestamp)
-  const newCursor = Math.floor(Date.now() / 1000).toString();
 
   return { itemsProcessed, newCursor, errors };
 }

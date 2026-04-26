@@ -7,9 +7,6 @@ import { createClient } from "@supabase/supabase-js";
 import { validateSlackSignature } from "@/lib/connectors/slack";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
-const SUPABASE_KEY =
-  process.env.SUPABASE_PUBLISHABLE_KEY ??
-  (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
 
 export const Route = createFileRoute("/api/webhooks/slack")({
   server: {
@@ -43,24 +40,41 @@ export const Route = createFileRoute("/api/webhooks/slack")({
         // Slack Events API — process asynchronously
         if (payload.type === "event_callback") {
           const event = payload.event as Record<string, unknown>;
-          const teamId = payload.team_id as string;
+          // Extract team_id so we only sync the workspace that sent this event
+          const teamId = (payload.team_id ?? (payload.team as Record<string, unknown> | undefined)?.id) as string | undefined;
 
-          // Find the connector for this workspace
-          const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-          const { data: connectors } = await supabase
-            .from("connectors")
-            .select("id, user_id")
-            .eq("service", "slack")
-            .eq("status", "connected");
+          // Use service-role client: the webhook has no user auth context, and
+          // RLS would block reads with the publishable key.
+          const adminSupabase = createClient(
+            SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            { auth: { persistSession: false } },
+          );
 
           // Process new messages
           if (event.type === "message" && event.text && !event.bot_id) {
-            for (const connector of connectors ?? []) {
-              // Queue a sync for this connector (simplified: trigger full sync)
+            // Fetch all connected Slack connectors; filter to the matching workspace
+            const { data: connectors } = await adminSupabase
+              .from("connectors")
+              .select("id, user_id, metadata")
+              .eq("service", "slack")
+              .eq("status", "connected");
+
+            // Only trigger syncs for connectors belonging to the workspace that sent this event.
+            // Connector metadata should store team_id (set during OAuth exchange).
+            // If team_id isn't stored yet, fall back to syncing only the first connector to
+            // avoid hammering all workspaces on every message.
+            const matching = teamId
+              ? (connectors ?? []).filter(
+                  (c) => (c.metadata as Record<string, unknown> | null)?.team_id === teamId,
+                )
+              : (connectors ?? []).slice(0, 1);
+
+            for (const connector of matching) {
               const syncPromise = (async () => {
                 try {
                   const { syncSlack } = await import("@/lib/connectors/slack");
-                  await syncSlack(connector.id, connector.user_id, supabase);
+                  await syncSlack(connector.id, connector.user_id, adminSupabase);
                 } catch (e) {
                   console.error("[webhooks.slack] sync error:", e);
                 }
