@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import { env as cloudflareEnv } from "cloudflare:workers";
+
 import { z } from "zod";
 import { checkRateLimit } from "@/lib/utils/rate-limit";
 import { TokenOptimizationMiddleware } from "@/lib/token-optimization";
@@ -837,9 +837,8 @@ function getRuntimeKeys(): { anthropic?: string; openai?: string } {
     string | undefined
   >;
   return {
-    anthropic:
-      cloudflareEnv.ANTHROPIC_API_KEY ?? runtimeEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY,
-    openai: cloudflareEnv.OPENAI_API_KEY ?? runtimeEnv.OPENAI_API_KEY ?? process.env.OPENAI_API_KEY,
+    anthropic: runtimeEnv.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY,
+    openai: runtimeEnv.OPENAI_API_KEY ?? process.env.OPENAI_API_KEY,
   };
 }
 
