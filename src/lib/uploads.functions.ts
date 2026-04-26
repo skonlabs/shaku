@@ -77,7 +77,8 @@ export const uploadChatFile = createServerFn({ method: "POST" })
       else if (kind === "docx") extractedText = await extractDocx(bytes);
       else if (kind === "spreadsheet") extractedText = await extractSpreadsheet(bytes, data.name);
       else if (kind === "text") extractedText = decodeText(bytes);
-      else if (kind === "audio") extractedText = await transcribeAudio(bytes, data.name, normalizedType);
+      else if (kind === "audio")
+        extractedText = await transcribeAudio(bytes, data.name, normalizedType);
       else if (kind === "image") extractedText = await ocrImage(bytes, data.name, normalizedType);
     } catch (e) {
       console.error("[uploadChatFile] extraction failed:", data.name, e);
@@ -176,17 +177,26 @@ function normalizeMimeType(name: string, mime: string): string {
   if (lower.endsWith(".docx")) {
     return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   }
-  if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (lower.endsWith(".xlsx"))
+    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
   if (lower.endsWith(".csv")) return "text/csv";
   if (lower.endsWith(".json")) return "application/json";
   if (lower.endsWith(".xml")) return "application/xml";
-  if (lower.endsWith(".md") || lower.endsWith(".txt") || lower.endsWith(".log")) return "text/plain";
+  if (lower.endsWith(".md") || lower.endsWith(".txt") || lower.endsWith(".log"))
+    return "text/plain";
   if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html";
   if (lower.endsWith(".css")) return "text/css";
   if (lower.endsWith(".js")) return "application/javascript";
-  if (lower.endsWith(".ts") || lower.endsWith(".tsx") || lower.endsWith(".jsx")) return "text/plain";
-  if (lower.endsWith(".yaml") || lower.endsWith(".yml") || lower.endsWith(".toml") || lower.endsWith(".ini") || lower.endsWith(".env")) {
+  if (lower.endsWith(".ts") || lower.endsWith(".tsx") || lower.endsWith(".jsx"))
+    return "text/plain";
+  if (
+    lower.endsWith(".yaml") ||
+    lower.endsWith(".yml") ||
+    lower.endsWith(".toml") ||
+    lower.endsWith(".ini") ||
+    lower.endsWith(".env")
+  ) {
     return "text/plain";
   }
   if (lower.endsWith(".png")) return "image/png";
@@ -383,4 +393,3 @@ function formatStorageError(error: { message?: string; statusCode?: string }): s
   }
   return "I couldn't upload that file right now.";
 }
-

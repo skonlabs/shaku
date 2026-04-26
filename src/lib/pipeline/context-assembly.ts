@@ -121,7 +121,11 @@ export async function loadConversationState(
     conversationFacts: data?.conversation_facts ?? [],
     activeTopics: data?.active_topics ?? [],
     styleProfile: data?.style_profile ?? {},
-    conversationTone: data?.conversation_tone ?? { current: "casual", confidence: 0.5, signals: [] },
+    conversationTone: data?.conversation_tone ?? {
+      current: "casual",
+      confidence: 0.5,
+      signals: [],
+    },
   };
 }
 
@@ -149,7 +153,6 @@ async function retrieveMemories(
     return [];
   }
 }
-
 
 function buildFactsBlock(state: ConversationState): string {
   const parts: string[] = [];

@@ -422,7 +422,6 @@ export const Route = createFileRoute("/api/chat/stream")({
           let activeModel = selectedModel;
           let assistantText = "";
           let streamError: unknown = null;
-          let usedStaticFallback = false;
           let totalInputTokens = 0;
           let totalOutputTokens = 0;
           const startTimeMs = Date.now();
@@ -441,7 +440,6 @@ export const Route = createFileRoute("/api/chat/stream")({
               selectedProvider: selectedModel.provider,
               fallbackProviders: routingDecision.fallback.map((model) => model.provider),
             });
-            usedStaticFallback = true;
             assistantText =
               "I can’t connect to the AI service right now. Please try again in a moment.";
             send("delta", { text: assistantText });
@@ -704,7 +702,7 @@ Do not add any preface, apology, or commentary.`,
             .update({ updated_at: new Date().toISOString() })
             .eq("id", convo.id);
 
-          if (streamError) {
+          if (streamError && !assistantId) {
             send("error", { message: "I ran into a problem. Please try again." });
           } else {
             send("done", {
@@ -834,7 +832,6 @@ function truncateChars(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   return `${text.slice(0, Math.max(0, maxChars - 120))}\n\n[…attachment truncated to fit the prompt budget.]`;
 }
-
 
 function uniqueModels(models: ModelConfig[]): ModelConfig[] {
   const seen = new Set<string>();
