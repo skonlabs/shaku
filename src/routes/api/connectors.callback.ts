@@ -125,12 +125,6 @@ function redirect(location: string): Response {
   return new Response(null, { status: 302, headers: { Location: location } });
 }
 
-// inferServiceFromState is no longer used in normal flow (service is always a required query param).
-// Kept as a no-op stub in case future callers need it; service validation is enforced above.
-function inferServiceFromState(_state: string): string {
-  return "";
-}
-
 // CF Workers execution context type
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
