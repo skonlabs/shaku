@@ -431,8 +431,9 @@ export const Route = createFileRoute("/api/chat/stream")({
           const startTimeMs = Date.now();
           const OVERLAP_CHARS = 240;
           let hitFinalCap = false;
+          const runtimeKeys = getRuntimeKeys();
           const runnableModels = uniqueModels([selectedModel, ...routingDecision.fallback]).filter(
-            modelHasRuntimeKey,
+            (model) => modelHasRuntimeKey(model, runtimeKeys),
           );
 
           if (runnableModels.length === 0) {
@@ -451,7 +452,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                 const MAX_AUTO_CONTINUES = candidateModel.provider === "anthropic" ? 3 : 0;
 
                 if (candidateModel.provider === "anthropic") {
-                  const apiKey = process.env.ANTHROPIC_API_KEY;
+                  const apiKey = runtimeKeys.anthropic;
                   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
                   const anthropic = new Anthropic({ apiKey });
                   const turnMessages = [...optimizedMessages];
@@ -533,7 +534,7 @@ Do not add any preface, apology, or commentary.`,
                     });
                   }
                 } else {
-                  const apiKey = process.env.OPENAI_API_KEY;
+                  const apiKey = runtimeKeys.openai;
                   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
                   const openai = new OpenAI({ apiKey });
 
