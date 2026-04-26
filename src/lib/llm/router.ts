@@ -25,12 +25,18 @@ export interface RoutingContext {
 }
 
 export function route(ctx: RoutingContext): RoutingDecision {
-  // 1. User override: use specified model, build fallback from same + other provider
+  // 1. User override: use specified model, build fallback from same + other provider.
+  // Even on override we MUST honor the multimodal hard filter — if the user pinned a
+  // text-only model and uploaded an image, fall through to auto-routing.
   if (ctx.modelOverride) {
     const selected = getModel(ctx.modelOverride);
-    if (selected) {
+    const overrideOk = selected && (!ctx.hasImages || selected.multimodal);
+    if (selected && overrideOk) {
       const fallback = MODEL_REGISTRY.filter(
-        (m) => m.id !== selected.id && m.capability >= selected.capability * 0.8,
+        (m) =>
+          m.id !== selected.id &&
+          m.capability >= selected.capability * 0.8 &&
+          (!ctx.hasImages || m.multimodal),
       )
         .sort((a, b) => {
           // Prefer cross-provider for first fallback
@@ -42,6 +48,7 @@ export function route(ctx: RoutingContext): RoutingDecision {
 
       return { selected, fallback, reason: "user_override", score: 1 };
     }
+    // Otherwise: ignore override and fall through to auto-routing with hard filters.
   }
 
   // 2. Complexity adjustment for follow-ups and conversation momentum

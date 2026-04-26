@@ -79,6 +79,12 @@ async function classifyIntent(text: string): Promise<IntentResult> {
     };
   }
 
+  // Fast path: short messages don't need an LLM round-trip — heuristic is reliable
+  // and skipping saves ~100-300ms latency + $0.0001 per call.
+  if (text.trim().length <= 30) {
+    return fallbackClassify(text, complexity);
+  }
+
   // Use GPT-4o-mini for intent classification
   const key = process.env.OPENAI_API_KEY;
   if (!key) {

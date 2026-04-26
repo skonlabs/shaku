@@ -104,13 +104,16 @@ export function buildSystemAdditions(
 }
 
 const INTENT_INSTRUCTIONS: Partial<Record<Intent, string>> = {
-  question: 'Cite sources for every factual claim using [Source Name, detail] format.',
+  // Citation contract: ALWAYS use [<source name>] exactly as it appears in <source name="...">.
+  // verifyCitations() in output-validation.ts substring-matches the bracket label
+  // against the source name AND requires ≥3 token overlap with the cited content.
+  question: 'Cite sources for every factual claim using [<source name>] format, where <source name> matches the name attribute of a <source> tag in the context.',
   action:
     "Show a clear preview of the proposed action. Do not execute without user approval. Present as an action card with [Approve] [Edit] [Cancel] options.",
   analysis:
-    "Include specific numbers. Compare to available benchmarks. Present data as tables. Cite all sources.",
+    "Include specific numbers. Compare to available benchmarks. Present data as tables. Cite all sources using [<source name>] format.",
   creative: "Be creative and original. Citations not needed unless referencing user's data.",
-  search: "Search thoroughly and cite all relevant sources. Rank by relevance.",
+  search: "Search thoroughly and cite all relevant sources using [<source name>] format. Rank by relevance.",
 };
 
 const TONE_INSTRUCTIONS: Record<string, string> = {
