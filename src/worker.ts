@@ -19,14 +19,29 @@ interface ScheduledEvent {
   cron: string;
 }
 
+function hydrateProcessEnv(env: unknown): void {
+  if (!env || typeof env !== "object") return;
+  // In Cloudflare Workers, secrets/vars are bound to `env`, NOT `process.env`.
+  // Copy string-valued bindings into process.env so library code that reads
+  // process.env.* (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY) works correctly.
+  const target = process.env as Record<string, string | undefined>;
+  for (const [key, value] of Object.entries(env as Record<string, unknown>)) {
+    if (typeof value === "string" && target[key] === undefined) {
+      target[key] = value;
+    }
+  }
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: ExecutionContext): Promise<Response> {
+    hydrateProcessEnv(env);
     // Expose CF context so other handlers (callback, webhook) can call ctx.waitUntil()
     (globalThis as unknown as Record<string, unknown>).__cfContext = ctx;
     return startFetch(request, {});
   },
 
-  async scheduled(_event: ScheduledEvent, _env: unknown, ctx: ExecutionContext): Promise<void> {
+  async scheduled(_event: ScheduledEvent, env: unknown, ctx: ExecutionContext): Promise<void> {
+    hydrateProcessEnv(env);
     const supabaseUrl = process.env.SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!supabaseUrl || !serviceRoleKey) {
