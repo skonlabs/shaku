@@ -428,7 +428,7 @@ export const Route = createFileRoute("/api/chat/stream")({
           const startTimeMs = Date.now();
           const OVERLAP_CHARS = 240;
           let hitFinalCap = false;
-          const runtimeKeys = getRuntimeKeys();
+          const runtimeKeys = await getRuntimeKeys();
           const runnableModels = uniqueModels([selectedModel, ...routingDecision.fallback]).filter(
             (model) => modelHasRuntimeKey(model, runtimeKeys),
           );
@@ -459,7 +459,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                 if (candidateModel.provider === "anthropic") {
                   const apiKey = runtimeKeys.anthropic;
                   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
-                  const anthropic = new Anthropic({ apiKey, ...gatewayOptionsFor(apiKey) });
+                  const anthropic = new Anthropic({ apiKey });
                   const turnMessages = [...optimizedMessages];
                   let stopReason: string | null = null;
 
@@ -541,7 +541,7 @@ Do not add any preface, apology, or commentary.`,
                 } else {
                   const apiKey = runtimeKeys.openai;
                   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
-                  const openai = new OpenAI({ apiKey, ...gatewayOptionsFor(apiKey) });
+                  const openai = new OpenAI({ apiKey });
 
                   const oaiMessages = [
                     { role: "system" as const, content: optimizedSystemPrompt },
@@ -760,9 +760,9 @@ Do not add any preface, apology, or commentary.`,
               runAfterResponse(
                 (async () => {
                   try {
-                    const titleApiKey = getRuntimeKeys().anthropic;
+                    const titleApiKey = (await getRuntimeKeys()).anthropic;
                     if (!titleApiKey) return;
-                    const anthropic = new Anthropic({ apiKey: titleApiKey, ...gatewayOptionsFor(titleApiKey) });
+                    const anthropic = new Anthropic({ apiKey: titleApiKey });
                     const titleRes = await anthropic.messages.create({
                       model: HAIKU_MODEL_ID,
                       max_tokens: 32,
