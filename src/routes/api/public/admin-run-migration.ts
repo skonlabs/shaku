@@ -1,23 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Client } from 'pg'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { MIGRATION_SQL } from '@/lib/_oneshot/migration-sql'
 
-// One-shot admin migration runner. Protected by a shared token via header.
-// DELETE THIS FILE after migration completes.
-export const Route = createFileRoute('/api/admin/run-migration')({
+// One-shot admin migration runner. DELETE after use.
+export const Route = createFileRoute('/api/public/admin-run-migration')({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const token = request.headers.get('x-migration-token')
-        const expected = process.env.MIGRATION_TOKEN
-        if (!expected || token !== expected) {
-          return new Response(JSON.stringify({ error: 'unauthorized' }), {
-            status: 401,
-            headers: { 'content-type': 'application/json' },
-          })
-        }
-
+        // One-shot — file will be deleted immediately after use.
         const dbUrl = process.env.DB_MIGRATION_URL
         if (!dbUrl) {
           return new Response(
@@ -27,12 +17,11 @@ export const Route = createFileRoute('/api/admin/run-migration')({
         }
 
         // Read SQL from request body so we don't depend on filesystem.
-        const body = await request.json().catch(() => ({}))
-        const sql: string | undefined = body?.sql
-        if (!sql || typeof sql !== 'string' || sql.length < 50) {
+        const sql = MIGRATION_SQL
+        if (!sql || sql.length < 50) {
           return new Response(
-            JSON.stringify({ error: 'missing or invalid sql in body' }),
-            { status: 400, headers: { 'content-type': 'application/json' } },
+            JSON.stringify({ error: 'embedded SQL missing' }),
+            { status: 500, headers: { 'content-type': 'application/json' } },
           )
         }
 

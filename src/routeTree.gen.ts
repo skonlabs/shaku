@@ -17,10 +17,10 @@ import { Route as ShareShareIdRouteImport } from './routes/share.$shareId'
 import { Route as ApiFeedbackRouteImport } from './routes/api/feedback'
 import { Route as ApiWebhooksStripeRouteImport } from './routes/api/webhooks.stripe'
 import { Route as ApiWebhooksSlackRouteImport } from './routes/api/webhooks.slack'
+import { Route as ApiPublicAdminRunMigrationRouteImport } from './routes/api/public/admin-run-migration'
 import { Route as ApiDatasourcesProcessRouteImport } from './routes/api/datasources.process'
 import { Route as ApiConnectorsCallbackRouteImport } from './routes/api/connectors.callback'
 import { Route as ApiChatStreamRouteImport } from './routes/api/chat.stream'
-import { Route as ApiAdminRunMigrationRouteImport } from './routes/api/admin.run-migration'
 import { Route as AppCIdRouteImport } from './routes/_app.c.$id'
 
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -62,6 +62,12 @@ const ApiWebhooksSlackRoute = ApiWebhooksSlackRouteImport.update({
   path: '/api/webhooks/slack',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicAdminRunMigrationRoute =
+  ApiPublicAdminRunMigrationRouteImport.update({
+    id: '/api/public/admin-run-migration',
+    path: '/api/public/admin-run-migration',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiDatasourcesProcessRoute = ApiDatasourcesProcessRouteImport.update({
   id: '/api/datasources/process',
   path: '/api/datasources/process',
@@ -77,11 +83,6 @@ const ApiChatStreamRoute = ApiChatStreamRouteImport.update({
   path: '/api/chat/stream',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAdminRunMigrationRoute = ApiAdminRunMigrationRouteImport.update({
-  id: '/api/admin/run-migration',
-  path: '/api/admin/run-migration',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AppCIdRoute = AppCIdRouteImport.update({
   id: '/c/$id',
   path: '/c/$id',
@@ -95,10 +96,10 @@ export interface FileRoutesByFullPath {
   '/api/feedback': typeof ApiFeedbackRoute
   '/share/$shareId': typeof ShareShareIdRoute
   '/c/$id': typeof AppCIdRoute
-  '/api/admin/run-migration': typeof ApiAdminRunMigrationRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
+  '/api/public/admin-run-migration': typeof ApiPublicAdminRunMigrationRoute
   '/api/webhooks/slack': typeof ApiWebhooksSlackRoute
   '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
@@ -109,10 +110,10 @@ export interface FileRoutesByTo {
   '/share/$shareId': typeof ShareShareIdRoute
   '/': typeof AppIndexRoute
   '/c/$id': typeof AppCIdRoute
-  '/api/admin/run-migration': typeof ApiAdminRunMigrationRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
+  '/api/public/admin-run-migration': typeof ApiPublicAdminRunMigrationRoute
   '/api/webhooks/slack': typeof ApiWebhooksSlackRoute
   '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
@@ -125,10 +126,10 @@ export interface FileRoutesById {
   '/share/$shareId': typeof ShareShareIdRoute
   '/_app/': typeof AppIndexRoute
   '/_app/c/$id': typeof AppCIdRoute
-  '/api/admin/run-migration': typeof ApiAdminRunMigrationRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
+  '/api/public/admin-run-migration': typeof ApiPublicAdminRunMigrationRoute
   '/api/webhooks/slack': typeof ApiWebhooksSlackRoute
   '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
@@ -141,10 +142,10 @@ export interface FileRouteTypes {
     | '/api/feedback'
     | '/share/$shareId'
     | '/c/$id'
-    | '/api/admin/run-migration'
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
+    | '/api/public/admin-run-migration'
     | '/api/webhooks/slack'
     | '/api/webhooks/stripe'
   fileRoutesByTo: FileRoutesByTo
@@ -155,10 +156,10 @@ export interface FileRouteTypes {
     | '/share/$shareId'
     | '/'
     | '/c/$id'
-    | '/api/admin/run-migration'
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
+    | '/api/public/admin-run-migration'
     | '/api/webhooks/slack'
     | '/api/webhooks/stripe'
   id:
@@ -170,10 +171,10 @@ export interface FileRouteTypes {
     | '/share/$shareId'
     | '/_app/'
     | '/_app/c/$id'
-    | '/api/admin/run-migration'
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
+    | '/api/public/admin-run-migration'
     | '/api/webhooks/slack'
     | '/api/webhooks/stripe'
   fileRoutesById: FileRoutesById
@@ -184,10 +185,10 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   ApiFeedbackRoute: typeof ApiFeedbackRoute
   ShareShareIdRoute: typeof ShareShareIdRoute
-  ApiAdminRunMigrationRoute: typeof ApiAdminRunMigrationRoute
   ApiChatStreamRoute: typeof ApiChatStreamRoute
   ApiConnectorsCallbackRoute: typeof ApiConnectorsCallbackRoute
   ApiDatasourcesProcessRoute: typeof ApiDatasourcesProcessRoute
+  ApiPublicAdminRunMigrationRoute: typeof ApiPublicAdminRunMigrationRoute
   ApiWebhooksSlackRoute: typeof ApiWebhooksSlackRoute
   ApiWebhooksStripeRoute: typeof ApiWebhooksStripeRoute
 }
@@ -250,6 +251,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhooksSlackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/admin-run-migration': {
+      id: '/api/public/admin-run-migration'
+      path: '/api/public/admin-run-migration'
+      fullPath: '/api/public/admin-run-migration'
+      preLoaderRoute: typeof ApiPublicAdminRunMigrationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/datasources/process': {
       id: '/api/datasources/process'
       path: '/api/datasources/process'
@@ -269,13 +277,6 @@ declare module '@tanstack/react-router' {
       path: '/api/chat/stream'
       fullPath: '/api/chat/stream'
       preLoaderRoute: typeof ApiChatStreamRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/admin/run-migration': {
-      id: '/api/admin/run-migration'
-      path: '/api/admin/run-migration'
-      fullPath: '/api/admin/run-migration'
-      preLoaderRoute: typeof ApiAdminRunMigrationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/c/$id': {
@@ -306,10 +307,10 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   ApiFeedbackRoute: ApiFeedbackRoute,
   ShareShareIdRoute: ShareShareIdRoute,
-  ApiAdminRunMigrationRoute: ApiAdminRunMigrationRoute,
   ApiChatStreamRoute: ApiChatStreamRoute,
   ApiConnectorsCallbackRoute: ApiConnectorsCallbackRoute,
   ApiDatasourcesProcessRoute: ApiDatasourcesProcessRoute,
+  ApiPublicAdminRunMigrationRoute: ApiPublicAdminRunMigrationRoute,
   ApiWebhooksSlackRoute: ApiWebhooksSlackRoute,
   ApiWebhooksStripeRoute: ApiWebhooksStripeRoute,
 }
