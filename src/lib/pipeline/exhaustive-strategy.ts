@@ -43,16 +43,21 @@ export async function exhaustiveRetrieve(
     return { chunks: level2Chunks.slice(0, 20), level: 2, webSearched: false };
   }
 
-  // Level 3: Web search fallback
-  sendStatusUpdate?.("🌐 Searching the web...");
-  const webChunks = await webSearch(originalQuery, 5);
-  if (webChunks.length > 0) {
-    // User sources always have priority over web results
-    return {
-      chunks: [...level2Chunks, ...webChunks].slice(0, 20),
-      level: 3,
-      webSearched: true,
-    };
+  // Level 3: Web search — only if the user has explicitly opted in (issue #15).
+  // Sending queries to Bing requires user consent: the query may contain private
+  // context, and results mix public web facts into the private memory workflow.
+  const webSearchAllowed = await isWebSearchEnabled(userId, supabase);
+  if (webSearchAllowed) {
+    sendStatusUpdate?.("🌐 Searching the web...");
+    const webChunks = await webSearch(originalQuery, 5);
+    if (webChunks.length > 0) {
+      // User sources always have priority over web results
+      return {
+        chunks: [...level2Chunks, ...webChunks].slice(0, 20),
+        level: 3,
+        webSearched: true,
+      };
+    }
   }
 
   // Level 4: Return whatever partial information we have (synthesize from memory)
@@ -61,6 +66,19 @@ export async function exhaustiveRetrieve(
     level: 4,
     webSearched: false,
   };
+}
+
+async function isWebSearchEnabled(userId: string, supabase: SupabaseClient): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from("user_memory_preferences")
+      .select("web_search_enabled")
+      .eq("user_id", userId)
+      .maybeSingle();
+    return (data?.web_search_enabled as boolean | null) ?? false;
+  } catch {
+    return false; // default: off
+  }
 }
 
 async function broadenQuery(query: string): Promise<string> {
