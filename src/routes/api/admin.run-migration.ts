@@ -25,12 +25,11 @@ export const Route = createFileRoute('/api/admin/run-migration')({
         }
 
         // Read SQL from request body so we don't depend on filesystem.
-        const body = await request.json().catch(() => ({}))
-        const sql: string | undefined = body?.sql
-        if (!sql || typeof sql !== 'string' || sql.length < 50) {
+        const sql = MIGRATION_SQL
+        if (!sql || sql.length < 50) {
           return new Response(
-            JSON.stringify({ error: 'missing or invalid sql in body' }),
-            { status: 400, headers: { 'content-type': 'application/json' } },
+            JSON.stringify({ error: 'embedded SQL missing' }),
+            { status: 500, headers: { 'content-type': 'application/json' } },
           )
         }
 
