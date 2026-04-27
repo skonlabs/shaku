@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Sparkles, ArrowRight } from "lucide-react";
+import { Leaf, ArrowRight, Sun, Mail, Lightbulb, ListChecks, BookOpen, MessageCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ChatComposer, type Attachment } from "@/components/ChatComposer";
 import { RateLimitBanner } from "@/components/RateLimitBanner";
@@ -17,24 +17,24 @@ export const Route = createFileRoute("/_app/")({
 });
 
 
-const SUGGESTIONS = [
-  "Help me draft a thoughtful reply to this email…",
-  "Brainstorm 5 angles for a blog post about…",
-  "Explain a tricky concept in simple terms",
-  "Plan my day around these 4 priorities…",
-  "Summarize the key ideas from a long article",
-  "Write a short, friendly intro message",
+type Suggestion = { icon: typeof Mail; label: string; prompt: string };
+
+const SUGGESTIONS: Suggestion[] = [
+  { icon: Mail, label: "Help me write an email", prompt: "Help me write a thoughtful email about…" },
+  { icon: Lightbulb, label: "Brainstorm ideas with me", prompt: "Let's brainstorm ideas for…" },
+  { icon: BookOpen, label: "Explain something simply", prompt: "Can you explain this in simple words: " },
+  { icon: ListChecks, label: "Plan my day", prompt: "Help me plan my day around these priorities…" },
+  { icon: MessageCircle, label: "Summarize a long article", prompt: "Please summarize the key points from this: " },
+  { icon: Sun, label: "Just chat with me", prompt: "I'd love to just chat for a bit. Tell me something interesting." },
 ];
 
-
-
-function pickThree(): string[] {
+function pickThree(): Suggestion[] {
   const arr = [...SUGGESTIONS];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return arr.slice(0, 3);
+  return arr.slice(0, 4);
 }
 
 function NewChatPage() {
@@ -104,26 +104,34 @@ function NewChatPage() {
   });
 
   const firstName = profile?.name ? profile.name.split(" ")[0] : null;
+  const hour = new Date().getHours();
+  const timeOfDay =
+    hour < 5 ? "Hello" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const greeting = welcomeBack
     ? firstName
       ? `Welcome back, ${firstName}`
       : "Welcome back"
     : firstName
-    ? `Hello, ${firstName}`
-    : "Hello";
+    ? `${timeOfDay}, ${firstName}`
+    : timeOfDay;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto">
+    <div className="relative flex h-full flex-col">
+      {/* Soft warm halo behind the greeting — adds atmosphere */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-0 h-[420px] bg-[radial-gradient(ellipse_at_top,oklch(0.88_0.04_130/0.55),transparent_70%)]"
+      />
+      <div className="relative flex-1 overflow-y-auto">
         <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-4 py-12 text-center">
-          <div className="animate-fade-rise mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-primary/10">
-            <Sparkles className="h-7 w-7" />
+          <div className="animate-fade-rise mb-7 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-[oklch(0.62_0.08_145)] to-[oklch(0.50_0.07_150)] text-primary-foreground shadow-[0_10px_30px_-10px_oklch(0.50_0.07_150/0.5)]">
+            <Leaf className="h-8 w-8" />
           </div>
-          <h1 className="animate-fade-rise text-4xl font-semibold tracking-tight sm:text-5xl [animation-delay:60ms]">
+          <h1 className="font-display animate-fade-rise text-4xl font-semibold sm:text-5xl [animation-delay:60ms]">
             {greeting}
           </h1>
-          <p className="animate-fade-rise mt-3 max-w-md text-base text-muted-foreground [animation-delay:120ms]">
-            What can I help you with today?
+          <p className="animate-fade-rise mt-4 max-w-md text-base leading-relaxed text-muted-foreground [animation-delay:120ms]">
+            I'm here whenever you need me. Type below, or pick something to get started — there's no wrong way to begin.
           </p>
 
           {lastConvo && (
@@ -131,28 +139,34 @@ function NewChatPage() {
               onClick={() =>
                 void navigate({ to: "/c/$id", params: { id: lastConvo.id } })
               }
-              className="animate-fade-rise group mt-6 inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur transition-all duration-200 hover:border-primary/40 hover:bg-card hover:text-foreground hover:shadow-md [animation-delay:180ms]"
+              className="animate-fade-rise group mt-7 inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-5 py-2.5 text-sm text-muted-foreground shadow-sm backdrop-blur transition-all duration-200 hover:border-primary/40 hover:bg-card hover:text-foreground hover:shadow-md [animation-delay:180ms]"
             >
-              Continue last chat
+              Pick up where we left off
               {lastConvo.title ? (
                 <span className="font-medium text-foreground">— {lastConvo.title}</span>
               ) : null}
-              <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5" />
+              <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
             </button>
           )}
 
-          <div className="mt-10 grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:grid-cols-3">
-            {suggestions.map((s, i) => (
-              <button
-                key={s}
-                onClick={() => startMut.mutate({ text: s, attachments: [] })}
-                disabled={startMut.isPending}
-                style={{ animationDelay: `${280 + i * 60}ms` }}
-                className="animate-fade-rise group rounded-xl border border-border/70 bg-card/80 px-4 py-3.5 text-left text-sm text-muted-foreground shadow-sm backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-card hover:text-foreground hover:shadow-md disabled:opacity-50"
-              >
-                {s}
-              </button>
-            ))}
+          <div className="mt-12 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+            {suggestions.map((s, i) => {
+              const Icon = s.icon;
+              return (
+                <button
+                  key={s.label}
+                  onClick={() => startMut.mutate({ text: s.prompt, attachments: [] })}
+                  disabled={startMut.isPending}
+                  style={{ animationDelay: `${280 + i * 70}ms` }}
+                  className="animate-fade-rise group flex items-center gap-3 rounded-2xl border border-border/70 bg-card/80 px-4 py-4 text-left text-sm text-foreground shadow-sm backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-card hover:shadow-md disabled:opacity-50"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/60 text-primary transition-colors duration-200 group-hover:bg-accent">
+                    <Icon className="h-[18px] w-[18px]" />
+                  </span>
+                  <span className="font-medium">{s.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -163,7 +177,7 @@ function NewChatPage() {
         isStreaming={startMut.isPending}
         draftKey="cortex.draft.new"
         autoFocus
-        placeholder="Ask me anything…"
+        placeholder="Type a message, or just say hello…"
       />
     </div>
   );
