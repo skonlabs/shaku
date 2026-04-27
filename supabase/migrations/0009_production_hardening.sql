@@ -7,11 +7,16 @@
 --   4. user_memory_preferences.web_search_* — explicit policy gates for web search fallback
 
 -- ---------------------------------------------------------------------------
--- 1. Message streaming status
+-- 1. Message streaming status + updated_at
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.messages
   ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed'
     CHECK (status IN ('streaming', 'completed', 'failed'));
+
+-- updated_at is needed by the streaming durability pattern: the assistant message
+-- is pre-inserted as status='streaming' then updated to 'completed'/'failed'.
+ALTER TABLE public.messages
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
 
 -- Partial/failed messages from prior code have no status row — default to completed.
 -- Index allows the client to query for stuck streaming messages to show recovery UI.

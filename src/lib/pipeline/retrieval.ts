@@ -164,7 +164,8 @@ async function retrieveTextOnly(
   };
 }
 
-// Format retrieved chunks into an XML block for injection into the system prompt.
+// Format retrieved chunks as XML source blocks for injection into the user turn.
+// Retrieved content must NOT go in the system prompt — see context-assembly.ts.
 export function buildRetrievalContext(chunks: RetrievedChunk[], tokenBudget = 6_000): string {
   if (!chunks.length) return "";
   const charBudget = tokenBudget * 4;

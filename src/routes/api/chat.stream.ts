@@ -705,6 +705,13 @@ export const Route = createFileRoute("/api/chat/stream")({
           }
           if (contentBlocked) {
             send("error", { message: "I can't send that response. Please try again." });
+            // Mark the streaming placeholder as failed so it doesn't stay stuck.
+            if (streamingMsgId) {
+              await supabase
+                .from("messages")
+                .update({ status: "failed", updated_at: new Date().toISOString() })
+                .eq("id", streamingMsgId);
+            }
             await supabase
               .from("conversations")
               .update({ updated_at: new Date().toISOString() })
@@ -858,8 +865,8 @@ export const Route = createFileRoute("/api/chat/stream")({
                     p_model: activeModel.id,
                     p_tokens_in: totalInputTokens,
                     p_tokens_out: totalOutputTokens,
-                    p_tokens_saved: 0,
-                    p_savings_pct: 0,
+                    p_tokens_saved: inputSavingsTokens,
+                    p_savings_pct: savingsPct,
                     p_cost_usd: costUsd,
                     p_latency_ms: latencyMs,
                     p_retrieved_memory_ids: assembled.memoriesUsed.map((m) => m.id),

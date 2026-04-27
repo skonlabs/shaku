@@ -26,6 +26,7 @@ export interface MemoryUpdate {
   existingContent: string; // substring to match existing memory
   updatedContent: string;
   confidence: number;
+  type?: MemoryType; // type of the updated memory for type-aware matching
 }
 
 export interface TaskUpdate {
@@ -49,7 +50,7 @@ export interface ExtractionResult {
 
 const EXTRACTION_SCHEMA = `{
   "new_memories": [{"type":"preference|semantic|episodic|behavioral|anti_preference|correction|response_style|project|short_term|long_term|document","content":"concise fact","confidence":0.0-1.0}],
-  "memory_updates": [{"existing_content":"substring of existing memory to update","updated_content":"new version","confidence":0.0-1.0}],
+  "memory_updates": [{"type":"preference|semantic|episodic|behavioral|anti_preference|correction|response_style|project|short_term|long_term|document","existing_content":"substring of existing memory to update","updated_content":"new version","confidence":0.0-1.0}],
   "task_updates": {"title":"string","goal":"string","current_step":"string","completed_steps":["..."],"open_questions":["..."],"decisions":["..."],"next_actions":["..."]} | null,
   "conversation_summary_update": "one-sentence summary of this exchange, or empty string",
   "do_not_store": ["reasons why certain items were NOT stored"],
@@ -161,7 +162,7 @@ Assistant: ${assistantResponse.slice(0, 600)}`;
 
     let parsed: {
       new_memories?: { type: MemoryType; content: string; confidence: number }[];
-      memory_updates?: { existing_content: string; updated_content: string; confidence: number }[];
+      memory_updates?: { type?: MemoryType; existing_content: string; updated_content: string; confidence: number }[];
       task_updates?: Record<string, unknown> | null;
       conversation_summary_update?: string;
       do_not_store?: string[];
@@ -187,6 +188,7 @@ Assistant: ${assistantResponse.slice(0, 600)}`;
     const memoryUpdates: MemoryUpdate[] = (parsed.memory_updates ?? [])
       .filter((u) => u.existing_content && u.updated_content)
       .map((u) => ({
+        type: u.type,
         existingContent: u.existing_content,
         updatedContent: u.updated_content.slice(0, 500),
         confidence: u.confidence ?? 0.7,
