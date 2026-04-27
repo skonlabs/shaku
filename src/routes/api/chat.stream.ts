@@ -517,6 +517,7 @@ export const Route = createFileRoute("/api/chat/stream")({
             console.error("[chat.stream] no runnable models", {
               hasAnthropicKey: Boolean(runtimeKeys.anthropic),
               hasOpenAIKey: Boolean(runtimeKeys.openai),
+              hasGeminiKey: Boolean(runtimeKeys.gemini),
               keySources: runtimeKeys.sources,
               selectedProvider: selectedModel.provider,
               fallbackProviders: routingDecision.fallback.map((model) => model.provider),
@@ -631,6 +632,23 @@ export const Route = createFileRoute("/api/chat/stream")({
                       role: "user",
                       content: "Continue from exactly where you stopped. Do not repeat prior content.",
                     });
+                  }
+                } else if (candidateModel.provider === "google") {
+                  const apiKey = runtimeKeys.gemini;
+                  if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
+                  const { GeminiProvider } = await import("@/lib/llm/gemini");
+                  const gemini = new GeminiProvider(apiKey);
+
+                  for await (const chunk of gemini.generate({
+                    model: candidateModel,
+                    messages: optimizedMessages,
+                    systemPrompt: optimizedSystemPrompt,
+                    maxTokens: PER_TURN_MAX_TOKENS,
+                  })) {
+                    const { text: safeChunk } = redactOutputPii(chunk.text, allowedPiiValues);
+                    assistantText += safeChunk;
+                    const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                    if (visible) send("delta", { text: visible });
                   }
                 } else {
                   const apiKey = runtimeKeys.openai;
@@ -1085,6 +1103,7 @@ function uniqueModels(models: ModelConfig[]): ModelConfig[] {
 async function getRuntimeKeys(): Promise<{
   anthropic?: string;
   openai?: string;
+  gemini?: string;
   sources: Record<string, boolean>;
 }> {
   const runtimeEnv = ((globalThis as Record<string, unknown>).__runtimeEnv ?? {}) as Record<
@@ -1097,15 +1116,20 @@ async function getRuntimeKeys(): Promise<{
   return {
     anthropic: mergedEnv.ANTHROPIC_API_KEY,
     openai: mergedEnv.OPENAI_API_KEY,
+    gemini: mergedEnv.GEMINI_API_KEY,
     sources: {
       fileAnthropic: Boolean(fileEnv.ANTHROPIC_API_KEY),
       fileOpenAI: Boolean(fileEnv.OPENAI_API_KEY),
+      fileGemini: Boolean(fileEnv.GEMINI_API_KEY),
       processAnthropic: Boolean(process.env.ANTHROPIC_API_KEY),
       processOpenAI: Boolean(process.env.OPENAI_API_KEY),
+      processGemini: Boolean(process.env.GEMINI_API_KEY),
       runtimeAnthropic: Boolean(runtimeEnv.ANTHROPIC_API_KEY),
       runtimeOpenAI: Boolean(runtimeEnv.OPENAI_API_KEY),
+      runtimeGemini: Boolean(runtimeEnv.GEMINI_API_KEY),
       cfAnthropic: Boolean(cfEnv.ANTHROPIC_API_KEY),
       cfOpenAI: Boolean(cfEnv.OPENAI_API_KEY),
+      cfGemini: Boolean(cfEnv.GEMINI_API_KEY),
     },
   };
 }
@@ -1176,10 +1200,11 @@ async function getCloudflareEnv(): Promise<Record<string, string | undefined>> {
 
 function modelHasRuntimeKey(
   model: ModelConfig,
-  runtimeKeys: { anthropic?: string; openai?: string },
+  runtimeKeys: { anthropic?: string; openai?: string; gemini?: string },
 ): boolean {
   if (model.provider === "anthropic") return Boolean(runtimeKeys.anthropic);
   if (model.provider === "openai") return Boolean(runtimeKeys.openai);
+  if (model.provider === "google") return Boolean(runtimeKeys.gemini);
   return false;
 }
 

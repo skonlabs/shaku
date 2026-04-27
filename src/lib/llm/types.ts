@@ -1,6 +1,6 @@
 // Canonical LLM types used across the multi-model pipeline.
 
-export type ModelProvider = "anthropic" | "openai";
+export type ModelProvider = "anthropic" | "openai" | "google";
 
 export interface ModelConfig {
   id: string; // API model ID (versioned, e.g. "claude-sonnet-4-5")

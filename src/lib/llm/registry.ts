@@ -68,6 +68,45 @@ export const MODEL_REGISTRY: ModelConfig[] = [
     multimodal: true,
     domains: { general: 0.88, code: 0.85, creative: 0.9, analysis: 0.85 },
   },
+  {
+    id: "gemini-2.0-flash",
+    displayName: "Gemini 2.0 Flash",
+    provider: "google",
+    capability: 0.78,
+    costPerMTokInput: 0.1,
+    costPerMTokOutput: 0.4,
+    latencyP50Ms: 300,
+    contextWindow: 1_048_576,
+    maxOutputTokens: 8_192,
+    multimodal: true,
+    domains: { general: 0.78, code: 0.72, creative: 0.75, analysis: 0.76 },
+  },
+  {
+    id: "gemini-1.5-pro",
+    displayName: "Gemini 1.5 Pro",
+    provider: "google",
+    capability: 0.85,
+    costPerMTokInput: 1.25,
+    costPerMTokOutput: 5.0,
+    latencyP50Ms: 600,
+    contextWindow: 2_097_152,
+    maxOutputTokens: 8_192,
+    multimodal: true,
+    domains: { general: 0.85, code: 0.8, analysis: 0.88, reasoning: 0.85 },
+  },
+  {
+    id: "gemini-1.5-flash",
+    displayName: "Gemini 1.5 Flash",
+    provider: "google",
+    capability: 0.70,
+    costPerMTokInput: 0.075,
+    costPerMTokOutput: 0.3,
+    latencyP50Ms: 250,
+    contextWindow: 1_048_576,
+    maxOutputTokens: 8_192,
+    multimodal: true,
+    domains: { general: 0.70, code: 0.65, creative: 0.68 },
+  },
 ];
 
 export const HAIKU_MODEL_ID = "claude-haiku-4-5-20251001";
@@ -87,6 +126,9 @@ export const SELECTOR_TO_MODEL_ID: Record<string, string> = {
   "claude-opus": "claude-opus-4-7",
   "gpt-4o-mini": "gpt-4o-mini",
   "gpt-4o": "gpt-4o",
+  "gemini-flash": "gemini-2.0-flash",
+  "gemini-pro": "gemini-1.5-pro",
+  "gemini-flash-lite": "gemini-1.5-flash",
 };
 
 // Per-model health state (error rate in last 60s)

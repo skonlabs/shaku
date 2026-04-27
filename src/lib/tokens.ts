@@ -38,6 +38,9 @@ export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   "claude-opus-4-7": 200_000,
   "gpt-4o-mini": 128_000,
   "gpt-4o": 128_000,
+  "gemini-2.0-flash": 1_048_576,
+  "gemini-1.5-pro": 2_097_152,
+  "gemini-1.5-flash": 1_048_576,
 };
 
 // Model output limits — used for capping max_tokens in LLM calls
@@ -47,6 +50,9 @@ export const MODEL_MAX_OUTPUT: Record<string, number> = {
   "claude-opus-4-7": 32_000,
   "gpt-4o-mini": 16_384,
   "gpt-4o": 16_384,
+  "gemini-2.0-flash": 8_192,
+  "gemini-1.5-pro": 8_192,
+  "gemini-1.5-flash": 8_192,
 };
 
 // Cost per million tokens (input / output), USD
@@ -56,6 +62,9 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   "claude-opus-4-7": { input: 15.0, output: 75.0 },
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
   "gpt-4o": { input: 5.0, output: 15.0 },
+  "gemini-2.0-flash": { input: 0.1, output: 0.4 },
+  "gemini-1.5-pro": { input: 1.25, output: 5.0 },
+  "gemini-1.5-flash": { input: 0.075, output: 0.3 },
 };
 
 export function estimateCost(modelId: string, tokensIn: number, tokensOut: number): number {

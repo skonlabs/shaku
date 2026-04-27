@@ -162,5 +162,10 @@ export async function getProvider(modelId: string) {
     const { OpenAIProvider } = await import("./openai");
     return new OpenAIProvider();
   }
+  if (modelId.startsWith("gemini-")) {
+    const { GeminiProvider } = await import("./gemini");
+    const apiKey = process.env.GEMINI_API_KEY ?? "";
+    return new GeminiProvider(apiKey);
+  }
   throw new Error(`Unknown model provider for: ${modelId}`);
 }
