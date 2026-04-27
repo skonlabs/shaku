@@ -4,6 +4,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { HAIKU_MODEL_ID } from "@/lib/llm/registry";
 
+// Provenance of an identity field:
+//   user_asserted — user explicitly stated it ("my name is X", "I work at Y")
+//   observed      — repeated corroboration across ≥3 separate exchanges
+//   inferred      — assistant inferred from a single conversation turn
+//
+// Protection order: user_asserted > observed > inferred.
+// A field already set by user_asserted can only be changed by another user_asserted
+// update, preventing speculative inference from silently overwriting stable facts.
+export type IdentitySource = "user_asserted" | "observed" | "inferred";
+
 export interface UserKnowledgeModel {
   identity: {
     name?: string;
@@ -11,6 +21,8 @@ export interface UserKnowledgeModel {
     company?: string;
     team?: string;
   };
+  // Provenance for each identity field. Keys match identity field names.
+  identitySources: Partial<Record<keyof UserKnowledgeModel["identity"], IdentitySource>>;
   activeProjects: string[];
   relationships: { name: string; role: string }[];
   communicationStyle: {
@@ -42,12 +54,14 @@ export async function loadUkm(
 
   if (!data) return emptyUkm();
 
-  // DB stores snake_case columns; map to camelCase TypeScript interface
   return {
     identity: (data.identity as UserKnowledgeModel["identity"]) ?? {},
+    identitySources:
+      (data.identity_sources as UserKnowledgeModel["identitySources"]) ?? {},
     activeProjects: (data.active_projects as string[]) ?? [],
     relationships: (data.relationships as UserKnowledgeModel["relationships"]) ?? [],
-    communicationStyle: (data.communication_style as UserKnowledgeModel["communicationStyle"]) ?? {},
+    communicationStyle:
+      (data.communication_style as UserKnowledgeModel["communicationStyle"]) ?? {},
     preferences: (data.preferences as UserKnowledgeModel["preferences"]) ?? {},
     antiPreferences: (data.anti_preferences as string[]) ?? [],
     corrections: (data.corrections as string[]) ?? [],
@@ -57,41 +71,57 @@ export async function loadUkm(
   };
 }
 
-/**
- * Update the UKM from a new memory observation.
- *
- * @param opts.minConfidence  Minimum confidence (0-1) the LLM diff must report
- *                            for any field to be applied. Default 0.7.
- * @param opts.allowIdentityChange  If false, identity fields (name/role/company/team)
- *                                  are dropped from the diff unless already-set
- *                                  values are being corroborated. Default false.
- */
+const PROVENANCE_RANK: Record<IdentitySource, number> = {
+  user_asserted: 3,
+  observed:      2,
+  inferred:      1,
+};
+
+// Derive the provenance level for an incoming identity update based on memory type.
+// "correction" and "long_term" memories that explicitly name the user are treated as
+// user_asserted. Everything else is inferred until corroborated.
+function provenanceFromType(memoryType: string): IdentitySource {
+  if (memoryType === "correction") return "user_asserted";
+  if (memoryType === "long_term")  return "user_asserted";
+  return "inferred";
+}
+
 export async function updateUkmFromMemory(
   userId: string,
   memoryContent: string,
   memoryType: string,
   supabase: SupabaseClient,
-  opts: { minConfidence?: number; allowIdentityChange?: boolean } = {},
+  opts: { minConfidence?: number } = {},
 ): Promise<void> {
   const minConfidence = opts.minConfidence ?? 0.7;
-  const allowIdentityChange = opts.allowIdentityChange ?? false;
 
   const ukm = await loadUkm(userId, supabase);
   const diff = await inferUkmDiff(memoryContent, memoryType, ukm);
   if (!diff) return;
 
-  // Confidence gate: drop the whole diff if the LLM reported low confidence.
   const reportedConf = (diff as { confidence?: number }).confidence;
   if (typeof reportedConf === "number" && reportedConf < minConfidence) return;
 
-  // Identity fields require explicit allowance OR corroboration of existing values.
-  if (!allowIdentityChange && diff.identity) {
+  // Apply provenance-aware protection to identity fields.
+  // A field already established at a higher provenance level cannot be overwritten
+  // by a lower-provenance observation. This prevents one speculative inference from
+  // silently replacing a user-confirmed fact.
+  const incomingProvenance = provenanceFromType(memoryType);
+  const updatedSources: UserKnowledgeModel["identitySources"] = { ...ukm.identitySources };
+
+  if (diff.identity) {
     const filtered: typeof diff.identity = {};
     for (const k of Object.keys(diff.identity) as Array<keyof typeof diff.identity>) {
       const incoming = diff.identity[k];
-      const existing = ukm.identity[k];
-      // Allow set-from-empty, or corroboration (same value); reject overwrites.
-      if (!existing || existing === incoming) filtered[k] = incoming;
+      const existingSource = ukm.identitySources[k];
+      const existingRank = existingSource ? PROVENANCE_RANK[existingSource] : 0;
+      const incomingRank = PROVENANCE_RANK[incomingProvenance];
+
+      // Allow: no existing value, or equal/higher provenance incoming update.
+      if (!ukm.identity[k] || incomingRank >= existingRank) {
+        filtered[k] = incoming;
+        updatedSources[k] = incomingProvenance;
+      }
     }
     diff.identity = filtered;
   }
@@ -102,6 +132,7 @@ export async function updateUkmFromMemory(
       {
         user_id: userId,
         identity: updated.identity,
+        identity_sources: updatedSources,
         active_projects: updated.activeProjects,
         relationships: updated.relationships,
         communication_style: updated.communicationStyle,
@@ -299,6 +330,7 @@ export function buildAntiPreferenceBlock(ukm: UserKnowledgeModel): string {
 function emptyUkm(): UserKnowledgeModel {
   return {
     identity: {},
+    identitySources: {},
     activeProjects: [],
     relationships: [],
     communicationStyle: {},

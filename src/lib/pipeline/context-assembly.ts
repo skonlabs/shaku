@@ -6,9 +6,14 @@
 //   2. UKM summary (~200 tokens)
 //   3. Conversation facts + style + topics (~100 tokens)
 //   4. User's current message
-//   5. Retrieved context (0–6,000 tokens)
-//   6. Memory entries (0–500 tokens)
-//   7. Conversation history (0–3,000 tokens)
+//   5. Memory entries (0–500 tokens)        ← trusted; stays in system prompt
+//   6. Conversation history (0–3,000 tokens)
+//   7. Retrieved context (0–6,000 tokens)   ← UNTRUSTED; injected into user turn
+//
+// Retrieved source chunks are intentionally NOT placed in the system prompt.
+// Putting untrusted document content in the system prompt grants it the same
+// authority as instructions. Instead, callers receive retrievalContext separately
+// and must prepend it to the final user turn with a clear UNTRUSTED boundary.
 
 import { loadUkm, compressUkmForPrompt, buildAntiPreferenceBlock } from "@/lib/knowledge/ukm";
 import { wrapSource, wrapMemory } from "@/lib/pipeline/prompt-optimization";
@@ -38,6 +43,9 @@ export interface MemoryEntry {
 
 export interface AssembledContext {
   systemPrompt: string;
+  // Retrieved source chunks formatted as an UNTRUSTED block for injection into
+  // the user turn. Empty string if no chunks were retrieved.
+  retrievalContext: string;
   messages: { role: "user" | "assistant"; content: string }[];
   memoriesUsed: MemoryEntry[];
   sourcesSearched: { name: string; type: string; itemsSearched: number }[];
@@ -45,10 +53,30 @@ export interface AssembledContext {
   activeTask: ActiveTask | null;
 }
 
-const TOKEN_BUDGET_RETRIEVAL = 10_000;
-const TOKEN_BUDGET_MEMORY = 2_000;
-const TOKEN_BUDGET_HISTORY = 50_000;
-const TOKEN_BUDGET_FACTS = 300;
+// Token budgets with an 80% safety margin to avoid exceeding model context limits
+// across code, JSON, non-English text, and markdown tables (4 chars/token is a rough
+// average that over-counts for code and under-counts for CJK).
+const SAFETY_FACTOR = 0.80;
+const TOKEN_BUDGET_MEMORY = Math.floor(2_000 * SAFETY_FACTOR);    //  1,600
+const TOKEN_BUDGET_HISTORY = Math.floor(10_000 * SAFETY_FACTOR);  //  8,000  (was 50k)
+const TOKEN_BUDGET_RETRIEVAL = Math.floor(10_000 * SAFETY_FACTOR); // 8,000
+const TOKEN_BUDGET_FACTS = Math.floor(300 * SAFETY_FACTOR);       //    240
+
+// Globally applicable memory types that should always be injected regardless of
+// relevance to the current query. These describe enduring preferences and style.
+const GLOBAL_MEMORY_TYPES = new Set([
+  "preference",
+  "anti_preference",
+  "response_style",
+  "behavioral",
+  "correction",
+  "long_term",
+]);
+
+// Minimum hybridScore a pinned memory must have to be injected when its type is
+// NOT globally applicable. Prevents irrelevant pinned project/episodic memories
+// from polluting context in unrelated conversations.
+const PINNED_RELEVANCE_MIN_SCORE = 0.05;
 
 export async function assembleContext(opts: {
   userId: string;
@@ -71,10 +99,10 @@ export async function assembleContext(opts: {
     preloadedHistory,
   } = opts;
 
-  // Load user memory preferences to respect per-user limits
+  // Load user memory preferences before the parallel load so its results can
+  // configure the retrieval call inside the parallel batch.
   const memPrefs = await loadMemoryPreferences(userId, supabase);
 
-  // Load everything in parallel; always use preloadedHistory (callers always provide it)
   const [convState, convHistory, ukm, memories, activeTask] = await Promise.all([
     loadConversationState(conversationId, supabase),
     preloadedHistory
@@ -89,11 +117,11 @@ export async function assembleContext(opts: {
     loadActiveTask(conversationId, supabase),
   ]);
 
-  // Build context sections (pass currentMessage so projects can be ranked by relevance)
   const ukmSummary = compressUkmForPrompt(ukm, currentMessage);
   const antiPrefs = buildAntiPreferenceBlock(ukm);
   const factsBlock = buildFactsBlock(convState);
-  const retrievalBlock = buildRetrievalBlock(retrievedChunks, TOKEN_BUDGET_RETRIEVAL);
+  // Retrieval context goes to the user turn, not the system prompt (issue #14).
+  const retrievalContext = buildRetrievalContext(retrievedChunks, TOKEN_BUDGET_RETRIEVAL);
   const memoryBlock = buildMemoryBlock(memories, TOKEN_BUDGET_MEMORY);
   const historyMessages = truncateHistory(convHistory, TOKEN_BUDGET_HISTORY);
 
@@ -101,10 +129,8 @@ export async function assembleContext(opts: {
     ? `Conversation summary (earlier messages): ${convState.summary}`
     : "";
 
-  // Build task block if there is an active task
   const taskBlock = activeTask ? buildTaskBlock(activeTask) : "";
 
-  // Build system prompt
   const systemPrompt = [
     systemInstructions,
     ukmSummary ? `\n## About the user\n${ukmSummary}` : "",
@@ -113,13 +139,13 @@ export async function assembleContext(opts: {
     factsBlock ? `\n## Conversation context\n${factsBlock}` : "",
     taskBlock ? `\n## Active task\n${taskBlock}` : "",
     memoryBlock ? `\n## Memory\n${memoryBlock}` : "",
-    retrievalBlock ? `\n## Sources\n${retrievalBlock}` : "",
   ]
     .filter(Boolean)
     .join("\n");
 
   return {
     systemPrompt,
+    retrievalContext,
     messages: historyMessages,
     memoriesUsed: memories,
     sourcesSearched: [],
@@ -178,9 +204,6 @@ async function loadMemoryPreferences(
   }
 }
 
-// Delegates to the canonical retrieveMemories module so we have one embed call
-// path and consistent semantics. The `incrementAccess` side-effect is performed
-// inside retrieveMemories (best-effort fire-and-forget).
 async function retrieveMemories(
   userId: string,
   projectId: string | null,
@@ -236,14 +259,16 @@ function buildFactsBlock(state: ConversationState): string {
     parts.push(`Current tone: ${state.conversationTone.current}`);
   }
   const text = parts.join(". ");
-  // Conservative ~3 chars/token (matches token-counter.estimateCharBudget) and cut at word boundary.
   const charLimit = TOKEN_BUDGET_FACTS * 3;
   if (text.length <= charLimit) return text;
   const cutAt = text.lastIndexOf(" ", charLimit);
   return (cutAt > 0 ? text.slice(0, cutAt) : text.slice(0, charLimit)) + "…";
 }
 
-function buildRetrievalBlock(chunks: RetrievedChunk[], tokenBudget: number): string {
+// Build the retrieval block for injection into the USER turn (not the system prompt).
+// Caller wraps this with the UNTRUSTED RETRIEVED CONTEXT header.
+function buildRetrievalContext(chunks: RetrievedChunk[], tokenBudget: number): string {
+  if (!chunks.length) return "";
   const charBudget = tokenBudget * 4;
   let used = 0;
   const parts: string[] = [];
@@ -259,10 +284,32 @@ function buildRetrievalBlock(chunks: RetrievedChunk[], tokenBudget: number): str
   return parts.join("\n\n");
 }
 
+// Rank memories by a combined relevance+quality score (issue #4).
+// hybridScore from the RPC already encodes semantic similarity, keyword match,
+// recency, importance, and pinned bonus — it is the primary relevance signal.
+// Confidence is a secondary quality gate.
+//
+//   final = hybridScore * 0.60 + confidence * 0.40
+//
+// Pinned memories bypass the score threshold only for globally applicable types
+// (preferences, style, corrections). Pinned project/episodic memories must still
+// meet the minimum relevance score to be included (issue #5).
 function buildMemoryBlock(memories: MemoryEntry[], tokenBudget: number): string {
   const charBudget = tokenBudget * 4;
-  // Rank by confidence descending so highest-quality memories survive truncation.
-  const ranked = [...memories].sort((a, b) => b.confidence - a.confidence);
+
+  const score = (m: MemoryEntry): number => {
+    const hybrid = m.hybridScore ?? m.confidence;
+    return hybrid * 0.60 + m.confidence * 0.40;
+  };
+
+  const isEligible = (m: MemoryEntry): boolean => {
+    if (!m.pinned) return true;
+    if (GLOBAL_MEMORY_TYPES.has(m.type)) return true;
+    return (m.hybridScore ?? 0) >= PINNED_RELEVANCE_MIN_SCORE;
+  };
+
+  const ranked = memories.filter(isEligible).sort((a, b) => score(b) - score(a));
+
   let used = 0;
   const parts: string[] = [];
 
@@ -281,13 +328,12 @@ function truncateHistory(
   tokenBudget: number,
 ): { role: "user" | "assistant"; content: string }[] {
   const charBudget = tokenBudget * 4;
-  // Take most recent messages first (reverse), accumulate, then reverse back
   let used = 0;
   const selected: { role: "user" | "assistant"; content: string }[] = [];
 
   for (let i = history.length - 1; i >= 0; i--) {
     const msg = history[i];
-    const len = msg.content.length + 10; // role overhead
+    const len = msg.content.length + 10;
     if (used + len > charBudget && selected.length > 0) break;
     selected.unshift(msg);
     used += len;
@@ -296,7 +342,6 @@ function truncateHistory(
   return selected;
 }
 
-// Update conversation state after a completed exchange (called async)
 export async function updateConversationState(
   conversationId: string,
   newFacts: string[],

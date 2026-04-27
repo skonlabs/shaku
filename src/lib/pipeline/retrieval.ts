@@ -22,16 +22,24 @@ export interface RetrievalResult {
   webSearchTriggered: boolean;
 }
 
-// Map intent to source types to search
+// Map intent to source types to search.
+// null = search all source types.
+// Non-null array = restrict to those types.
+//
+// casual_chat: still searches conversation_uploads — the user may have shared a
+// file earlier that is directly relevant to a conversational follow-up ("what did
+// that doc say?"). Datasources/connectors are skipped to keep latency low.
+// acknowledgment: no chunk retrieval; memory/task context is handled by
+// context-assembly regardless of intent.
 const INTENT_SOURCE_MAP: Record<string, string[] | null> = {
-  question: null, // null = search all
-  search: null,
-  analysis: null,
-  action: ["connector"],
-  follow_up: null,
-  casual_chat: [], // empty = no retrieval needed
+  question:      null,
+  search:        null,
+  analysis:      null,
+  action:        ["connector"],
+  follow_up:     null,
+  casual_chat:   ["conversation_upload", "url_in_message"],
   acknowledgment: [],
-  creative: ["conversation_upload", "datasource"], // search user's own content for creative tasks
+  creative:      ["conversation_upload", "datasource"],
 };
 
 export async function retrieve(
@@ -172,14 +180,24 @@ export function buildRetrievalContext(chunks: RetrievedChunk[], tokenBudget = 6_
   return parts.join("\n\n");
 }
 
-// Web search fallback (Sprint 7, triggered by exhaustive strategy)
-export async function webSearch(query: string, topK = 5): Promise<RetrievedChunk[]> {
+// Web search fallback — requires explicit user opt-in (web_search_enabled preference).
+// Never called directly; gated by the caller checking user preferences first.
+// The query must be sanitized before reaching Bing (no PII, no private identifiers).
+export async function webSearch(
+  query: string,
+  topK = 5,
+  opts: { sanitizedQuery?: string } = {},
+): Promise<RetrievedChunk[]> {
   const bingKey = process.env.BING_SEARCH_API_KEY;
   if (!bingKey) return [];
 
+  // Use a sanitized version of the query if provided — callers should strip
+  // PII and private identifiers before passing queries to the public web.
+  const searchQuery = opts.sanitizedQuery ?? query;
+
   try {
     const res = await fetch(
-      `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=${topK}&responseFilter=Webpages`,
+      `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(searchQuery)}&count=${topK}&responseFilter=Webpages`,
       {
         headers: { "Ocp-Apim-Subscription-Key": bingKey },
         signal: AbortSignal.timeout(5000),
