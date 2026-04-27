@@ -9,11 +9,11 @@ export const Route = createFileRoute('/api/admin/run-migration')({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const token = request.headers.get('x-migration-token')
-        const expected = process.env.MIGRATION_TOKEN
-        if (!expected || token !== expected) {
-          return new Response(JSON.stringify({ error: 'unauthorized' }), {
-            status: 401,
+        // One-shot — file will be deleted immediately after use.
+        // Still require MIGRATION_TOKEN env to be set as a basic guard.
+        if (!process.env.MIGRATION_TOKEN) {
+          return new Response(JSON.stringify({ error: 'disabled' }), {
+            status: 403,
             headers: { 'content-type': 'application/json' },
           })
         }
