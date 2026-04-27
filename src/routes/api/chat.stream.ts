@@ -719,19 +719,32 @@ export const Route = createFileRoute("/api/chat/stream")({
             return;
           }
 
-          // Always-respond guarantee: if all models failed to produce text, emit a
-          // clear error so the user is never left with a silent empty response.
-          if (visible.trim().length === 0 && streamError && !assistantText) {
-            const errMsg =
-              "I ran into a technical issue and couldn't generate a response. Please try again.";
-            send("delta", { text: errMsg });
-            assistantText = errMsg;
+          // Always-respond guarantee: fires when visible content is empty after all
+          // processing. Covers two cases:
+          //   (a) all models errored before emitting any tokens
+          //       (streamError set, assistantText empty)
+          //   (b) model emitted ONLY <followups> clarification/suggestion tags with no
+          //       preceding answer text — stripFollowupsTagPartial suppresses every
+          //       delta so visible = "" even though assistantText is non-empty
+          // Without this guard the user sees a permanently-spinning loading indicator.
+          let effectiveVisible = visible;
+          if (visible.trim().length === 0) {
+            const fallback =
+              streamError && !assistantText
+                ? "I ran into a technical issue and couldn't generate a response. Please try again."
+                : "I wasn't able to generate a response for that. Could you try rephrasing your question?";
+            send("delta", { text: fallback });
+            assistantText = fallback;
+            effectiveVisible = fallback;
+            // Discard any <followups> clarification questions that arrived without
+            // an answer — showing them alongside the fallback message is confusing.
+            followups.length = 0;
           }
 
           const sourceNames = finalChunks.map(
             (c) => (c.metadata?.title as string | undefined) ?? c.sourceType,
           );
-          const citationRatio = verifyCitations(visible, sourceNames);
+          const citationRatio = verifyCitations(effectiveVisible, sourceNames);
           const ambiguity = scoreAmbiguity(currentUserMessage);
           const confidence = scoreConfidence({
             retrievalQualityAvg: retrievalResult.qualityScore,
@@ -742,7 +755,7 @@ export const Route = createFileRoute("/api/chat/stream")({
 
           // ---- Persist assistant message ----
           // Append a visible truncation note so the user knows the reply was cut.
-          let visibleFinal = visible;
+          let visibleFinal = effectiveVisible;
           if (hitFinalCap) {
             const note = '\n\n_…response continues — say "continue" for more._';
             if (!visibleFinal.endsWith(note)) {
@@ -759,11 +772,13 @@ export const Route = createFileRoute("/api/chat/stream")({
           let assistantId: string | null = streamingMsgId;
           let assistantCreatedAt: string | null = null;
 
-          // Mark the streaming placeholder as failed if we got no content.
+          // Mark the streaming placeholder as failed and inactive if we got no
+          // content. Setting is_active=false prevents it from appearing as a
+          // permanently-spinning loading bubble in the conversation history.
           if (visibleFinal.trim().length === 0 && streamingMsgId) {
             await supabase
               .from("messages")
-              .update({ status: "failed", updated_at: new Date().toISOString() })
+              .update({ status: "failed", is_active: false, updated_at: new Date().toISOString() })
               .eq("id", streamingMsgId);
           }
 

@@ -87,10 +87,13 @@ export function buildSystemAdditions(
   const toneInstructions = TONE_INSTRUCTIONS[conversationTone];
   if (toneInstructions) parts.push(toneInstructions);
 
-  // Follow-up questions — only for substantive information intents, kept brief
+  // Follow-up questions — only for substantive information intents, kept brief.
+  // IMPORTANT: <followups> must only appear AFTER you have written your actual
+  // answer. Never emit <followups> as a substitute for an answer, and never
+  // emit it without preceding content. Omit entirely for short replies.
   if (intent === "question" || intent === "search" || intent === "analysis") {
     parts.push(
-      'After a substantive response, append 2-3 short follow-up questions inside <followups>["q1","q2"]</followups>. Omit for short or conversational replies.',
+      'After writing your answer, you may append 2-3 short follow-up questions inside <followups>["q1","q2"]</followups>. The <followups> block must always come after your answer, never before it and never instead of it.',
     );
   }
 
