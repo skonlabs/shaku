@@ -87,11 +87,25 @@ export const getUkm = createServerFn({ method: "POST" })
   .inputValidator(z.object({}))
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const [ukm, userRow] = await Promise.all([
+    const [ukm, userRow, recentMessages] = await Promise.all([
       loadUkm(userId, supabase),
       supabase.from("users").select("memory_enabled").eq("id", userId).maybeSingle(),
+      supabase
+        .from("messages")
+        .select("content, created_at, conversations!inner(user_id)")
+        .eq("role", "user")
+        .eq("is_active", true)
+        .eq("conversations.user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(5),
     ]);
-    return { ukm, memoryEnabled: (userRow.data?.memory_enabled ?? true) as boolean };
+    const recentSignals = ((recentMessages.data ?? []) as Array<{ content: string; created_at: string }>).map(
+      (message) => ({
+        content: message.content.length > 160 ? `${message.content.slice(0, 157)}…` : message.content,
+        createdAt: message.created_at,
+      }),
+    );
+    return { ukm, memoryEnabled: (userRow.data?.memory_enabled ?? true) as boolean, recentSignals };
   });
 
 export const getMemoryStats = createServerFn({ method: "POST" })
