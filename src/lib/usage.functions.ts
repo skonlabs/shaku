@@ -120,20 +120,20 @@ async function getUsageFromMessageMetadata(
 
   const { data } = await query;
   const rows = (data ?? []) as Array<{ metadata: unknown; created_at: string }>;
-  return rows
-    .map((row: { metadata: unknown; created_at: string }) => {
-      const metadata = (row.metadata ?? {}) as Record<string, unknown>;
-      const tokensIn = Number(metadata.tokens_in ?? 0);
-      const tokensOut = Number(metadata.tokens_out ?? 0);
-      if (tokensIn <= 0 && tokensOut <= 0) return null;
-      return {
-        model_used: typeof metadata.model === "string" ? metadata.model : "chat",
-        tokens_in: tokensIn,
-        tokens_out: tokensOut,
-        cost_usd: 0,
-        latency_ms: null,
-        created_at: row.created_at,
-      };
-    })
-    .filter((event: UsageEvent | null): event is UsageEvent => event !== null);
+  const events: UsageEvent[] = [];
+  for (const row of rows) {
+    const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+    const tokensIn = Number(metadata.tokens_in ?? 0);
+    const tokensOut = Number(metadata.tokens_out ?? 0);
+    if (tokensIn <= 0 && tokensOut <= 0) continue;
+    events.push({
+      model_used: typeof metadata.model === "string" ? metadata.model : "chat",
+      tokens_in: tokensIn,
+      tokens_out: tokensOut,
+      cost_usd: 0,
+      latency_ms: null,
+      created_at: row.created_at,
+    });
+  }
+  return events;
 }
