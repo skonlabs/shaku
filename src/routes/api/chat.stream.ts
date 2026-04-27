@@ -36,6 +36,9 @@ import type { ToneState } from "@/lib/knowledge/conversation-state";
 import { updateUkmFromMemory } from "@/lib/knowledge/ukm";
 import { redactText } from "@/lib/utils/pii";
 import { countTokens } from "@/lib/tokens";
+import { InputCleaner } from "@/lib/token-optimization/input-cleaner";
+import { TASK_OUTPUT_TOKENS } from "@/lib/token-optimization/budget-manager";
+import type { TaskType } from "@/lib/token-optimization/types";
 import type { ModelConfig } from "@/lib/llm/types";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
@@ -183,6 +186,7 @@ export const Route = createFileRoute("/api/chat/stream")({
         // ---- Input processing: PII, intent, adversarial check ----
         let processedMessage = body.user_message ?? "";
         let inputResult: Awaited<ReturnType<typeof processInput>> | null = null;
+        let inputSavingsTokens = 0;
         if (!body.regenerate && body.user_message) {
           inputResult = await processInput(body.user_message, {});
 
@@ -194,6 +198,14 @@ export const Route = createFileRoute("/api/chat/stream")({
             const { redacted } = redactText(body.user_message, inputResult.piiAutoRedact);
             processedMessage = redacted;
           }
+
+          // Clean user message: remove boilerplate, repeated whitespace, duplicate
+          // paragraphs. Sensitive-domain content is preserved verbatim by InputCleaner.
+          const rawTokensBefore = countTokens(processedMessage);
+          const cleaner = new InputCleaner();
+          processedMessage = cleaner.clean(processedMessage);
+          const rawTokensAfter = countTokens(processedMessage);
+          inputSavingsTokens = Math.max(0, rawTokensBefore - rawTokensAfter);
         }
 
         // ---- Persist user message ----
@@ -470,9 +482,11 @@ export const Route = createFileRoute("/api/chat/stream")({
               hitFinalCap = false;
 
               try {
-                // Use the model's full output capacity per turn — fewer auto-continues
-                // means we don't re-bill the entire input context multiple times.
-                const PER_TURN_MAX_TOKENS = candidateModel.maxOutputTokens;
+                // Dynamic output tokens: use task-appropriate cap from BudgetManager spec.
+                // Auto-continue handles longer responses so we don't waste context budget.
+                const taskType = intentToTaskType(intent, intentResult.domain);
+                const taskCap = TASK_OUTPUT_TOKENS[taskType] ?? 800;
+                const PER_TURN_MAX_TOKENS = Math.min(candidateModel.maxOutputTokens, taskCap);
                 const MAX_AUTO_CONTINUES = candidateModel.provider === "anthropic" ? 3 : 0;
 
                 if (candidateModel.provider === "anthropic") {
@@ -690,12 +704,18 @@ Do not add any preface, apology, or commentary.`,
           let assistantId: string | null = null;
           let assistantCreatedAt: string | null = null;
           if (visibleFinal.trim().length > 0) {
+            const savingsPct =
+              totalInputTokens + inputSavingsTokens > 0
+                ? Math.round((inputSavingsTokens / (totalInputTokens + inputSavingsTokens)) * 100)
+                : 0;
             const metadata: Record<string, unknown> = {
               model: activeModel.id,
               confidence,
               citation_ratio: citationRatio,
               tokens_in: totalInputTokens,
               tokens_out: totalOutputTokens,
+              tokens_saved: inputSavingsTokens,
+              savings_pct: savingsPct,
             };
             if (assembled.memoriesUsed.length > 0) {
               metadata.memories_used = assembled.memoriesUsed.map((m) => ({
@@ -757,6 +777,10 @@ Do not add any preface, apology, or commentary.`,
           if (streamError && !assistantId) {
             send("error", { message: "I ran into a problem. Please try again." });
           } else {
+            const doneSavingsPct =
+              totalInputTokens + inputSavingsTokens > 0
+                ? Math.round((inputSavingsTokens / (totalInputTokens + inputSavingsTokens)) * 100)
+                : 0;
             send("done", {
               assistant_message_id: assistantId,
               created_at: assistantCreatedAt,
@@ -764,6 +788,8 @@ Do not add any preface, apology, or commentary.`,
               memories_used: assembled.memoriesUsed.length,
               tokens_in: totalInputTokens,
               tokens_out: totalOutputTokens,
+              tokens_saved: inputSavingsTokens,
+              savings_pct: doneSavingsPct,
             });
           }
 
@@ -847,6 +873,25 @@ Do not add any preface, apology, or commentary.`,
 });
 
 // ---------- helpers ----------
+
+/** Map chat intent + domain to a BudgetManager TaskType for dynamic output token sizing. */
+function intentToTaskType(intent: string, domain: string): TaskType {
+  if (domain === "code") return "coding";
+  switch (intent) {
+    case "analysis":
+    case "multi_part":
+      return "reasoning";
+    case "search":
+    case "question":
+    case "creative":
+    case "action":
+    case "follow_up":
+    case "casual_chat":
+    case "acknowledgment":
+    default:
+      return "generation";
+  }
+}
 
 type ChatAttachment = NonNullable<z.infer<typeof BodySchema>["attachments"]>[number];
 
