@@ -200,19 +200,23 @@ export const getMemoryPreferences = createServerFn({ method: "POST" })
   .inputValidator(z.object({}))
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("user_memory_preferences")
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
+    const fallback = await getFallbackMemoryPreferences(supabase, userId);
+    if (error) {
+      console.error("[memory.preferences] read failed, using fallback", error);
+    }
     return {
-      memoryEnabled: (data?.memory_enabled ?? true) as boolean,
-      autoExtract: (data?.auto_extract ?? true) as boolean,
-      minConfidenceThreshold: (data?.min_confidence_threshold ?? 0.6) as number,
-      maxMemoriesPerCall: (data?.max_memories_per_call ?? 10) as number,
-      maxChunksPerCall: (data?.max_chunks_per_call ?? 8) as number,
-      storeConversationSummaries: (data?.store_conversation_summaries ?? true) as boolean,
-      excludedTypes: (data?.excluded_types ?? []) as string[],
+      memoryEnabled: (data?.memory_enabled ?? fallback.memoryEnabled) as boolean,
+      autoExtract: (data?.auto_extract ?? fallback.autoExtract) as boolean,
+      minConfidenceThreshold: (data?.min_confidence_threshold ?? fallback.minConfidenceThreshold) as number,
+      maxMemoriesPerCall: (data?.max_memories_per_call ?? fallback.maxMemoriesPerCall) as number,
+      maxChunksPerCall: (data?.max_chunks_per_call ?? fallback.maxChunksPerCall) as number,
+      storeConversationSummaries: (data?.store_conversation_summaries ?? fallback.storeConversationSummaries) as boolean,
+      excludedTypes: (data?.excluded_types ?? fallback.excludedTypes) as string[],
     };
   });
 
@@ -228,9 +232,68 @@ export const updateMemoryPreferences = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
+    const updatedAt = new Date().toISOString();
     const { error } = await supabase
       .from("user_memory_preferences")
-      .upsert({ user_id: userId, ...data, updated_at: new Date().toISOString() });
-    if (error) throw new Error("Couldn't save preferences.");
+      .upsert({ user_id: userId, ...data, updated_at: updatedAt }, { onConflict: "user_id" });
+    if (error) {
+      console.error("[memory.preferences] primary save failed, saving fallback", error);
+      await saveFallbackMemoryPreferences(supabase, userId, data, updatedAt);
+    }
     return { success: true };
   });
+
+type MemoryPreferencePatch = {
+  min_confidence_threshold?: number;
+  max_memories_per_call?: number;
+  auto_extract?: boolean;
+  store_conversation_summaries?: boolean;
+};
+
+type SupabaseLike = {
+  from: (table: string) => any;
+};
+
+const DEFAULT_MEMORY_PREFERENCES = {
+  memoryEnabled: true,
+  autoExtract: true,
+  minConfidenceThreshold: 0.6,
+  maxMemoriesPerCall: 10,
+  maxChunksPerCall: 8,
+  storeConversationSummaries: true,
+  excludedTypes: [] as string[],
+};
+
+async function getFallbackMemoryPreferences(supabase: SupabaseLike, userId: string) {
+  const { data } = await supabase.from("users").select("pii_preferences").eq("id", userId).maybeSingle();
+  const prefs = (data?.pii_preferences as { memoryPreferences?: Partial<typeof DEFAULT_MEMORY_PREFERENCES> } | null)
+    ?.memoryPreferences;
+  return { ...DEFAULT_MEMORY_PREFERENCES, ...(prefs ?? {}) };
+}
+
+async function saveFallbackMemoryPreferences(
+  supabase: SupabaseLike,
+  userId: string,
+  patch: MemoryPreferencePatch,
+  updatedAt: string,
+) {
+  const current = await getFallbackMemoryPreferences(supabase, userId);
+  const next = {
+    ...current,
+    ...(patch.auto_extract === undefined ? {} : { autoExtract: patch.auto_extract }),
+    ...(patch.min_confidence_threshold === undefined
+      ? {}
+      : { minConfidenceThreshold: patch.min_confidence_threshold }),
+    ...(patch.max_memories_per_call === undefined ? {} : { maxMemoriesPerCall: patch.max_memories_per_call }),
+    ...(patch.store_conversation_summaries === undefined
+      ? {}
+      : { storeConversationSummaries: patch.store_conversation_summaries }),
+  };
+  const { data: userRow } = await supabase.from("users").select("pii_preferences").eq("id", userId).maybeSingle();
+  const piiPreferences = (userRow?.pii_preferences ?? {}) as Record<string, unknown>;
+  const { error } = await supabase
+    .from("users")
+    .update({ pii_preferences: { ...piiPreferences, memoryPreferences: next }, updated_at: updatedAt })
+    .eq("id", userId);
+  if (error) throw new Error("Couldn't save preferences.");
+}
