@@ -119,7 +119,8 @@ async function getUsageFromMessageMetadata(
   if (sinceIso) query = query.gte("created_at", sinceIso);
 
   const { data } = await query;
-  return (data ?? [])
+  const rows = (data ?? []) as Array<{ metadata: unknown; created_at: string }>;
+  return rows
     .map((row: { metadata: unknown; created_at: string }) => {
       const metadata = (row.metadata ?? {}) as Record<string, unknown>;
       const tokensIn = Number(metadata.tokens_in ?? 0);
@@ -134,5 +135,5 @@ async function getUsageFromMessageMetadata(
         created_at: row.created_at,
       };
     })
-    .filter((event): event is UsageEvent => event !== null);
+    .filter((event: UsageEvent | null): event is UsageEvent => event !== null);
 }
