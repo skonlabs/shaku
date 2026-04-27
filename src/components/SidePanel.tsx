@@ -985,6 +985,11 @@ interface MemoryEntry {
   sourceConversationId?: string | null;
 }
 
+type RecentPersonaSignal = {
+  content: string;
+  createdAt: string;
+};
+
 // ─── Projects ────────────────────────────────────────────────────────────────
 
 function ProjectsPanel() {
@@ -2080,6 +2085,7 @@ function MemoryPanel() {
 
   const memoryEnabled = ukmData?.memoryEnabled ?? true;
   const memories = (memoriesData?.memories ?? []) as MemoryEntry[];
+  const recentSignals = (ukmData?.recentSignals ?? []) as RecentPersonaSignal[];
   const grouped = groupByType(memories);
 
   const TABS = [
@@ -2123,7 +2129,9 @@ function MemoryPanel() {
             }}
           />
         )}
-        {tab === "persona" && <PersonaTab ukm={ukmData?.ukm ?? null} isLoading={ukmLoading} />}
+        {tab === "persona" && (
+          <PersonaTab ukm={ukmData?.ukm ?? null} recentSignals={recentSignals} isLoading={ukmLoading} />
+        )}
         {tab === "insights" && (
           <InsightsTab
             memories={memories}
