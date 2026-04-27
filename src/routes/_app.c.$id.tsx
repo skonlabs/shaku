@@ -78,9 +78,11 @@ function ChatPage() {
             ),
           );
         },
-        onDone: ({ assistantMessageId }) => {
+        onDone: async ({ assistantMessageId }) => {
           sendInFlightRef.current = false;
           setStreamingId(null);
+          // Refetch first, THEN clear streaming buffer to avoid flicker.
+          await qc.refetchQueries({ queryKey: ["conversation", id] });
           if (assistantMessageId) {
             setStreamingMessages([]);
           } else {
@@ -88,7 +90,6 @@ function ChatPage() {
               cur.map((m) => (m.id === tempAsstId ? { ...m, pending: false } : m)),
             );
           }
-          qc.invalidateQueries({ queryKey: ["conversation", id] });
           qc.invalidateQueries({ queryKey: ["conversations"] });
         },
         onInterrupted: () => {
