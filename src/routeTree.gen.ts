@@ -20,6 +20,7 @@ import { Route as ApiWebhooksSlackRouteImport } from './routes/api/webhooks.slac
 import { Route as ApiDatasourcesProcessRouteImport } from './routes/api/datasources.process'
 import { Route as ApiConnectorsCallbackRouteImport } from './routes/api/connectors.callback'
 import { Route as ApiChatStreamRouteImport } from './routes/api/chat.stream'
+import { Route as ApiAdminRunMigrationRouteImport } from './routes/api/admin.run-migration'
 import { Route as AppCIdRouteImport } from './routes/_app.c.$id'
 
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -76,6 +77,11 @@ const ApiChatStreamRoute = ApiChatStreamRouteImport.update({
   path: '/api/chat/stream',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminRunMigrationRoute = ApiAdminRunMigrationRouteImport.update({
+  id: '/api/admin/run-migration',
+  path: '/api/admin/run-migration',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppCIdRoute = AppCIdRouteImport.update({
   id: '/c/$id',
   path: '/c/$id',
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/api/feedback': typeof ApiFeedbackRoute
   '/share/$shareId': typeof ShareShareIdRoute
   '/c/$id': typeof AppCIdRoute
+  '/api/admin/run-migration': typeof ApiAdminRunMigrationRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/share/$shareId': typeof ShareShareIdRoute
   '/': typeof AppIndexRoute
   '/c/$id': typeof AppCIdRoute
+  '/api/admin/run-migration': typeof ApiAdminRunMigrationRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
@@ -117,6 +125,7 @@ export interface FileRoutesById {
   '/share/$shareId': typeof ShareShareIdRoute
   '/_app/': typeof AppIndexRoute
   '/_app/c/$id': typeof AppCIdRoute
+  '/api/admin/run-migration': typeof ApiAdminRunMigrationRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
@@ -132,6 +141,7 @@ export interface FileRouteTypes {
     | '/api/feedback'
     | '/share/$shareId'
     | '/c/$id'
+    | '/api/admin/run-migration'
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
@@ -145,6 +155,7 @@ export interface FileRouteTypes {
     | '/share/$shareId'
     | '/'
     | '/c/$id'
+    | '/api/admin/run-migration'
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
@@ -159,6 +170,7 @@ export interface FileRouteTypes {
     | '/share/$shareId'
     | '/_app/'
     | '/_app/c/$id'
+    | '/api/admin/run-migration'
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
@@ -172,6 +184,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   ApiFeedbackRoute: typeof ApiFeedbackRoute
   ShareShareIdRoute: typeof ShareShareIdRoute
+  ApiAdminRunMigrationRoute: typeof ApiAdminRunMigrationRoute
   ApiChatStreamRoute: typeof ApiChatStreamRoute
   ApiConnectorsCallbackRoute: typeof ApiConnectorsCallbackRoute
   ApiDatasourcesProcessRoute: typeof ApiDatasourcesProcessRoute
@@ -258,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatStreamRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/run-migration': {
+      id: '/api/admin/run-migration'
+      path: '/api/admin/run-migration'
+      fullPath: '/api/admin/run-migration'
+      preLoaderRoute: typeof ApiAdminRunMigrationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/c/$id': {
       id: '/_app/c/$id'
       path: '/c/$id'
@@ -286,6 +306,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   ApiFeedbackRoute: ApiFeedbackRoute,
   ShareShareIdRoute: ShareShareIdRoute,
+  ApiAdminRunMigrationRoute: ApiAdminRunMigrationRoute,
   ApiChatStreamRoute: ApiChatStreamRoute,
   ApiConnectorsCallbackRoute: ApiConnectorsCallbackRoute,
   ApiDatasourcesProcessRoute: ApiDatasourcesProcessRoute,
@@ -295,12 +316,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
