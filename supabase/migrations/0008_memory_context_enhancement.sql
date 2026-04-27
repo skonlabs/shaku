@@ -3,11 +3,16 @@
 --       updated scoring RPC, document chunking metadata, full observability.
 
 -- ============================================================
--- 1. Add pinned + tags to memories
+-- 1. Add pinned + tags to memories; update type comment to include
+--    the three types added in this release: short_term, long_term, document
 -- ============================================================
 alter table public.memories
   add column if not exists pinned boolean not null default false,
   add column if not exists tags text[] not null default '{}';
+
+comment on column public.memories.type is
+  'Memory type: preference | anti_preference | behavioral | correction | '
+  'response_style | project | episodic | semantic | long_term | short_term | document';
 
 create index if not exists idx_memories_pinned
   on public.memories (user_id, pinned) where pinned = true and superseded_by is null;
