@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Sparkles, ArrowRight } from "lucide-react";
+import { Leaf, ArrowRight, Sun, Mail, Lightbulb, ListChecks, BookOpen, MessageCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ChatComposer, type Attachment } from "@/components/ChatComposer";
 import { RateLimitBanner } from "@/components/RateLimitBanner";
@@ -17,24 +17,24 @@ export const Route = createFileRoute("/_app/")({
 });
 
 
-const SUGGESTIONS = [
-  "Help me draft a thoughtful reply to this email…",
-  "Brainstorm 5 angles for a blog post about…",
-  "Explain a tricky concept in simple terms",
-  "Plan my day around these 4 priorities…",
-  "Summarize the key ideas from a long article",
-  "Write a short, friendly intro message",
+type Suggestion = { icon: typeof Mail; label: string; prompt: string };
+
+const SUGGESTIONS: Suggestion[] = [
+  { icon: Mail, label: "Help me write an email", prompt: "Help me write a thoughtful email about…" },
+  { icon: Lightbulb, label: "Brainstorm ideas with me", prompt: "Let's brainstorm ideas for…" },
+  { icon: BookOpen, label: "Explain something simply", prompt: "Can you explain this in simple words: " },
+  { icon: ListChecks, label: "Plan my day", prompt: "Help me plan my day around these priorities…" },
+  { icon: MessageCircle, label: "Summarize a long article", prompt: "Please summarize the key points from this: " },
+  { icon: Sun, label: "Just chat with me", prompt: "I'd love to just chat for a bit. Tell me something interesting." },
 ];
 
-
-
-function pickThree(): string[] {
+function pickThree(): Suggestion[] {
   const arr = [...SUGGESTIONS];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return arr.slice(0, 3);
+  return arr.slice(0, 4);
 }
 
 function NewChatPage() {
