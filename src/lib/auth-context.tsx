@@ -28,10 +28,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = React.useState<Profile | null>(null);
   const [loading, setLoading] = React.useState(true);
 
-  const markReadySoon = React.useCallback(() => {
-    window.setTimeout(() => setLoading(false), 0);
-  }, []);
-
   const loadProfile = React.useCallback(async (uid: string) => {
     const { data, error } = await supabase
       .from("users")
