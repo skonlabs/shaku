@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { route, estimatePreRetrievalTokens } from "../router";
+import type { RoutingContext } from "../router";
 import type { IntentResult } from "../types";
 
 function makeIntent(overrides: Partial<IntentResult> = {}): IntentResult {
@@ -14,95 +15,109 @@ function makeIntent(overrides: Partial<IntentResult> = {}): IntentResult {
   };
 }
 
+function makeCtx(overrides: Partial<RoutingContext> = {}): RoutingContext {
+  return {
+    intent: makeIntent(),
+    estimatedContextTokens: 1000,
+    hasImages: false,
+    modelOverride: null,
+    conversationMomentum: 0.3,
+    lastComplexTurnAt: null,
+    reasoningDepth: 0.5,
+    precisionRequired: 0.5,
+    contextType: "chat",
+    contextCriticality: 0.3,
+    taskType: "generation",
+    ...overrides,
+  };
+}
+
 describe("route", () => {
   it("returns a selected model and reason", () => {
-    const decision = route({
-      intent: makeIntent(),
-      estimatedContextTokens: 1000,
-      hasImages: false,
-      modelOverride: null,
-      conversationMomentum: 0.3,
-    });
+    const decision = route(makeCtx());
     expect(decision.selected).toBeDefined();
     expect(decision.selected.id).toBeTruthy();
     expect(["auto", "user_override", "hard_filter", "exhaustion"]).toContain(decision.reason);
   });
 
   it("respects model override when valid", () => {
-    const decision = route({
-      intent: makeIntent(),
-      estimatedContextTokens: 1000,
-      hasImages: false,
-      modelOverride: "claude-haiku-4-5-20251001",
-      conversationMomentum: 0.3,
-    });
+    const decision = route(makeCtx({ modelOverride: "claude-haiku-4-5-20251001" }));
     expect(decision.selected.id).toBe("claude-haiku-4-5-20251001");
     expect(decision.reason).toBe("user_override");
   });
 
   it("ignores invalid override and auto-routes", () => {
-    const decision = route({
-      intent: makeIntent(),
-      estimatedContextTokens: 1000,
-      hasImages: false,
-      modelOverride: "nonexistent-model-xyz",
-      conversationMomentum: 0.3,
-    });
+    const decision = route(makeCtx({ modelOverride: "nonexistent-model-xyz" }));
     expect(decision.reason).not.toBe("user_override");
   });
 
-  it("always returns a fallback chain with at most 2 models", () => {
-    const decision = route({
-      intent: makeIntent({ complexity: 0.9 }),
-      estimatedContextTokens: 5000,
-      hasImages: false,
-      modelOverride: null,
-      conversationMomentum: 0.5,
-    });
-    expect(decision.fallback.length).toBeLessThanOrEqual(2);
+  it("returns a fallback chain with at most 4 models", () => {
+    const decision = route(makeCtx({ intent: makeIntent({ complexity: 0.9 }), estimatedContextTokens: 5000 }));
+    expect(decision.fallback.length).toBeLessThanOrEqual(4);
   });
 
   it("filters out models that do not support images when hasImages=true", () => {
-    const decision = route({
-      intent: makeIntent(),
-      estimatedContextTokens: 1000,
-      hasImages: true,
-      modelOverride: null,
-      conversationMomentum: 0,
-    });
-    // All returned models must be multimodal
+    const decision = route(makeCtx({ hasImages: true, conversationMomentum: 0 }));
     expect(decision.selected.multimodal).toBe(true);
   });
 
   it("selects higher-capability model for high-complexity reasoning", () => {
-    const highComplexity = route({
-      intent: makeIntent({ complexity: 0.95, domain: "reasoning" }),
-      estimatedContextTokens: 1000,
-      hasImages: false,
-      modelOverride: null,
-      conversationMomentum: 0.9,
-    });
-    const lowComplexity = route({
-      intent: makeIntent({ complexity: 0.1, domain: "general" }),
-      estimatedContextTokens: 1000,
-      hasImages: false,
-      modelOverride: null,
-      conversationMomentum: 0,
-    });
+    const highComplexity = route(
+      makeCtx({
+        intent: makeIntent({ complexity: 0.95, domain: "reasoning" }),
+        reasoningDepth: 0.95,
+        precisionRequired: 0.9,
+        taskType: "reasoning",
+        conversationMomentum: 0.9,
+      }),
+    );
+    const lowComplexity = route(
+      makeCtx({
+        intent: makeIntent({ complexity: 0.1, domain: "general" }),
+        reasoningDepth: 0.1,
+        precisionRequired: 0.2,
+        taskType: "generation",
+        conversationMomentum: 0,
+      }),
+    );
     expect(highComplexity.selected.capability).toBeGreaterThanOrEqual(
       lowComplexity.selected.capability,
     );
   });
 
   it("returns exhaustion fallback when context is too large for all models", () => {
-    const decision = route({
-      intent: makeIntent(),
-      estimatedContextTokens: 999_999_999, // exceeds all context windows
-      hasImages: false,
-      modelOverride: null,
-      conversationMomentum: 0,
-    });
+    const decision = route(
+      makeCtx({ estimatedContextTokens: 999_999_999, conversationMomentum: 0 }),
+    );
     expect(decision.reason).toBe("exhaustion");
+  });
+
+  it("applies overkill penalty: does not always pick the most capable model for simple tasks", () => {
+    const simple = route(
+      makeCtx({
+        intent: makeIntent({ complexity: 0.1, domain: "general" }),
+        reasoningDepth: 0.1,
+        precisionRequired: 0.2,
+        taskType: "generation",
+        conversationMomentum: 0,
+      }),
+    );
+    // Most capable model (Opus, capability 0.97) should be overkill for a 0.1 reasoning-depth task
+    expect(simple.selected.capability).toBeLessThan(0.97);
+  });
+
+  it("momentum decays to zero when lastComplexTurnAt is far in the past", () => {
+    const decayed = route(
+      makeCtx({
+        conversationMomentum: 1.0,
+        lastComplexTurnAt: Date.now() - 60 * 60 * 1000, // 1 hour ago
+        reasoningDepth: 0.1,
+        precisionRequired: 0.2,
+        taskType: "generation",
+      }),
+    );
+    // With decayed momentum, should not select an expensive high-cap model
+    expect(decayed.selected.capability).toBeLessThan(0.97);
   });
 });
 

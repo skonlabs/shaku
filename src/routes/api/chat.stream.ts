@@ -26,6 +26,7 @@ import {
 } from "@/lib/pipeline/output-validation";
 import { route, estimatePreRetrievalTokens } from "@/lib/llm/router";
 import { recordModelResult, HAIKU_MODEL_ID } from "@/lib/llm/registry";
+import type { ContextType, RoutingTaskType } from "@/lib/llm/types";
 import { enqueueMemoryJob, processPendingMemoryJobs } from "@/lib/memory/jobs";
 import {
   extractConversationFacts,
@@ -389,12 +390,32 @@ export const Route = createFileRoute("/api/chat/stream")({
             preloadedHistory.length * 4,
           countTokens(currentUserMessage),
         );
-        // Compute real momentum: avg complexity of last 3 user messages.
+
+        // Momentum: avg complexity of last 3 user messages (message length as proxy).
         const recentUserMsgs = preloadedHistory.filter((m) => m.role === "user").slice(-3);
         const momentumScore = recentUserMsgs.length
           ? recentUserMsgs.reduce((s, m) => s + Math.min(1, m.content.length / 400), 0) /
             recentUserMsgs.length
           : 0;
+
+        // Timestamp of the most recent high-complexity user turn (>300 chars) for momentum decay.
+        const complexMsgs = recentUserMsgs.filter((m) => m.content.length > 300);
+        const lastComplexTurnAt = complexMsgs.length
+          ? new Date(complexMsgs[complexMsgs.length - 1].createdAt).getTime()
+          : null;
+
+        // Multi-dimensional routing signals derived from intent + content + assembled context.
+        const reasoningDepth = deriveReasoningDepth(intentResult);
+        const precisionRequired = derivePrecisionRequired(intentResult);
+        const contextType = inferContextType(currentUserMessage, intentResult.domain, finalChunks);
+        const contextCriticality = inferContextCriticality(
+          assembled.memoriesUsed,
+          assembled.activeTask,
+          finalChunks,
+          intent,
+        );
+        const routingTaskType = intentToRoutingTaskType(intent, intentResult.domain);
+
         const routingDecision = route({
           intent: intentResult,
           estimatedContextTokens: estimatedCtxTokens,
@@ -403,6 +424,12 @@ export const Route = createFileRoute("/api/chat/stream")({
           ),
           modelOverride,
           conversationMomentum: momentumScore,
+          lastComplexTurnAt,
+          reasoningDepth,
+          precisionRequired,
+          contextType,
+          contextCriticality,
+          taskType: routingTaskType,
         });
         const selectedModel = routingDecision.selected;
 
@@ -1034,6 +1061,87 @@ export const Route = createFileRoute("/api/chat/stream")({
 });
 
 // ---------- helpers ----------
+
+// ---- Routing signal derivation ----
+
+/** Reasoning depth: how much multi-step inference the request requires (0–1). */
+function deriveReasoningDepth(intentResult: { intent: string; complexity: number }): number {
+  const intentBonus: Record<string, number> = {
+    analysis: 0.2,
+    multi_part: 0.15,
+    question: 0.1,
+    follow_up: 0.1,
+    action: 0.05,
+    creative: 0.0,
+    search: -0.05,
+    casual_chat: -0.2,
+    acknowledgment: -0.4,
+  };
+  const bonus = intentBonus[intentResult.intent] ?? 0;
+  return Math.min(1.0, Math.max(0, intentResult.complexity + bonus));
+}
+
+/** Precision required: how intolerant the task is of errors / hallucinations (0–1). */
+function derivePrecisionRequired(intentResult: { intent: string }): number {
+  const map: Record<string, number> = {
+    analysis: 0.90,
+    action: 0.80,
+    question: 0.70,
+    multi_part: 0.70,
+    search: 0.60,
+    follow_up: 0.55,
+    creative: 0.30,
+    casual_chat: 0.20,
+    acknowledgment: 0.10,
+  };
+  return map[intentResult.intent] ?? 0.50;
+}
+
+/** Infer dominant context type from the message and retrieved chunks. */
+function inferContextType(
+  message: string,
+  domain: string,
+  chunks: { sourceType?: string; content?: string }[],
+): ContextType {
+  if (domain === "code" || /```[\s\S]|(?:def |function |class |import |const |let |var )\w/.test(message)) {
+    return "code";
+  }
+  if (/(?:\{|\[)[\s\S]{0,20}(?:\}|\])|json|yaml|csv|xml\b|schema\b/i.test(message)) {
+    return "structured";
+  }
+  // Multiple retrieved document chunks → document-heavy context
+  if (chunks.length >= 3) return "document";
+  // Short message with no retrieval → conversational
+  if (message.length < 200 && chunks.length === 0) return "chat";
+  return "mixed";
+}
+
+/** Context criticality: how important it is that the model stays faithful to loaded context. */
+function inferContextCriticality(
+  memoriesUsed: { id: string }[],
+  activeTask: { goal?: string } | null,
+  chunks: { content?: string }[],
+  intent: string,
+): number {
+  let criticality = 0;
+  if (memoriesUsed.length > 3) criticality += 0.25;
+  else if (memoriesUsed.length > 0) criticality += 0.10;
+  if (activeTask) criticality += 0.20;
+  if (chunks.length > 0) criticality += 0.20;
+  if (intent === "analysis" || intent === "question") criticality += 0.20;
+  if (intent === "follow_up") criticality += 0.10;
+  return Math.min(1.0, criticality);
+}
+
+/** Map intent+domain to RoutingTaskType for router scoring. */
+function intentToRoutingTaskType(intent: string, domain: string): RoutingTaskType {
+  if (domain === "code" || intent === "action") return "execution";
+  if (intent === "search") return "retrieval";
+  if (intent === "analysis" || intent === "question" || intent === "multi_part") return "reasoning";
+  if (intent === "creative") return "generation";
+  if (intent === "follow_up") return "reasoning";
+  return "generation";
+}
 
 /** Map chat intent + domain to a BudgetManager TaskType for dynamic output token sizing. */
 function intentToTaskType(intent: string, domain: string): TaskType {
