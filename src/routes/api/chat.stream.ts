@@ -507,25 +507,9 @@ export const Route = createFileRoute("/api/chat/stream")({
 
           if (userMsg) send("user_message", userMsg);
 
-          // Pre-insert the assistant message as 'streaming' before the LLM call (issue #2).
-          // If streaming fails or the Worker dies mid-response, the message row still exists
-          // with status='streaming' so the client can detect and recover the partial state.
-          // The row is updated to 'completed' or 'failed' after the stream finishes.
-          let streamingMsgId: string | null = null;
-          {
-            const pre = await supabase
-              .from("messages")
-              .insert({
-                conversation_id: convo.id,
-                role: "assistant",
-                content: "",
-                status: "streaming",
-                metadata: { model: selectedModel.id },
-              })
-              .select("id")
-              .single();
-            if (!pre.error && pre.data) streamingMsgId = pre.data.id as string;
-          }
+          // Persist the assistant message after the response is complete so the
+          // current production schema can save the final content + metadata reliably.
+          const streamingMsgId: string | null = null;
 
           let activeModel = selectedModel;
           let assistantText = "";
@@ -750,13 +734,6 @@ export const Route = createFileRoute("/api/chat/stream")({
           }
           if (contentBlocked) {
             send("error", { message: "I can't send that response. Please try again." });
-            // Mark the streaming placeholder as failed so it doesn't stay stuck.
-            if (streamingMsgId) {
-              await supabase
-                .from("messages")
-                .update({ status: "failed", updated_at: new Date().toISOString() })
-                .eq("id", streamingMsgId);
-            }
             await supabase
               .from("conversations")
               .update({ updated_at: new Date().toISOString() })
@@ -817,16 +794,6 @@ export const Route = createFileRoute("/api/chat/stream")({
           let assistantId: string | null = streamingMsgId;
           let assistantCreatedAt: string | null = null;
 
-          // Mark the streaming placeholder as failed and inactive if we got no
-          // content. Setting is_active=false prevents it from appearing as a
-          // permanently-spinning loading bubble in the conversation history.
-          if (visibleFinal.trim().length === 0 && streamingMsgId) {
-            await supabase
-              .from("messages")
-              .update({ status: "failed", is_active: false, updated_at: new Date().toISOString() })
-              .eq("id", streamingMsgId);
-          }
-
           if (visibleFinal.trim().length > 0) {
             const savingsPct =
               totalInputTokens + inputSavingsTokens > 0
@@ -853,33 +820,16 @@ export const Route = createFileRoute("/api/chat/stream")({
             if (streamError) metadata.partial = true;
             if (hitFinalCap) metadata.truncated = true;
 
-            // Update the pre-inserted streaming row with the final content (issue #2).
-            let asst;
-            if (streamingMsgId) {
-              asst = await supabase
-                .from("messages")
-                .update({
-                  content: visibleFinal,
-                  status: streamError ? "failed" : "completed",
-                  metadata,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", streamingMsgId)
-                .select("id, created_at")
-                .single();
-            } else {
-              asst = await supabase
-                .from("messages")
-                .insert({
-                  conversation_id: convo.id,
-                  role: "assistant",
-                  content: visibleFinal,
-                  status: streamError ? "failed" : "completed",
-                  metadata,
-                })
-                .select("id, created_at")
-                .single();
-            }
+            const asst = await supabase
+              .from("messages")
+              .insert({
+                conversation_id: convo.id,
+                role: "assistant",
+                content: visibleFinal,
+                metadata,
+              })
+              .select("id, created_at")
+              .single();
             if (asst.error) {
               console.error("[chat.stream] persist assistant message", asst.error);
             } else {
