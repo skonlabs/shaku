@@ -17,12 +17,10 @@ import {
   Check,
   Pencil,
   Brain,
-  AlertCircle,
   ChevronDown,
   ChevronRight,
   ExternalLink,
   File,
-  FileText,
   FolderPlus,
   Loader2,
   Pause,
@@ -68,12 +66,28 @@ import {
   updateMemory,
   deleteMemory,
   toggleMemory,
+  pinMemory,
   getUkm,
   getMemoryStats,
+  getMemoryPreferences,
+  updateMemoryPreferences,
 } from "@/lib/memory.functions";
-import { listProjects, createProject, deleteProject, updateProject, listProjectConversations } from "@/lib/projects.functions";
+import {
+  listProjects,
+  createProject,
+  deleteProject,
+  updateProject,
+  listProjectConversations,
+} from "@/lib/projects.functions";
+import { getContextLog, getActiveTaskForConversation } from "@/lib/context.functions";
 import { listFiles, createDatasourceFile, deleteDatasourceFile } from "@/lib/datasources.functions";
-import { listConnectors, initiateConnectorAuth, pauseConnector, disconnectConnector, getConnectorAvailability } from "@/lib/connectors.functions";
+import {
+  listConnectors,
+  initiateConnectorAuth,
+  pauseConnector,
+  disconnectConnector,
+  getConnectorAvailability,
+} from "@/lib/connectors.functions";
 import { supabase } from "@/integrations/supabase/client";
 import type { UserKnowledgeModel } from "@/lib/knowledge/ukm";
 import { MessageContent } from "@/components/MessageContent";
@@ -124,6 +138,8 @@ export function SidePanel({ side = "left" }: { side?: "left" | "right" }) {
         {active === "datasources" && <DatasourcesPanel />}
         {active === "connectors" && <ConnectorsPanel />}
         {active === "memory" && <MemoryPanel />}
+        {active === "context" && <ContextDebuggerPanel />}
+        {active === "task" && <TaskPanel />}
         {active === "settings" && <SettingsPanel />}
         {active === "account" && <AccountPanel />}
         {active === "document" && <DocumentPanel />}
@@ -144,6 +160,10 @@ function labelFor(p: string) {
       return "Connectors";
     case "memory":
       return "Memory & Persona";
+    case "context":
+      return "Context Debugger";
+    case "task":
+      return "Active Task";
     case "settings":
       return "Settings";
     case "account":
@@ -292,7 +312,12 @@ function ChatsPanel() {
           </div>
         )}
       </ScrollArea>
-      <AlertDialog open={!!pendingDeleteId} onOpenChange={(o) => { if (!o) setPendingDeleteId(null); }}>
+      <AlertDialog
+        open={!!pendingDeleteId}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
@@ -302,7 +327,12 @@ function ChatsPanel() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { if (pendingDeleteId) { delMut.mutate(pendingDeleteId); setPendingDeleteId(null); } }}
+              onClick={() => {
+                if (pendingDeleteId) {
+                  delMut.mutate(pendingDeleteId);
+                  setPendingDeleteId(null);
+                }
+              }}
             >
               Delete
             </AlertDialogAction>
@@ -416,14 +446,25 @@ function ChatItem({
             autoFocus
             value={editTitle}
             onChange={(e) => setEditTitle(e.target.value)}
-            onBlur={() => { const t = editTitle.trim(); if (t && t !== title) onRename(id, t); setEditing(false); }}
-            onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
+            onBlur={() => {
+              const t = editTitle.trim();
+              if (t && t !== title) onRename(id, t);
+              setEditing(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setEditing(false);
+            }}
             maxLength={200}
             className="h-7 w-full rounded border border-input bg-background px-2 text-sm outline-none focus:border-ring/60"
           />
         </form>
       ) : (
-        <Link to="/c/$id" params={{ id }} onClick={onNavigate} className="flex-1 truncate px-2 py-1.5 text-sm">
+        <Link
+          to="/c/$id"
+          params={{ id }}
+          onClick={onNavigate}
+          className="flex-1 truncate px-2 py-1.5 text-sm"
+        >
           {title}
         </Link>
       )}
@@ -440,7 +481,12 @@ function ChatItem({
           <DropdownMenuItem onClick={() => onPin(id, !pinned)}>
             <Pin className="mr-2 h-4 w-4" /> {pinned ? "Unpin" : "Pin"}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => { setEditing(true); setEditTitle(title); }}>
+          <DropdownMenuItem
+            onClick={() => {
+              setEditing(true);
+              setEditTitle(title);
+            }}
+          >
             <Pencil className="mr-2 h-4 w-4" /> Rename
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -526,6 +572,92 @@ function SettingsPanel() {
         </p>
       </div>
       <TokenUsageSection />
+      <MemoryPreferencesSection />
+    </div>
+  );
+}
+
+function MemoryPreferencesSection() {
+  const qc = useQueryClient();
+  const { data: prefs, isLoading } = useQuery({
+    queryKey: ["memory-preferences"],
+    queryFn: () => getMemoryPreferences({ data: {} }),
+    staleTime: 60_000,
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (patch: Parameters<typeof updateMemoryPreferences>[0]["data"]) =>
+      updateMemoryPreferences({ data: patch }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["memory-preferences"] });
+      toast.success("Memory preferences saved.");
+    },
+    onError: () => toast.error("Couldn't save preferences."),
+  });
+
+  if (isLoading || !prefs) return null;
+
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        Memory preferences
+      </p>
+      <div className="space-y-3 rounded-lg border border-border bg-card p-3">
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span>Auto-extract memories</span>
+          <button
+            onClick={() => updateMut.mutate({ auto_extract: !prefs.autoExtract })}
+            className={cn(
+              "relative h-5 w-9 rounded-full transition-colors",
+              prefs.autoExtract ? "bg-primary" : "bg-muted-foreground/30",
+            )}
+          >
+            <span
+              className={cn(
+                "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform",
+                prefs.autoExtract ? "translate-x-4" : "translate-x-0.5",
+              )}
+            />
+          </button>
+        </label>
+
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span>Confidence threshold</span>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={0.1}
+              max={1.0}
+              step={0.05}
+              defaultValue={prefs.minConfidenceThreshold}
+              onBlur={(e) => {
+                const v = parseFloat(e.target.value);
+                if (Number.isFinite(v) && v >= 0.1 && v <= 1.0) {
+                  updateMut.mutate({ min_confidence_threshold: v });
+                }
+              }}
+              className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm outline-none focus:border-ring/60"
+            />
+          </div>
+        </label>
+
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span>Memories per response</span>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            defaultValue={prefs.maxMemoriesPerCall}
+            onBlur={(e) => {
+              const v = parseInt(e.target.value, 10);
+              if (Number.isFinite(v) && v >= 1 && v <= 50) {
+                updateMut.mutate({ max_memories_per_call: v });
+              }
+            }}
+            className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm outline-none focus:border-ring/60"
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -598,8 +730,16 @@ function TokenUsageSection() {
           </div>
           {summaryData && (
             <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-border bg-card/60 p-3 text-center">
-              <UsageStat label="Msgs today" value={String(summaryData.messagesToday)} tone="text-foreground" />
-              <UsageStat label="30-day cost" value={`$${summaryData.totalCostUsd.toFixed(4)}`} tone="text-foreground" />
+              <UsageStat
+                label="Msgs today"
+                value={String(summaryData.messagesToday)}
+                tone="text-foreground"
+              />
+              <UsageStat
+                label="30-day cost"
+                value={`$${summaryData.totalCostUsd.toFixed(4)}`}
+                tone="text-foreground"
+              />
             </div>
           )}
           <div className="mt-3 space-y-1.5">
@@ -720,9 +860,7 @@ function DocumentPanel() {
   const content = initialContent.trim() ? initialContent : (fetched?.content ?? "");
 
   const isMarkdown =
-    !doc.mime ||
-    doc.mime.startsWith("text/markdown") ||
-    /\.(md|markdown)$/i.test(doc.title);
+    !doc.mime || doc.mime.startsWith("text/markdown") || /\.(md|markdown)$/i.test(doc.title);
 
   const onCopy = async () => {
     try {
@@ -816,7 +954,10 @@ type MemoryType =
   | "anti_preference"
   | "correction"
   | "response_style"
-  | "project";
+  | "project"
+  | "short_term"
+  | "long_term"
+  | "document";
 
 const MEMORY_TYPE_META: { value: MemoryType; label: string; emoji: string }[] = [
   { value: "preference", label: "Preferences", emoji: "💡" },
@@ -827,6 +968,9 @@ const MEMORY_TYPE_META: { value: MemoryType; label: string; emoji: string }[] = 
   { value: "project", label: "Projects", emoji: "📁" },
   { value: "episodic", label: "Events", emoji: "📅" },
   { value: "semantic", label: "Facts", emoji: "🧠" },
+  { value: "long_term", label: "Long-term", emoji: "🔒" },
+  { value: "short_term", label: "Short-term", emoji: "⏱️" },
+  { value: "document", label: "Documents", emoji: "📄" },
 ];
 
 interface MemoryEntry {
@@ -835,8 +979,10 @@ interface MemoryEntry {
   content: string;
   confidence: number;
   importance: number;
+  pinned: boolean;
   accessCount: number;
   lastAccessedAt: string | null;
+  sourceConversationId?: string | null;
 }
 
 // ─── Projects ────────────────────────────────────────────────────────────────
@@ -879,7 +1025,10 @@ function ProjectsPanel() {
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center px-4 py-2">
         <button
-          onClick={() => { setCreating(true); setNewName(""); }}
+          onClick={() => {
+            setCreating(true);
+            setNewName("");
+          }}
           className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline"
         >
           <FolderPlus className="h-3.5 w-3.5" /> New project
@@ -903,10 +1052,21 @@ function ProjectsPanel() {
             className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:border-ring/60"
           />
           <div className="flex gap-1">
-            <Button size="sm" type="submit" disabled={!newName.trim() || createMut.isPending} className="h-7 flex-1 text-xs">
+            <Button
+              size="sm"
+              type="submit"
+              disabled={!newName.trim() || createMut.isPending}
+              className="h-7 flex-1 text-xs"
+            >
               {createMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Create"}
             </Button>
-            <Button size="sm" variant="ghost" type="button" className="h-7 text-xs" onClick={() => setCreating(false)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              type="button"
+              className="h-7 text-xs"
+              onClick={() => setCreating(false)}
+            >
               Cancel
             </Button>
           </div>
@@ -914,7 +1074,9 @@ function ProjectsPanel() {
       )}
 
       <ScrollArea className="flex-1">
-        {isLoading && <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>}
+        {isLoading && (
+          <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>
+        )}
         {!isLoading && projects.length === 0 && !creating && (
           <div className="px-4 py-8 text-center">
             <FolderPlus className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
@@ -936,17 +1098,29 @@ function ProjectsPanel() {
           ))}
         </div>
       </ScrollArea>
-      <AlertDialog open={!!pendingDeleteProjectId} onOpenChange={(o) => { if (!o) setPendingDeleteProjectId(null); }}>
+      <AlertDialog
+        open={!!pendingDeleteProjectId}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteProjectId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Archive this project?</AlertDialogTitle>
-            <AlertDialogDescription>The project's chats will remain accessible individually.</AlertDialogDescription>
+            <AlertDialogDescription>
+              The project's chats will remain accessible individually.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { if (pendingDeleteProjectId) { deleteMut.mutate(pendingDeleteProjectId); setPendingDeleteProjectId(null); } }}
+              onClick={() => {
+                if (pendingDeleteProjectId) {
+                  deleteMut.mutate(pendingDeleteProjectId);
+                  setPendingDeleteProjectId(null);
+                }
+              }}
             >
               Archive
             </AlertDialogAction>
@@ -1025,8 +1199,14 @@ function ProjectRow({
                 autoFocus
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                onBlur={() => { const n = editName.trim(); if (n && n !== project.name) renameMut.mutate(n); setEditingName(false); }}
-                onKeyDown={(e) => { if (e.key === "Escape") setEditingName(false); }}
+                onBlur={() => {
+                  const n = editName.trim();
+                  if (n && n !== project.name) renameMut.mutate(n);
+                  setEditingName(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setEditingName(false);
+                }}
                 maxLength={100}
                 className="h-6 w-full rounded border border-input bg-background px-1.5 text-sm outline-none focus:border-ring/60"
               />
@@ -1037,21 +1217,31 @@ function ProjectRow({
         </button>
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <button
-            onClick={(e) => { e.stopPropagation(); createMut.mutate(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              createMut.mutate();
+            }}
             title="New chat in project"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); setEditingName(true); setEditName(project.name); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingName(true);
+              setEditName(project.name);
+            }}
             title="Rename project"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
             title="Archive project"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-destructive"
           >
@@ -1063,12 +1253,17 @@ function ProjectRow({
       {isExpanded && (
         <div className="mb-0.5 ml-5 border-l border-border pl-2">
           {convs.length === 0 ? (
-            <p className="py-1 text-xs text-muted-foreground">No chats yet. Click + to create one.</p>
+            <p className="py-1 text-xs text-muted-foreground">
+              No chats yet. Click + to create one.
+            </p>
           ) : (
             convs.map((c) => (
               <button
                 key={c.id}
-                onClick={() => { navigate({ to: "/c/$id", params: { id: c.id } }); setActive(null); }}
+                onClick={() => {
+                  navigate({ to: "/c/$id", params: { id: c.id } });
+                  setActive(null);
+                }}
                 className="block w-full truncate rounded px-1 py-0.5 text-left text-xs text-muted-foreground hover:bg-accent/40 hover:text-foreground"
               >
                 {c.title ?? "Untitled chat"}
@@ -1134,8 +1329,13 @@ function DatasourcesPanel() {
     queryKey: ["ds-files"],
     queryFn: () => listFiles({ data: {} }),
     refetchInterval: (query) => {
-      const files = (query.state.data as Awaited<ReturnType<typeof listFiles>> | undefined)?.files ?? [];
-      return files.some((f: DatasourceFile) => f.status === "uploading" || f.status === "processing") ? 2500 : false;
+      const files =
+        (query.state.data as Awaited<ReturnType<typeof listFiles>> | undefined)?.files ?? [];
+      return files.some(
+        (f: DatasourceFile) => f.status === "uploading" || f.status === "processing",
+      )
+        ? 2500
+        : false;
     },
   });
 
@@ -1150,7 +1350,7 @@ function DatasourcesPanel() {
     staleTime: 60_000,
   });
 
-  const availability = availData ?? {} as Record<string, boolean>;
+  const availability = availData ?? ({} as Record<string, boolean>);
 
   const files = data?.files ?? [];
 
@@ -1171,7 +1371,9 @@ function DatasourcesPanel() {
           redirect_uri: `${window.location.origin}/api/connectors/callback?service=${service}`,
         },
       }),
-    onSuccess: (res) => { window.location.href = (res as { auth_url: string }).auth_url; },
+    onSuccess: (res) => {
+      window.location.href = (res as { auth_url: string }).auth_url;
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't connect."),
   });
 
@@ -1209,7 +1411,10 @@ function DatasourcesPanel() {
         throw new Error(upErr.message);
       }
 
-      const { error: pathUpdateErr } = await supabase.from("datasource_files").update({ storage_path: storagePath }).eq("id", fileId);
+      const { error: pathUpdateErr } = await supabase
+        .from("datasource_files")
+        .update({ storage_path: storagePath })
+        .eq("id", fileId);
       if (pathUpdateErr) {
         // Surface error to user rather than proceeding to process with missing path
         toast.error("Failed to record file path. Please try again.");
@@ -1223,11 +1428,21 @@ function DatasourcesPanel() {
         const res = await fetch("/api/datasources/process", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ file_id: fileId, storage_path: storagePath, file_type: ext, file_name: file.name }),
+          body: JSON.stringify({
+            file_id: fileId,
+            storage_path: storagePath,
+            file_type: ext,
+            file_name: file.name,
+          }),
         });
         if (!res.ok) {
           let errMsg = "Processing failed.";
-          try { const body = await res.json(); errMsg = body?.error ?? body?.message ?? errMsg; } catch { /* noop */ }
+          try {
+            const body = await res.json();
+            errMsg = body?.error ?? body?.message ?? errMsg;
+          } catch {
+            /* noop */
+          }
           toast.error(errMsg);
         }
       }
@@ -1288,12 +1503,18 @@ function DatasourcesPanel() {
               onClick={() => fileRef.current?.click()}
               className="ml-auto flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
             >
-              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              {uploading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Upload className="h-3.5 w-3.5" />
+              )}
               {uploading ? "Uploading…" : "Upload file"}
             </button>
           </div>
           <ScrollArea className="flex-1">
-            {isLoading && <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>}
+            {isLoading && (
+              <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>
+            )}
             {!isLoading && sorted.length === 0 && (
               <div className="px-4 py-8 text-center">
                 <Upload className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
@@ -1363,7 +1584,9 @@ function DatasourcesPanel() {
           <div className="space-y-3 px-4 py-3">
             {connectedStorage.length > 0 && (
               <div>
-                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Connected</p>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Connected
+                </p>
                 <div className="space-y-2">
                   {connectedStorage.map((c) => {
                     const svc = CLOUD_STORAGE_SERVICES.find((s) => s.service === c.service);
@@ -1371,13 +1594,24 @@ function DatasourcesPanel() {
                       <div key={c.id} className="rounded-lg border border-border bg-background p-3">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-sm font-medium">{svc?.name ?? c.service}</p>
-                          <span className={cn(
-                            "rounded px-1.5 py-0.5 text-[10px] font-medium",
-                            c.status === "syncing" ? "bg-blue-50 text-blue-600 dark:bg-blue-950/50" :
-                            c.status === "paused" ? "bg-yellow-50 text-yellow-600 dark:bg-yellow-950/50" :
-                            "bg-green-50 text-green-600 dark:bg-green-950/50",
-                          )}>
-                            {c.status === "syncing" ? <span className="flex items-center gap-1"><Loader2 className="h-2.5 w-2.5 animate-spin" />Syncing</span> : c.status}
+                          <span
+                            className={cn(
+                              "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                              c.status === "syncing"
+                                ? "bg-blue-50 text-blue-600 dark:bg-blue-950/50"
+                                : c.status === "paused"
+                                  ? "bg-yellow-50 text-yellow-600 dark:bg-yellow-950/50"
+                                  : "bg-green-50 text-green-600 dark:bg-green-950/50",
+                            )}
+                          >
+                            {c.status === "syncing" ? (
+                              <span className="flex items-center gap-1">
+                                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                Syncing
+                              </span>
+                            ) : (
+                              c.status
+                            )}
                           </span>
                         </div>
                         <p className="mt-0.5 text-[11px] text-muted-foreground">
@@ -1404,7 +1638,9 @@ function DatasourcesPanel() {
                 {connectedStorage.length > 0 ? "Add more" : "Connect a cloud source"}
               </p>
               <div className="space-y-2">
-                {CLOUD_STORAGE_SERVICES.filter((s) => !connectedStorage.some((c) => c.service === s.service)).map((s) => {
+                {CLOUD_STORAGE_SERVICES.filter(
+                  (s) => !connectedStorage.some((c) => c.service === s.service),
+                ).map((s) => {
                   const isConfigured = availability[s.service] ?? false;
                   const canConnect = s.implemented && isConfigured;
                   return (
@@ -1426,13 +1662,21 @@ function DatasourcesPanel() {
                             disabled={connectMut.isPending}
                             className="flex shrink-0 items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                           >
-                            {connectMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+                            {connectMut.isPending ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <ExternalLink className="h-3 w-3" />
+                            )}
                             Connect
                           </button>
                         ) : s.implemented && !isConfigured ? (
-                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Not configured</span>
+                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            Not configured
+                          </span>
                         ) : (
-                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Soon</span>
+                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            Soon
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1443,33 +1687,61 @@ function DatasourcesPanel() {
           </div>
         </ScrollArea>
       )}
-      <AlertDialog open={!!pendingDeleteFileId} onOpenChange={(o) => { if (!o) setPendingDeleteFileId(null); }}>
+      <AlertDialog
+        open={!!pendingDeleteFileId}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteFileId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove this file?</AlertDialogTitle>
-            <AlertDialogDescription>This will remove the file and its indexed content.</AlertDialogDescription>
+            <AlertDialogDescription>
+              This will remove the file and its indexed content.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { if (pendingDeleteFileId) { deleteMut.mutate(pendingDeleteFileId); setPendingDeleteFileId(null); } }}
-            >Remove</AlertDialogAction>
+              onClick={() => {
+                if (pendingDeleteFileId) {
+                  deleteMut.mutate(pendingDeleteFileId);
+                  setPendingDeleteFileId(null);
+                }
+              }}
+            >
+              Remove
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={!!pendingDisconnectId} onOpenChange={(o) => { if (!o) setPendingDisconnectId(null); }}>
+      <AlertDialog
+        open={!!pendingDisconnectId}
+        onOpenChange={(o) => {
+          if (!o) setPendingDisconnectId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Disconnect this service?</AlertDialogTitle>
-            <AlertDialogDescription>Indexed content from this service will be removed.</AlertDialogDescription>
+            <AlertDialogDescription>
+              Indexed content from this service will be removed.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { if (pendingDisconnectId) { disconnectMut.mutate(pendingDisconnectId); setPendingDisconnectId(null); } }}
-            >Disconnect</AlertDialogAction>
+              onClick={() => {
+                if (pendingDisconnectId) {
+                  disconnectMut.mutate(pendingDisconnectId);
+                  setPendingDisconnectId(null);
+                }
+              }}
+            >
+              Disconnect
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1487,7 +1759,16 @@ const CONNECTOR_STATUS_STYLES: Record<string, { badge: string; label: string }> 
 };
 
 // Services that appear in Connectors (not cloud storage)
-const CONNECTOR_ONLY_SERVICES = new Set(["slack", "teams", "gmail", "google_calendar", "jira", "github", "notion", "confluence"]);
+const CONNECTOR_ONLY_SERVICES = new Set([
+  "slack",
+  "teams",
+  "gmail",
+  "google_calendar",
+  "jira",
+  "github",
+  "notion",
+  "confluence",
+]);
 
 const CONNECTOR_GROUPS: { label: string; services: string[]; desc: string }[] = [
   { label: "Communication", services: ["slack", "teams", "gmail"], desc: "" },
@@ -1500,11 +1781,23 @@ const CONNECTOR_META: Record<string, { name: string; desc: string; implemented: 
   slack: { name: "Slack", desc: "Index channel messages, threads and files", implemented: true },
   teams: { name: "Microsoft Teams", desc: "Index Teams messages and channels", implemented: false },
   gmail: { name: "Gmail", desc: "Index email threads and attachments", implemented: false },
-  google_calendar: { name: "Google Calendar", desc: "Access calendar events in chat context", implemented: false },
-  jira: { name: "Jira (Atlassian)", desc: "Index issues, epics, sprints and comments", implemented: false },
+  google_calendar: {
+    name: "Google Calendar",
+    desc: "Access calendar events in chat context",
+    implemented: false,
+  },
+  jira: {
+    name: "Jira (Atlassian)",
+    desc: "Index issues, epics, sprints and comments",
+    implemented: false,
+  },
   github: { name: "GitHub", desc: "Index issues, PRs, discussions and code", implemented: false },
   notion: { name: "Notion", desc: "Index pages, databases and wikis", implemented: false },
-  confluence: { name: "Confluence (Atlassian)", desc: "Index spaces, pages and comments", implemented: false },
+  confluence: {
+    name: "Confluence (Atlassian)",
+    desc: "Index spaces, pages and comments",
+    implemented: false,
+  },
 };
 
 function ConnectorsPanel() {
@@ -1521,7 +1814,7 @@ function ConnectorsPanel() {
     staleTime: 60_000,
   });
 
-  const availability = availData ?? {} as Record<string, boolean>;
+  const availability = availData ?? ({} as Record<string, boolean>);
 
   const allConnected = data?.connected ?? [];
   const connected = allConnected.filter((c) => CONNECTOR_ONLY_SERVICES.has(c.service));
@@ -1567,27 +1860,42 @@ function ConnectorsPanel() {
 
         {connected.length > 0 && (
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Connected</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Connected
+            </p>
             <div className="space-y-2">
               {connected.map((c) => {
                 const meta = CONNECTOR_META[c.service];
-                const style = CONNECTOR_STATUS_STYLES[c.status] ?? CONNECTOR_STATUS_STYLES.connected;
+                const style =
+                  CONNECTOR_STATUS_STYLES[c.status] ?? CONNECTOR_STATUS_STYLES.connected;
                 const isPaused = c.status === "paused";
                 return (
                   <div key={c.id} className="rounded-lg border border-border bg-background p-3">
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-medium">{meta?.name ?? c.service}</p>
-                      <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium", style.badge)}>
+                      <span
+                        className={cn(
+                          "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                          style.badge,
+                        )}
+                      >
                         {c.status === "syncing" ? (
-                          <span className="flex items-center gap-1"><Loader2 className="h-2.5 w-2.5 animate-spin" />Syncing</span>
-                        ) : style.label}
+                          <span className="flex items-center gap-1">
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                            Syncing
+                          </span>
+                        ) : (
+                          style.label
+                        )}
                       </span>
                     </div>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       {c.items_indexed != null ? `${c.items_indexed} items indexed` : ""}
                       {c.last_synced_at ? ` · synced ${relativeTime(c.last_synced_at)}` : ""}
                     </p>
-                    {c.error_message && <p className="mt-1 text-[11px] text-red-500">{c.error_message}</p>}
+                    {c.error_message && (
+                      <p className="mt-1 text-[11px] text-red-500">{c.error_message}</p>
+                    )}
                     <div className="mt-2 flex gap-1.5">
                       <button
                         onClick={() => pauseMut.mutate({ id: c.id, paused: !isPaused })}
@@ -1617,7 +1925,9 @@ function ConnectorsPanel() {
           if (ungrouped.length === 0) return null;
           return (
             <div key={group.label}>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{group.label}</p>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {group.label}
+              </p>
               <div className="space-y-1.5">
                 {ungrouped.map((service) => {
                   const meta = CONNECTOR_META[service];
@@ -1643,13 +1953,21 @@ function ConnectorsPanel() {
                             disabled={connectMut.isPending}
                             className="flex shrink-0 items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                           >
-                            {connectMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+                            {connectMut.isPending ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <ExternalLink className="h-3 w-3" />
+                            )}
                             Connect
                           </button>
                         ) : meta.implemented && !isConfigured ? (
-                          <span className="shrink-0 rounded border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">Config needed</span>
+                          <span className="shrink-0 rounded border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">
+                            Config needed
+                          </span>
                         ) : (
-                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">Soon</span>
+                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            Soon
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1661,21 +1979,37 @@ function ConnectorsPanel() {
         })}
 
         {!isLoading && connected.length === 0 && (
-          <p className="py-2 text-center text-xs text-muted-foreground">Connect services to bring their data into your chats.</p>
+          <p className="py-2 text-center text-xs text-muted-foreground">
+            Connect services to bring their data into your chats.
+          </p>
         )}
       </div>
-      <AlertDialog open={!!pendingDisconnectId} onOpenChange={(o) => { if (!o) setPendingDisconnectId(null); }}>
+      <AlertDialog
+        open={!!pendingDisconnectId}
+        onOpenChange={(o) => {
+          if (!o) setPendingDisconnectId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Disconnect this service?</AlertDialogTitle>
-            <AlertDialogDescription>Indexed content from this service will be removed.</AlertDialogDescription>
+            <AlertDialogDescription>
+              Indexed content from this service will be removed.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { if (pendingDisconnectId) { disconnectMut.mutate(pendingDisconnectId); setPendingDisconnectId(null); } }}
-            >Disconnect</AlertDialogAction>
+              onClick={() => {
+                if (pendingDisconnectId) {
+                  disconnectMut.mutate(pendingDisconnectId);
+                  setPendingDisconnectId(null);
+                }
+              }}
+            >
+              Disconnect
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1685,7 +2019,13 @@ function ConnectorsPanel() {
 
 function groupByType(memories: MemoryEntry[]): Record<string, MemoryEntry[]> {
   const out: Record<string, MemoryEntry[]> = {};
-  for (const m of memories) {
+  // Pinned memories surface first within each group
+  const sorted = [...memories].sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    return b.confidence - a.confidence;
+  });
+  for (const m of sorted) {
     (out[m.type] ??= []).push(m);
   }
   return out;
@@ -1783,9 +2123,7 @@ function MemoryPanel() {
             }}
           />
         )}
-        {tab === "persona" && (
-          <PersonaTab ukm={ukmData?.ukm ?? null} isLoading={ukmLoading} />
-        )}
+        {tab === "persona" && <PersonaTab ukm={ukmData?.ukm ?? null} isLoading={ukmLoading} />}
         {tab === "insights" && (
           <InsightsTab
             memories={memories}
@@ -1795,7 +2133,12 @@ function MemoryPanel() {
           />
         )}
       </ScrollArea>
-      <AlertDialog open={!!pendingDeleteMemId} onOpenChange={(o) => { if (!o) setPendingDeleteMemId(null); }}>
+      <AlertDialog
+        open={!!pendingDeleteMemId}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteMemId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this memory?</AlertDialogTitle>
@@ -1805,7 +2148,12 @@ function MemoryPanel() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { if (pendingDeleteMemId) { deleteMut.mutate(pendingDeleteMemId); setPendingDeleteMemId(null); } }}
+              onClick={() => {
+                if (pendingDeleteMemId) {
+                  deleteMut.mutate(pendingDeleteMemId);
+                  setPendingDeleteMemId(null);
+                }
+              }}
             >
               Delete
             </AlertDialogAction>
@@ -1979,6 +2327,15 @@ function MemoryItem({
     onError: () => toast.error("Couldn't save."),
   });
 
+  const pinMut = useMutation({
+    mutationFn: (pinned: boolean) => pinMemory({ data: { id: memory.id, pinned } }),
+    onSuccess: () => {
+      onSaved();
+      toast.success(memory.pinned ? "Unpinned." : "Pinned — will always surface first.");
+    },
+    onError: () => toast.error("Couldn't update pin."),
+  });
+
   if (editing) {
     return (
       <div className="space-y-1.5 rounded-md border border-input bg-background/50 p-2">
@@ -2015,15 +2372,35 @@ function MemoryItem({
     );
   }
 
+  const confidencePct = Math.round((memory.confidence ?? 0) * 100);
+
   return (
     <div className="group flex items-start gap-2 rounded-md px-2 py-1.5 transition hover:bg-accent/40">
-      <p className="flex-1 text-xs leading-relaxed text-foreground/90">{memory.content}</p>
+      {memory.pinned && <Pin className="mt-0.5 h-3 w-3 shrink-0 fill-primary text-primary" />}
+      <div className="min-w-0 flex-1">
+        <p className="text-xs leading-relaxed text-foreground/90">{memory.content}</p>
+        <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground/50">
+          <span title="Confidence score">{confidencePct}%</span>
+          {memory.accessCount > 0 && (
+            <span title="Times used in responses">×{memory.accessCount}</span>
+          )}
+        </div>
+      </div>
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
-        {memory.accessCount > 0 && (
-          <span className="mr-1 text-[10px] text-muted-foreground/60" title="Times used in responses">
-            ×{memory.accessCount}
-          </span>
-        )}
+        <button
+          onClick={() => pinMut.mutate(!memory.pinned)}
+          aria-label={memory.pinned ? "Unpin memory" : "Pin memory"}
+          title={memory.pinned ? "Unpin" : "Pin — always surface first"}
+          className={cn(
+            "flex h-5 w-5 items-center justify-center rounded transition",
+            memory.pinned
+              ? "text-primary hover:text-primary/70"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+          disabled={pinMut.isPending}
+        >
+          <Pin className="h-3 w-3" />
+        </button>
         <button
           onClick={() => setEditing(true)}
           aria-label="Edit memory"
@@ -2057,11 +2434,11 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
   const hasIdentity = ukm && Object.values(ukm.identity).some(Boolean);
   const hasStyle = ukm && Object.values(ukm.communicationStyle).some(Boolean);
   const hasRelationships = (ukm?.relationships.length ?? 0) > 0;
-  const hasPreferences = ukm && (
-    ukm.preferences.responseFormat ||
-    (ukm.preferences.avoidTopics?.length ?? 0) > 0 ||
-    (ukm.preferences.preferredSources?.length ?? 0) > 0
-  );
+  const hasPreferences =
+    ukm &&
+    (ukm.preferences.responseFormat ||
+      (ukm.preferences.avoidTopics?.length ?? 0) > 0 ||
+      (ukm.preferences.preferredSources?.length ?? 0) > 0);
   const hasContent =
     hasIdentity ||
     hasStyle ||
@@ -2131,7 +2508,12 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
               <p className="mb-1 text-[10px] text-muted-foreground">Avoid topics</p>
               <div className="flex flex-wrap gap-1">
                 {ukm!.preferences.avoidTopics!.map((t, i) => (
-                  <span key={i} className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive/80">{t}</span>
+                  <span
+                    key={i}
+                    className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive/80"
+                  >
+                    {t}
+                  </span>
                 ))}
               </div>
             </div>
@@ -2141,14 +2523,18 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
               <p className="mb-1 text-[10px] text-muted-foreground">Preferred sources</p>
               <div className="flex flex-wrap gap-1">
                 {ukm!.preferences.preferredSources!.map((s, i) => (
-                  <span key={i} className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{s}</span>
+                  <span
+                    key={i}
+                    className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary"
+                  >
+                    {s}
+                  </span>
                 ))}
               </div>
             </div>
           )}
         </PersonaSection>
       )}
-
 
       {(ukm?.expertise.length ?? 0) > 0 && (
         <PersonaSection title="Expertise">
@@ -2169,7 +2555,9 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
         <PersonaSection title="Active projects">
           <ul className="space-y-0.5">
             {ukm!.activeProjects.map((p, i) => (
-              <li key={i} className="text-xs">· {p}</li>
+              <li key={i} className="text-xs">
+                · {p}
+              </li>
             ))}
           </ul>
         </PersonaSection>
@@ -2187,7 +2575,6 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
           </div>
         </PersonaSection>
       )}
-
 
       {(ukm?.antiPreferences.length ?? 0) > 0 && (
         <PersonaSection title="Things to avoid">
@@ -2296,7 +2683,7 @@ function InsightsTab({
 
   const hitRate =
     (stats?.totalResponses ?? 0) > 0
-      ? Math.round(((stats!.responsesWithMemory) / stats!.totalResponses) * 100)
+      ? Math.round((stats!.responsesWithMemory / stats!.totalResponses) * 100)
       : 0;
 
   const topMemories = [...memories]
@@ -2379,10 +2766,16 @@ function InsightsTab({
               </div>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
-              <StatBox label="Responses w/ memory" value={String(stats?.responsesWithMemory ?? 0)} />
+              <StatBox
+                label="Responses w/ memory"
+                value={String(stats?.responsesWithMemory ?? 0)}
+              />
               <StatBox label="Total responses" value={String(stats?.totalResponses ?? 0)} />
               <StatBox label="Total injections" value={String(stats?.totalMemoriesInjected ?? 0)} />
-              <StatBox label="Avg per response" value={String(stats?.avgMemoriesPerResponse ?? 0)} />
+              <StatBox
+                label="Avg per response"
+                value={String(stats?.avgMemoriesPerResponse ?? 0)}
+              />
             </div>
           </div>
         )}
@@ -2414,7 +2807,11 @@ function InsightsTab({
             label="Expertise"
             filled={Math.min(expertiseCount, 1)}
             total={1}
-            extra={expertiseCount > 0 ? `${expertiseCount} area${expertiseCount !== 1 ? "s" : ""}` : undefined}
+            extra={
+              expertiseCount > 0
+                ? `${expertiseCount} area${expertiseCount !== 1 ? "s" : ""}`
+                : undefined
+            }
           />
           <CompletenessRow
             label="Projects"
@@ -2505,6 +2902,325 @@ function StatBox({ label, value }: { label: string; value: string }) {
       <div className="text-base font-bold tabular-nums leading-none">{value}</div>
       <div className="mt-0.5 text-[10px] text-muted-foreground">{label}</div>
     </div>
+  );
+}
+
+function ContextDebuggerPanel() {
+  const location = useLocation();
+  const convId = location.pathname.match(/^\/c\/([a-f0-9-]{36})/)?.[1] ?? null;
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["context-log", convId],
+    queryFn: () => getContextLog({ data: { conversation_id: convId! } }),
+    enabled: Boolean(convId),
+    staleTime: 10_000,
+  });
+
+  if (!convId) {
+    return (
+      <div className="px-4 py-10 text-center text-xs text-muted-foreground">
+        Open a conversation to view context logs.
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3 p-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-10 animate-pulse rounded-md bg-muted/60" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="px-4 py-10 text-center text-xs text-muted-foreground">
+        No context log yet — send a message first.
+        <Button size="sm" variant="ghost" className="mt-2 block w-full" onClick={() => refetch()}>
+          Refresh
+        </Button>
+      </div>
+    );
+  }
+
+  const fmtMs = (ms: number | null) => (ms != null ? `${ms}ms` : "—");
+  const fmtTok = (n: number | null) => (n != null ? n.toLocaleString() : "—");
+  const fmtCost = (usd: number | null) => (usd != null ? `$${usd.toFixed(5)}` : "—");
+
+  return (
+    <ScrollArea className="h-full">
+      <div className="space-y-4 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-muted-foreground">Last call</span>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => refetch()}>
+            Refresh
+          </Button>
+        </div>
+
+        {/* Provider / model */}
+        <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">Provider</span>
+            <span className="font-medium capitalize">{data.provider}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">Model</span>
+            <span className="font-medium truncate max-w-[160px]" title={data.model}>
+              {data.model}
+            </span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">Latency</span>
+            <span className="font-medium">{fmtMs(data.latencyMs)}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">Cost</span>
+            <span className="font-medium">{fmtCost(data.costUsd)}</span>
+          </div>
+        </div>
+
+        {/* Tokens */}
+        <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Tokens
+          </p>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">Input</span>
+            <span className="font-medium">{fmtTok(data.tokensIn)}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">Output</span>
+            <span className="font-medium">{fmtTok(data.tokensOut)}</span>
+          </div>
+          {data.tokensSaved > 0 && (
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Saved</span>
+              <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                {fmtTok(data.tokensSaved)} ({data.savingsPct}%)
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Context sections */}
+        {Object.keys(data.contextSections).length > 0 && (
+          <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Context
+            </p>
+            {Object.entries(data.contextSections).map(([k, v]) => (
+              <div key={k} className="flex justify-between text-xs">
+                <span className="text-muted-foreground capitalize">{k}</span>
+                <span className="font-medium">{String(v)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Retrieved memories */}
+        {data.retrievedMemoryIds.length > 0 && (
+          <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Retrieved memories ({data.retrievedMemoryIds.length})
+            </p>
+            {data.retrievedMemoryIds.map((id) => {
+              const score = data.rankingScores[id];
+              return (
+                <div key={id} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate font-mono text-[10px] text-muted-foreground">
+                    {id.slice(0, 8)}…
+                  </span>
+                  {score != null && (
+                    <span className="shrink-0 text-[10px] tabular-nums text-primary">
+                      {(score * 100).toFixed(0)}%
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Retrieved chunks */}
+        {data.retrievedChunkIds.length > 0 && (
+          <div className="rounded-lg border border-border bg-card p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Retrieved chunks ({data.retrievedChunkIds.length})
+            </p>
+            <div className="mt-1.5 space-y-0.5">
+              {data.retrievedChunkIds.map((id) => (
+                <p key={id} className="font-mono text-[10px] text-muted-foreground truncate">
+                  {id.slice(0, 8)}…
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Warnings */}
+        {data.warnings.length > 0 && (
+          <div className="rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-800/50 dark:bg-yellow-900/10 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-yellow-700 dark:text-yellow-400">
+              Warnings
+            </p>
+            {data.warnings.map((w, i) => (
+              <p key={i} className="mt-1 text-xs text-yellow-800 dark:text-yellow-300">
+                {w}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+    </ScrollArea>
+  );
+}
+
+function TaskPanel() {
+  const location = useLocation();
+  const convId = location.pathname.match(/^\/c\/([a-f0-9-]{36})/)?.[1] ?? null;
+
+  const {
+    data: task,
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ["active-task", convId],
+    queryFn: () => getActiveTaskForConversation({ data: { conversation_id: convId! } }),
+    enabled: Boolean(convId),
+    staleTime: 15_000,
+  });
+
+  if (!convId) {
+    return (
+      <div className="px-4 py-10 text-center text-xs text-muted-foreground">
+        Open a conversation to view task state.
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3 p-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-10 animate-pulse rounded-md bg-muted/60" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!task) {
+    return (
+      <div className="px-4 py-10 text-center text-xs text-muted-foreground">
+        No active task for this conversation yet.
+        <Button size="sm" variant="ghost" className="mt-2 block w-full" onClick={() => refetch()}>
+          Refresh
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <ScrollArea className="h-full">
+      <div className="space-y-4 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary capitalize">
+            {task.status}
+          </span>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => refetch()}>
+            Refresh
+          </Button>
+        </div>
+
+        {/* Goal */}
+        <div className="rounded-lg border border-border bg-card p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Goal
+          </p>
+          <p className="mt-1.5 text-sm font-medium">{task.goal || task.title}</p>
+          {task.title && task.goal && task.title !== task.goal && (
+            <p className="mt-0.5 text-xs text-muted-foreground">{task.title}</p>
+          )}
+        </div>
+
+        {/* Current step */}
+        {task.currentStep && (
+          <div className="rounded-lg border border-border bg-card p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Current step
+            </p>
+            <p className="mt-1.5 text-xs">{task.currentStep}</p>
+          </div>
+        )}
+
+        {/* Completed steps */}
+        {task.completedSteps.length > 0 && (
+          <div className="rounded-lg border border-border bg-card p-3">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Completed ({task.completedSteps.length})
+            </p>
+            <ul className="space-y-1">
+              {task.completedSteps.map((s, i) => (
+                <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-500" />
+                  {s}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Next actions */}
+        {task.nextActions.length > 0 && (
+          <div className="rounded-lg border border-border bg-card p-3">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Next actions
+            </p>
+            <ul className="space-y-1">
+              {task.nextActions.map((a, i) => (
+                <li key={i} className="flex items-start gap-1.5 text-xs">
+                  <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
+                  {a}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Open questions */}
+        {task.openQuestions.length > 0 && (
+          <div className="rounded-lg border border-border bg-card p-3">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Open questions
+            </p>
+            <ul className="space-y-1">
+              {task.openQuestions.map((q, i) => (
+                <li key={i} className="text-xs text-muted-foreground">
+                  • {q}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Decisions */}
+        {task.decisions.length > 0 && (
+          <div className="rounded-lg border border-border bg-card p-3">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Decisions
+            </p>
+            <ul className="space-y-1">
+              {task.decisions.map((d, i) => (
+                <li key={i} className="text-xs text-muted-foreground">
+                  {d}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </ScrollArea>
   );
 }
 

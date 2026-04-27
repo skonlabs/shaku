@@ -86,12 +86,15 @@ export async function processFile(
     source_id: opts.sourceId,
     source_item_id: opts.sourceItemId ?? null,
     content: chunk,
+    // Dedicated columns for efficient filtering/display (migration 0008)
+    chunk_index: i,
+    chunk_total: chunks.length,
+    token_count: Math.ceil(chunk.length / 4), // ~4 chars/token approximation
+    document_name: fileName,
     metadata: {
       ...opts.metadata,
       file_name: fileName,
       file_type: fileType,
-      chunk_index: i,
-      total_chunks: chunks.length,
     },
     content_hash: contentHash,
     embedding: embeddings?.[i]?.length ? `[${embeddings[i].join(",")}]` : null,

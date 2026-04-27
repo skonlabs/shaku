@@ -745,11 +745,13 @@ Do not add any preface, apology, or commentary.`,
               assistantCreatedAt = asst.data?.created_at ?? null;
             }
 
+            const latencyMs = Date.now() - startTimeMs;
+            const costUsd =
+              (totalInputTokens / 1_000_000) * activeModel.costPerMTokInput +
+              (totalOutputTokens / 1_000_000) * activeModel.costPerMTokOutput;
+
             // Record usage event (fire-and-forget; non-blocking)
             if (totalInputTokens > 0 || totalOutputTokens > 0) {
-              const costUsd =
-                (totalInputTokens / 1_000_000) * activeModel.costPerMTokInput +
-                (totalOutputTokens / 1_000_000) * activeModel.costPerMTokOutput;
               runAfterResponse(
                 Promise.resolve(
                   supabase
@@ -761,12 +763,49 @@ Do not add any preface, apology, or commentary.`,
                       tokens_in: totalInputTokens,
                       tokens_out: totalOutputTokens,
                       cost_usd: costUsd,
-                      latency_ms: Date.now() - startTimeMs,
+                      latency_ms: latencyMs,
+                      conversation_id: convo.id,
                     })
                     .then(() => {}),
                 ),
               );
             }
+
+            // Insert context log for observability (fire-and-forget)
+            runAfterResponse(
+              Promise.resolve(
+                supabase
+                  .rpc("insert_context_log", {
+                    p_user_id: userId,
+                    p_conversation_id: convo.id,
+                    p_message_id: assistantId,
+                    p_provider: activeModel.provider,
+                    p_model: activeModel.id,
+                    p_tokens_in: totalInputTokens,
+                    p_tokens_out: totalOutputTokens,
+                    p_tokens_saved: 0,
+                    p_savings_pct: 0,
+                    p_cost_usd: costUsd,
+                    p_latency_ms: latencyMs,
+                    p_retrieved_memory_ids: assembled.memoriesUsed.map((m) => m.id),
+                    p_retrieved_chunk_ids: finalChunks.map((c) => c.id).filter(Boolean),
+                    p_task_id: assembled.activeTask?.id ?? null,
+                    p_ranking_scores: JSON.stringify(
+                      Object.fromEntries(
+                        assembled.memoriesUsed.map((m) => [m.id, m.hybridScore ?? m.confidence]),
+                      ),
+                    ),
+                    p_context_sections: JSON.stringify({
+                      memories: assembled.memoriesUsed.length,
+                      chunks: finalChunks.length,
+                      hasTask: Boolean(assembled.activeTask),
+                      hasSummary: Boolean(assembled.convState.summary),
+                    }),
+                    p_warnings: streamError ? ["stream_error"] : [],
+                  })
+                  .then(() => {}),
+              ),
+            );
           }
 
           await supabase

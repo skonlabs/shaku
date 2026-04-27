@@ -13,6 +13,8 @@
 import { loadUkm, compressUkmForPrompt, buildAntiPreferenceBlock } from "@/lib/knowledge/ukm";
 import { wrapSource, wrapMemory } from "@/lib/pipeline/prompt-optimization";
 import { retrieveMemories as retrieveMemoriesCanonical } from "@/lib/memory/retrieval";
+import { loadActiveTask } from "@/lib/memory/tasks";
+import type { ActiveTask } from "@/lib/memory/tasks";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RetrievedChunk } from "./retrieval";
 
@@ -30,6 +32,8 @@ export interface MemoryEntry {
   type: string;
   content: string;
   confidence: number;
+  pinned?: boolean;
+  hybridScore?: number;
 }
 
 export interface AssembledContext {
@@ -38,6 +42,7 @@ export interface AssembledContext {
   memoriesUsed: MemoryEntry[];
   sourcesSearched: { name: string; type: string; itemsSearched: number }[];
   convState: ConversationState;
+  activeTask: ActiveTask | null;
 }
 
 const TOKEN_BUDGET_RETRIEVAL = 10_000;
@@ -66,14 +71,22 @@ export async function assembleContext(opts: {
     preloadedHistory,
   } = opts;
 
+  // Load user memory preferences to respect per-user limits
+  const memPrefs = await loadMemoryPreferences(userId, supabase);
+
   // Load everything in parallel; always use preloadedHistory (callers always provide it)
-  const [convState, convHistory, ukm, memories] = await Promise.all([
+  const [convState, convHistory, ukm, memories, activeTask] = await Promise.all([
     loadConversationState(conversationId, supabase),
     preloadedHistory
       ? Promise.resolve(preloadedHistory)
       : Promise.resolve([] as { role: "user" | "assistant"; content: string; createdAt: string }[]),
     loadUkm(userId, supabase),
-    retrieveMemories(userId, projectId, currentMessage, supabase),
+    retrieveMemories(userId, projectId, currentMessage, supabase, {
+      limit: memPrefs.maxMemoriesPerCall,
+      minConfidence: memPrefs.minConfidenceThreshold,
+      excludedTypes: memPrefs.excludedTypes,
+    }),
+    loadActiveTask(conversationId, supabase),
   ]);
 
   // Build context sections (pass currentMessage so projects can be ranked by relevance)
@@ -88,6 +101,9 @@ export async function assembleContext(opts: {
     ? `Conversation summary (earlier messages): ${convState.summary}`
     : "";
 
+  // Build task block if there is an active task
+  const taskBlock = activeTask ? buildTaskBlock(activeTask) : "";
+
   // Build system prompt
   const systemPrompt = [
     systemInstructions,
@@ -95,6 +111,7 @@ export async function assembleContext(opts: {
     antiPrefs ? `\n## Avoid (user dislikes)\n${antiPrefs}` : "",
     summaryBlock ? `\n## Earlier conversation\n${summaryBlock}` : "",
     factsBlock ? `\n## Conversation context\n${factsBlock}` : "",
+    taskBlock ? `\n## Active task\n${taskBlock}` : "",
     memoryBlock ? `\n## Memory\n${memoryBlock}` : "",
     retrievalBlock ? `\n## Sources\n${retrievalBlock}` : "",
   ]
@@ -107,6 +124,7 @@ export async function assembleContext(opts: {
     memoriesUsed: memories,
     sourcesSearched: [],
     convState,
+    activeTask,
   };
 }
 
@@ -134,6 +152,32 @@ export async function loadConversationState(
   };
 }
 
+interface MemoryPrefs {
+  maxMemoriesPerCall: number;
+  minConfidenceThreshold: number;
+  excludedTypes: string[];
+}
+
+async function loadMemoryPreferences(
+  userId: string,
+  supabase: SupabaseClient,
+): Promise<MemoryPrefs> {
+  try {
+    const { data } = await supabase
+      .from("user_memory_preferences")
+      .select("max_memories_per_call, min_confidence_threshold, excluded_types")
+      .eq("user_id", userId)
+      .maybeSingle();
+    return {
+      maxMemoriesPerCall: (data?.max_memories_per_call as number | null) ?? 10,
+      minConfidenceThreshold: (data?.min_confidence_threshold as number | null) ?? 0.6,
+      excludedTypes: (data?.excluded_types as string[] | null) ?? [],
+    };
+  } catch {
+    return { maxMemoriesPerCall: 10, minConfidenceThreshold: 0.6, excludedTypes: [] };
+  }
+}
+
 // Delegates to the canonical retrieveMemories module so we have one embed call
 // path and consistent semantics. The `incrementAccess` side-effect is performed
 // inside retrieveMemories (best-effort fire-and-forget).
@@ -142,21 +186,39 @@ async function retrieveMemories(
   projectId: string | null,
   query: string,
   supabase: SupabaseClient,
+  prefs: { limit: number; minConfidence: number; excludedTypes: string[] },
 ): Promise<MemoryEntry[]> {
   try {
     const results = await retrieveMemoriesCanonical(userId, query, supabase, {
       projectId,
-      limit: 10,
+      limit: prefs.limit,
     });
-    return results.map((m) => ({
-      id: m.id,
-      type: m.type,
-      content: m.content,
-      confidence: m.confidence,
-    }));
+    return results
+      .filter(
+        (m) =>
+          m.confidence >= prefs.minConfidence &&
+          (prefs.excludedTypes.length === 0 || !prefs.excludedTypes.includes(m.type)),
+      )
+      .map((m) => ({
+        id: m.id,
+        type: m.type,
+        content: m.content,
+        confidence: m.confidence,
+        pinned: m.pinned,
+        hybridScore: m.hybridScore,
+      }));
   } catch {
     return [];
   }
+}
+
+function buildTaskBlock(task: ActiveTask): string {
+  const parts: string[] = [`Goal: ${task.goal || task.title}`];
+  if (task.currentStep) parts.push(`Current step: ${task.currentStep}`);
+  if (task.completedSteps.length) parts.push(`Completed: ${task.completedSteps.join("; ")}`);
+  if (task.nextActions.length) parts.push(`Next: ${task.nextActions.join("; ")}`);
+  if (task.openQuestions.length) parts.push(`Open questions: ${task.openQuestions.join("; ")}`);
+  return parts.join(". ");
 }
 
 function buildFactsBlock(state: ConversationState): string {

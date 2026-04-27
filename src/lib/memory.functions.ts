@@ -136,7 +136,19 @@ export const createMemory = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
     z.object({
-      type: z.enum(["preference", "semantic", "episodic", "behavioral", "anti_preference", "correction", "response_style", "project"]),
+      type: z.enum([
+        "preference",
+        "semantic",
+        "episodic",
+        "behavioral",
+        "anti_preference",
+        "correction",
+        "response_style",
+        "project",
+        "long_term",
+        "short_term",
+        "document",
+      ]),
       content: z.string().min(1).max(1000),
       project_id: z.string().uuid().nullable().optional(),
     }),
@@ -167,4 +179,58 @@ export const createMemory = createServerFn({ method: "POST" })
 
     if (error) throw new Error("Couldn't create memory.");
     return { id: row.id };
+  });
+
+export const pinMemory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ id: z.string().uuid(), pinned: z.boolean() }))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("memories")
+      .update({ pinned: data.pinned })
+      .eq("id", data.id)
+      .eq("user_id", userId);
+    if (error) throw new Error("Couldn't update pin.");
+    return { success: true };
+  });
+
+export const getMemoryPreferences = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({}))
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data } = await supabase
+      .from("user_memory_preferences")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    return {
+      memoryEnabled: (data?.memory_enabled ?? true) as boolean,
+      autoExtract: (data?.auto_extract ?? true) as boolean,
+      minConfidenceThreshold: (data?.min_confidence_threshold ?? 0.6) as number,
+      maxMemoriesPerCall: (data?.max_memories_per_call ?? 10) as number,
+      maxChunksPerCall: (data?.max_chunks_per_call ?? 8) as number,
+      storeConversationSummaries: (data?.store_conversation_summaries ?? true) as boolean,
+      excludedTypes: (data?.excluded_types ?? []) as string[],
+    };
+  });
+
+export const updateMemoryPreferences = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    z.object({
+      min_confidence_threshold: z.number().min(0).max(1).optional(),
+      max_memories_per_call: z.number().int().min(1).max(50).optional(),
+      auto_extract: z.boolean().optional(),
+      store_conversation_summaries: z.boolean().optional(),
+    }),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("user_memory_preferences")
+      .upsert({ user_id: userId, ...data, updated_at: new Date().toISOString() });
+    if (error) throw new Error("Couldn't save preferences.");
+    return { success: true };
   });
