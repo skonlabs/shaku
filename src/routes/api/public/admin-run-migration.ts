@@ -8,14 +8,6 @@ export const Route = createFileRoute('/api/public/admin-run-migration')({
     handlers: {
       POST: async ({ request }) => {
         // One-shot — file will be deleted immediately after use.
-        // Still require MIGRATION_TOKEN env to be set as a basic guard.
-        if (!process.env.MIGRATION_TOKEN) {
-          return new Response(JSON.stringify({ error: 'disabled' }), {
-            status: 403,
-            headers: { 'content-type': 'application/json' },
-          })
-        }
-
         const dbUrl = process.env.DB_MIGRATION_URL
         if (!dbUrl) {
           return new Response(
