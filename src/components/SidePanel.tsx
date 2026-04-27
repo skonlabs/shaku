@@ -985,6 +985,11 @@ interface MemoryEntry {
   sourceConversationId?: string | null;
 }
 
+type RecentPersonaSignal = {
+  content: string;
+  createdAt: string;
+};
+
 // ─── Projects ────────────────────────────────────────────────────────────────
 
 function ProjectsPanel() {
@@ -2080,6 +2085,7 @@ function MemoryPanel() {
 
   const memoryEnabled = ukmData?.memoryEnabled ?? true;
   const memories = (memoriesData?.memories ?? []) as MemoryEntry[];
+  const recentSignals = (ukmData?.recentSignals ?? []) as RecentPersonaSignal[];
   const grouped = groupByType(memories);
 
   const TABS = [
@@ -2113,6 +2119,7 @@ function MemoryPanel() {
           <MemoriesTab
             memories={memories}
             grouped={grouped}
+            recentSignals={recentSignals}
             memoryEnabled={memoryEnabled}
             isLoading={memoriesLoading}
             onToggle={(v) => toggleMut.mutate(v)}
@@ -2123,7 +2130,9 @@ function MemoryPanel() {
             }}
           />
         )}
-        {tab === "persona" && <PersonaTab ukm={ukmData?.ukm ?? null} isLoading={ukmLoading} />}
+        {tab === "persona" && (
+          <PersonaTab ukm={ukmData?.ukm ?? null} recentSignals={recentSignals} isLoading={ukmLoading} />
+        )}
         {tab === "insights" && (
           <InsightsTab
             memories={memories}
@@ -2167,6 +2176,7 @@ function MemoryPanel() {
 function MemoriesTab({
   memories,
   grouped,
+  recentSignals,
   memoryEnabled,
   isLoading,
   onToggle,
@@ -2175,6 +2185,7 @@ function MemoriesTab({
 }: {
   memories: MemoryEntry[];
   grouped: Record<string, MemoryEntry[]>;
+  recentSignals: RecentPersonaSignal[];
   memoryEnabled: boolean;
   isLoading: boolean;
   onToggle: (v: boolean) => void;
@@ -2277,9 +2288,17 @@ function MemoriesTab({
           ))}
         </div>
       ) : memories.length === 0 ? (
-        <div className="py-8 text-center text-xs text-muted-foreground">
-          <Brain className="mx-auto mb-2 h-8 w-8 opacity-20" />
-          No memories yet. Start chatting and I&apos;ll learn your preferences!
+        <div className="space-y-3">
+          <div className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
+            <Brain className="mb-2 h-5 w-5 text-primary/40" />
+            No saved memories yet. Recent conversation signals are shown below while the memory profile builds.
+          </div>
+          {recentSignals.map((signal, index) => (
+            <div key={`${signal.createdAt}-${index}`} className="rounded-md bg-accent/40 px-3 py-2">
+              <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">{signal.content}</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">{relativeTime(signal.createdAt)}</p>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="space-y-4">
@@ -2420,7 +2439,15 @@ function MemoryItem({
   );
 }
 
-function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoading: boolean }) {
+function PersonaTab({
+  ukm,
+  recentSignals,
+  isLoading,
+}: {
+  ukm: UserKnowledgeModel | null;
+  recentSignals: RecentPersonaSignal[];
+  isLoading: boolean;
+}) {
   if (isLoading) {
     return (
       <div className="space-y-3 p-4">
@@ -2452,12 +2479,33 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
 
   if (!hasContent) {
     return (
-      <div className="px-4 py-10 text-center">
-        <Brain className="mx-auto mb-3 h-10 w-10 text-primary/20" />
-        <p className="text-sm font-medium text-foreground/70">Persona not built yet</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Chat naturally and I&apos;ll learn your style, preferences, and expertise over time.
-        </p>
+      <div className="space-y-4 px-4 py-4">
+        <div className="rounded-lg border border-border bg-card p-3">
+          <p className="text-sm font-medium text-foreground/80">Persona is still learning</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            I haven&apos;t found enough clear preferences to build a full profile yet, but your recent
+            conversation signals are below.
+          </p>
+        </div>
+        {recentSignals.length > 0 ? (
+          <PersonaSection title="Recent signals">
+            <div className="space-y-2">
+              {recentSignals.map((signal, index) => (
+                <div key={`${signal.createdAt}-${index}`} className="rounded-md bg-accent/40 px-3 py-2">
+                  <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">{signal.content}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">{relativeTime(signal.createdAt)}</p>
+                </div>
+              ))}
+            </div>
+          </PersonaSection>
+        ) : (
+          <div className="px-2 py-6 text-center">
+            <Brain className="mx-auto mb-3 h-10 w-10 text-primary/20" />
+            <p className="text-xs text-muted-foreground">
+              Chat naturally and I&apos;ll learn your style, preferences, and expertise over time.
+            </p>
+          </div>
+        )}
       </div>
     );
   }
