@@ -1,10 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Client } from 'pg'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { MIGRATION_SQL } from '@/lib/_oneshot/migration-sql'
 
-// One-shot admin migration runner. Protected by a shared token via header.
-// DELETE THIS FILE after migration completes.
+// One-shot admin migration runner. DELETE after use.
 export const Route = createFileRoute('/api/admin/run-migration')({
   server: {
     handlers: {
