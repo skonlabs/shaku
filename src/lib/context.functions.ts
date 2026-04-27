@@ -6,12 +6,49 @@ export const getContextLog = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(z.object({ conversation_id: z.string().uuid() }))
   .handler(async ({ context, data }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
     const { data: rows, error } = await supabase.rpc("get_context_log", {
       p_conversation_id: data.conversation_id,
       p_limit: 1,
     });
-    if (error || !rows || rows.length === 0) return null;
+    if (error || !rows || rows.length === 0) {
+      const { data: msg } = await supabase
+        .from("messages")
+        .select("metadata, created_at, conversations!inner(user_id)")
+        .eq("conversation_id", data.conversation_id)
+        .eq("role", "assistant")
+        .eq("is_active", true)
+        .eq("conversations.user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const metadata = (msg?.metadata ?? {}) as Record<string, unknown>;
+      if (!msg || (metadata.tokens_in == null && metadata.tokens_out == null)) return null;
+      return {
+        id: "message-metadata",
+        provider: "chat",
+        model: (metadata.model as string | undefined) ?? "chat",
+        tokensIn: (metadata.tokens_in as number | null) ?? null,
+        tokensOut: (metadata.tokens_out as number | null) ?? null,
+        tokensSaved: (metadata.tokens_saved as number) ?? 0,
+        savingsPct: (metadata.savings_pct as number) ?? 0,
+        costUsd: null,
+        latencyMs: null,
+        retrievedMemoryIds: Array.isArray(metadata.memories_used)
+          ? metadata.memories_used.map((m) => (typeof m === "object" && m ? String((m as Record<string, unknown>).id ?? "") : "")).filter(Boolean)
+          : [],
+        retrievedChunkIds: [],
+        taskId: null,
+        rankingScores: {},
+        contextSections: {
+          memories: Array.isArray(metadata.memories_used) ? metadata.memories_used.length : 0,
+          source: "message metadata",
+        },
+        warnings: [],
+        createdAt: msg.created_at as string,
+      };
+    }
     const r = rows[0] as Record<string, unknown>;
     const sections = (r.context_sections ?? {}) as Record<string, string | number | boolean>;
     const scores = (r.ranking_scores ?? {}) as Record<string, number>;
