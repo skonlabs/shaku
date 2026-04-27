@@ -2119,6 +2119,7 @@ function MemoryPanel() {
           <MemoriesTab
             memories={memories}
             grouped={grouped}
+            recentSignals={recentSignals}
             memoryEnabled={memoryEnabled}
             isLoading={memoriesLoading}
             onToggle={(v) => toggleMut.mutate(v)}
@@ -2175,6 +2176,7 @@ function MemoryPanel() {
 function MemoriesTab({
   memories,
   grouped,
+  recentSignals,
   memoryEnabled,
   isLoading,
   onToggle,
@@ -2183,6 +2185,7 @@ function MemoriesTab({
 }: {
   memories: MemoryEntry[];
   grouped: Record<string, MemoryEntry[]>;
+  recentSignals: RecentPersonaSignal[];
   memoryEnabled: boolean;
   isLoading: boolean;
   onToggle: (v: boolean) => void;
@@ -2285,9 +2288,17 @@ function MemoriesTab({
           ))}
         </div>
       ) : memories.length === 0 ? (
-        <div className="py-8 text-center text-xs text-muted-foreground">
-          <Brain className="mx-auto mb-2 h-8 w-8 opacity-20" />
-          No memories yet. Start chatting and I&apos;ll learn your preferences!
+        <div className="space-y-3">
+          <div className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
+            <Brain className="mb-2 h-5 w-5 text-primary/40" />
+            No saved memories yet. Recent conversation signals are shown below while the memory profile builds.
+          </div>
+          {recentSignals.map((signal, index) => (
+            <div key={`${signal.createdAt}-${index}`} className="rounded-md bg-accent/40 px-3 py-2">
+              <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">{signal.content}</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">{relativeTime(signal.createdAt)}</p>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="space-y-4">
