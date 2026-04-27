@@ -2428,7 +2428,15 @@ function MemoryItem({
   );
 }
 
-function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoading: boolean }) {
+function PersonaTab({
+  ukm,
+  recentSignals,
+  isLoading,
+}: {
+  ukm: UserKnowledgeModel | null;
+  recentSignals: RecentPersonaSignal[];
+  isLoading: boolean;
+}) {
   if (isLoading) {
     return (
       <div className="space-y-3 p-4">
@@ -2460,12 +2468,33 @@ function PersonaTab({ ukm, isLoading }: { ukm: UserKnowledgeModel | null; isLoad
 
   if (!hasContent) {
     return (
-      <div className="px-4 py-10 text-center">
-        <Brain className="mx-auto mb-3 h-10 w-10 text-primary/20" />
-        <p className="text-sm font-medium text-foreground/70">Persona not built yet</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Chat naturally and I&apos;ll learn your style, preferences, and expertise over time.
-        </p>
+      <div className="space-y-4 px-4 py-4">
+        <div className="rounded-lg border border-border bg-card p-3">
+          <p className="text-sm font-medium text-foreground/80">Persona is still learning</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            I haven&apos;t found enough clear preferences to build a full profile yet, but your recent
+            conversation signals are below.
+          </p>
+        </div>
+        {recentSignals.length > 0 ? (
+          <PersonaSection title="Recent signals">
+            <div className="space-y-2">
+              {recentSignals.map((signal, index) => (
+                <div key={`${signal.createdAt}-${index}`} className="rounded-md bg-accent/40 px-3 py-2">
+                  <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">{signal.content}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">{relativeTime(signal.createdAt)}</p>
+                </div>
+              ))}
+            </div>
+          </PersonaSection>
+        ) : (
+          <div className="px-2 py-6 text-center">
+            <Brain className="mx-auto mb-3 h-10 w-10 text-primary/20" />
+            <p className="text-xs text-muted-foreground">
+              Chat naturally and I&apos;ll learn your style, preferences, and expertise over time.
+            </p>
+          </div>
+        )}
       </div>
     );
   }
