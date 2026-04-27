@@ -65,7 +65,10 @@ function normalizeEnvKeys(
 
 async function getCloudflareEnv(): Promise<Record<string, string | undefined>> {
   try {
-    const mod = (await import("cloudflare:workers")) as {
+    // Use a variable specifier so Vite's dep scanner doesn't try to resolve
+    // "cloudflare:workers" at build/dev time (it only exists in the Worker runtime).
+    const specifier = "cloudflare:workers";
+    const mod = (await import(/* @vite-ignore */ specifier)) as {
       env?: Record<string, string | undefined>;
     };
     return mod.env ?? {};
