@@ -315,6 +315,12 @@
   .animate-fade-in {
     animation: fade-in var(--duration-base) var(--ease-soft) both;
   }
+
+  /* Display typography utility — Outfit for headings */
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+  }
 }
 
-/* Inter via Google fonts (loaded once) */
+/* Outfit + Figtree via Google fonts (loaded once) */
