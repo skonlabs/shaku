@@ -3,7 +3,7 @@ import { Client } from 'pg'
 import { MIGRATION_SQL } from '@/lib/_oneshot/migration-sql'
 
 // One-shot admin migration runner. DELETE after use.
-export const Route = createFileRoute('/api/admin/run-migration')({
+export const Route = createFileRoute('/api/public/admin-run-migration')({
   server: {
     handlers: {
       POST: async ({ request }) => {
