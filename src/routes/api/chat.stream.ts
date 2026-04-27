@@ -1057,9 +1057,13 @@ function normalizeEnvKeys(
 
 async function getCloudflareEnv(): Promise<Record<string, string | undefined>> {
   try {
-    const mod = (await import("cloudflare:workers")) as {
+    const specifier = "cloudflare" + ":workers";
+    const importRuntimeModule = new Function("specifier", "return import(specifier)") as (
+      specifier: string,
+    ) => Promise<{
       env?: Record<string, string | undefined>;
-    };
+    }>;
+    const mod = await importRuntimeModule(specifier);
     return mod.env ?? {};
   } catch {
     return {};

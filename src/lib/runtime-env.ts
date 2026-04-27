@@ -65,12 +65,15 @@ function normalizeEnvKeys(
 
 async function getCloudflareEnv(): Promise<Record<string, string | undefined>> {
   try {
-    // Use a variable specifier so Vite's dep scanner doesn't try to resolve
-    // "cloudflare:workers" at build/dev time (it only exists in the Worker runtime).
-    const specifier = "cloudflare:workers";
-    const mod = (await import(/* @vite-ignore */ specifier)) as {
+    // Keep the Worker-only module completely hidden from Vite's dependency
+    // scanner. A normal dynamic import string is still detected during dev.
+    const specifier = "cloudflare" + ":workers";
+    const importRuntimeModule = new Function("specifier", "return import(specifier)") as (
+      specifier: string,
+    ) => Promise<{
       env?: Record<string, string | undefined>;
-    };
+    }>;
+    const mod = await importRuntimeModule(specifier);
     return mod.env ?? {};
   } catch {
     return {};
