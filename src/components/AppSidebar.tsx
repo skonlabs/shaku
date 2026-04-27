@@ -16,15 +16,16 @@ import { usePanel, type PanelId } from "@/lib/ui-context";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-// Friendlier labels written for non-technical users
+// Friendly labels — keep the original term in parentheses so power users
+// can still find Memory, Persona, Context, and Token usage.
 const items: { id: PanelId; icon: typeof MessageSquare; label: string }[] = [
   { id: "chats", icon: MessageSquare, label: "My chats" },
   { id: "projects", icon: FolderHeart, label: "Projects" },
-  { id: "datasources", icon: BookOpen, label: "My library" },
+  { id: "datasources", icon: BookOpen, label: "My library (data sources)" },
   { id: "connectors", icon: Plug, label: "Connections" },
-  { id: "memory", icon: Sparkles, label: "What I remember" },
-  { id: "task", icon: ListChecks, label: "What I'm working on" },
-  { id: "context", icon: Wrench, label: "Behind the scenes" },
+  { id: "memory", icon: Sparkles, label: "What I remember (Memory & Persona)" },
+  { id: "task", icon: ListChecks, label: "What I'm working on (Active task)" },
+  { id: "context", icon: Wrench, label: "Behind the scenes (Context debugger)" },
 ];
 
 export function AppSidebar() {
@@ -117,7 +118,7 @@ export function AppSidebar() {
                 <Settings className="h-[19px] w-[19px] transition-transform duration-300 group-hover/btn:rotate-45" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="right">Settings</TooltipContent>
+            <TooltipContent side="right">Settings &amp; token usage</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
