@@ -1,28 +1,30 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import {
   MessageSquare,
-  FolderKanban,
-  Database,
+  FolderHeart,
+  BookOpen,
   Plug,
   Settings,
   User,
-  Brain,
+  Sparkles,
   Plus,
-  Bug,
-  ListTodo,
+  Wrench,
+  ListChecks,
+  Leaf,
 } from "lucide-react";
 import { usePanel, type PanelId } from "@/lib/ui-context";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
+// Friendlier labels written for non-technical users
 const items: { id: PanelId; icon: typeof MessageSquare; label: string }[] = [
-  { id: "chats", icon: MessageSquare, label: "Chats" },
-  { id: "projects", icon: FolderKanban, label: "Projects" },
-  { id: "datasources", icon: Database, label: "Data sources" },
-  { id: "connectors", icon: Plug, label: "Connectors" },
-  { id: "memory", icon: Brain, label: "Memory & Persona" },
-  { id: "task", icon: ListTodo, label: "Active Task" },
-  { id: "context", icon: Bug, label: "Context Debugger" },
+  { id: "chats", icon: MessageSquare, label: "My chats" },
+  { id: "projects", icon: FolderHeart, label: "Projects" },
+  { id: "datasources", icon: BookOpen, label: "My library" },
+  { id: "connectors", icon: Plug, label: "Connections" },
+  { id: "memory", icon: Sparkles, label: "What I remember" },
+  { id: "task", icon: ListChecks, label: "What I'm working on" },
+  { id: "context", icon: Wrench, label: "Behind the scenes" },
 ];
 
 export function AppSidebar() {
@@ -31,25 +33,25 @@ export function AppSidebar() {
 
   return (
     <TooltipProvider delayDuration={250}>
-      <aside className="z-30 flex h-svh w-16 shrink-0 flex-col items-center justify-between border-r border-sidebar-border bg-sidebar py-4">
+      <aside className="z-30 flex h-svh w-[68px] shrink-0 flex-col items-center justify-between border-r border-sidebar-border bg-sidebar py-5">
         <div className="flex flex-col items-center gap-1.5">
-          {/* Brand */}
+          {/* Brand — soft sage gradient with a leaf, warm and welcoming */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Link
                 to="/"
                 onClick={() => setActive(null)}
                 className={cn(
-                  "group/brand flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.55_0.18_255)] text-primary-foreground shadow-[0_4px_12px_-4px_oklch(0.6_0.16_245/0.5)] transition-all duration-200 hover:shadow-[0_6px_18px_-4px_oklch(0.6_0.16_245/0.6)]",
+                  "group/brand flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[oklch(0.62_0.08_145)] to-[oklch(0.50_0.07_150)] text-primary-foreground shadow-[0_6px_18px_-6px_oklch(0.50_0.07_150/0.55)] transition-all duration-300 hover:scale-[1.04] hover:shadow-[0_8px_22px_-6px_oklch(0.50_0.07_150/0.65)]",
                   location.pathname === "/" &&
-                    "ring-2 ring-ring/30 ring-offset-2 ring-offset-sidebar",
+                    "ring-2 ring-primary/30 ring-offset-2 ring-offset-sidebar",
                 )}
-                aria-label="New chat"
+                aria-label="Start a new chat"
               >
-                <span className="text-[15px] font-bold tracking-tight">C</span>
+                <Leaf className="h-[19px] w-[19px] transition-transform duration-500 group-hover/brand:rotate-[-8deg]" />
               </Link>
             </TooltipTrigger>
-            <TooltipContent side="right">New chat</TooltipContent>
+            <TooltipContent side="right">Home</TooltipContent>
           </Tooltip>
 
           {/* Quick new-chat */}
@@ -58,16 +60,16 @@ export function AppSidebar() {
               <Link
                 to="/"
                 onClick={() => setActive(null)}
-                aria-label="New chat"
-                className="mt-1 flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-sidebar-border text-sidebar-foreground/60 transition-all duration-200 hover:border-primary/50 hover:bg-sidebar-accent hover:text-primary"
+                aria-label="Start a new chat"
+                className="mt-1 flex h-11 w-11 items-center justify-center rounded-2xl border border-dashed border-sidebar-border/80 text-sidebar-foreground/60 transition-all duration-200 hover:border-primary/50 hover:bg-sidebar-accent hover:text-primary"
               >
-                <Plus className="h-[18px] w-[18px]" />
+                <Plus className="h-[19px] w-[19px]" />
               </Link>
             </TooltipTrigger>
-            <TooltipContent side="right">Start new chat</TooltipContent>
+            <TooltipContent side="right">Start a new chat</TooltipContent>
           </Tooltip>
 
-          <div className="my-1.5 h-px w-7 bg-sidebar-border" />
+          <div className="my-2 h-px w-7 bg-sidebar-border" />
 
           {items.map((it) => {
             const Icon = it.icon;
@@ -80,15 +82,15 @@ export function AppSidebar() {
                     aria-label={it.label}
                     aria-pressed={isActive}
                     className={cn(
-                      "group/btn relative flex h-10 w-10 items-center justify-center rounded-xl text-sidebar-foreground/65 transition-all duration-200",
+                      "group/btn relative flex h-11 w-11 items-center justify-center rounded-2xl text-sidebar-foreground/65 transition-all duration-200",
                       "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                       isActive && "bg-sidebar-accent text-primary",
                     )}
                   >
                     {isActive && (
-                      <span className="absolute -left-[14px] top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
+                      <span className="absolute -left-[14px] top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
                     )}
-                    <Icon className="h-[18px] w-[18px] transition-transform duration-200 group-hover/btn:scale-110" />
+                    <Icon className="h-[19px] w-[19px] transition-transform duration-200 group-hover/btn:scale-110" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="right">{it.label}</TooltipContent>
@@ -105,14 +107,14 @@ export function AppSidebar() {
                 aria-label="Settings"
                 aria-pressed={active === "settings"}
                 className={cn(
-                  "group/btn relative flex h-10 w-10 items-center justify-center rounded-xl text-sidebar-foreground/65 transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  "group/btn relative flex h-11 w-11 items-center justify-center rounded-2xl text-sidebar-foreground/65 transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   active === "settings" && "bg-sidebar-accent text-primary",
                 )}
               >
                 {active === "settings" && (
-                  <span className="absolute -left-[14px] top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
+                  <span className="absolute -left-[14px] top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
                 )}
-                <Settings className="h-[18px] w-[18px] transition-transform duration-200 group-hover/btn:rotate-45" />
+                <Settings className="h-[19px] w-[19px] transition-transform duration-300 group-hover/btn:rotate-45" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">Settings</TooltipContent>
@@ -121,20 +123,20 @@ export function AppSidebar() {
             <TooltipTrigger asChild>
               <button
                 onClick={() => toggle("account")}
-                aria-label="Account"
+                aria-label="My account"
                 aria-pressed={active === "account"}
                 className={cn(
-                  "relative flex h-10 w-10 items-center justify-center rounded-xl text-sidebar-foreground/65 transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  "relative flex h-11 w-11 items-center justify-center rounded-2xl text-sidebar-foreground/65 transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   active === "account" && "bg-sidebar-accent text-primary",
                 )}
               >
                 {active === "account" && (
-                  <span className="absolute -left-[14px] top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
+                  <span className="absolute -left-[14px] top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
                 )}
-                <User className="h-[18px] w-[18px]" />
+                <User className="h-[19px] w-[19px]" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="right">Account</TooltipContent>
+            <TooltipContent side="right">My account</TooltipContent>
           </Tooltip>
         </div>
       </aside>
