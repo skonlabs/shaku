@@ -10,9 +10,12 @@ export interface RetrievedMemory {
   content: string;
   confidence: number;
   importance: number;
+  pinned: boolean;
   accessCount: number;
   lastAccessedAt: string | null;
   similarity: number;
+  hybridScore: number;
+  sourceConversationId: string | null;
 }
 
 export async function retrieveMemories(
@@ -35,6 +38,7 @@ export async function retrieveMemories(
       target_user_id: userId,
       target_project_id: projectId,
       match_count: limit,
+      query_text: query,
     });
 
     if (error || !data) return [];
@@ -57,9 +61,12 @@ export async function retrieveMemories(
       content: m.content as string,
       confidence: m.confidence as number,
       importance: m.importance as number,
+      pinned: (m.pinned as boolean | undefined) ?? false,
       accessCount: m.access_count as number,
       lastAccessedAt: m.last_accessed_at as string | null,
       similarity: m.similarity as number,
+      hybridScore: (m.hybrid_score as number | undefined) ?? (m.similarity as number),
+      sourceConversationId: (m.source_conversation_id as string | null) ?? null,
     }));
   } catch {
     return [];
@@ -75,9 +82,12 @@ export async function listMemories(
   const { type, limit = 50, offset = 0 } = opts;
   let query = supabase
     .from("memories")
-    .select("id, type, content, confidence, importance, access_count, last_accessed_at, created_at")
+    .select(
+      "id, type, content, confidence, importance, pinned, access_count, last_accessed_at, source_conversation_id, created_at",
+    )
     .eq("user_id", userId)
     .is("superseded_by", null)
+    .order("pinned", { ascending: false })
     .order("importance", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -90,8 +100,11 @@ export async function listMemories(
     content: m.content,
     confidence: m.confidence,
     importance: m.importance,
+    pinned: m.pinned ?? false,
     accessCount: m.access_count,
     lastAccessedAt: m.last_accessed_at,
     similarity: 1,
+    hybridScore: 1,
+    sourceConversationId: m.source_conversation_id ?? null,
   }));
 }

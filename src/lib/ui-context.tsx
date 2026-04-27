@@ -40,7 +40,9 @@ export type PanelId =
   | "settings"
   | "account"
   | "document"
-  | "memory";
+  | "memory"
+  | "context"
+  | "task";
 const PanelContext = React.createContext<PanelContextValue | null>(null);
 
 export function PanelProvider({ children }: { children: React.ReactNode }) {

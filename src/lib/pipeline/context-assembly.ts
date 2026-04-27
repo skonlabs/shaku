@@ -13,6 +13,8 @@
 import { loadUkm, compressUkmForPrompt, buildAntiPreferenceBlock } from "@/lib/knowledge/ukm";
 import { wrapSource, wrapMemory } from "@/lib/pipeline/prompt-optimization";
 import { retrieveMemories as retrieveMemoriesCanonical } from "@/lib/memory/retrieval";
+import { loadActiveTask } from "@/lib/memory/tasks";
+import type { ActiveTask } from "@/lib/memory/tasks";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RetrievedChunk } from "./retrieval";
 
@@ -30,6 +32,8 @@ export interface MemoryEntry {
   type: string;
   content: string;
   confidence: number;
+  pinned?: boolean;
+  hybridScore?: number;
 }
 
 export interface AssembledContext {
@@ -38,6 +42,7 @@ export interface AssembledContext {
   memoriesUsed: MemoryEntry[];
   sourcesSearched: { name: string; type: string; itemsSearched: number }[];
   convState: ConversationState;
+  activeTask: ActiveTask | null;
 }
 
 const TOKEN_BUDGET_RETRIEVAL = 10_000;
@@ -67,13 +72,14 @@ export async function assembleContext(opts: {
   } = opts;
 
   // Load everything in parallel; always use preloadedHistory (callers always provide it)
-  const [convState, convHistory, ukm, memories] = await Promise.all([
+  const [convState, convHistory, ukm, memories, activeTask] = await Promise.all([
     loadConversationState(conversationId, supabase),
     preloadedHistory
       ? Promise.resolve(preloadedHistory)
       : Promise.resolve([] as { role: "user" | "assistant"; content: string; createdAt: string }[]),
     loadUkm(userId, supabase),
     retrieveMemories(userId, projectId, currentMessage, supabase),
+    loadActiveTask(conversationId, supabase),
   ]);
 
   // Build context sections (pass currentMessage so projects can be ranked by relevance)
@@ -88,6 +94,9 @@ export async function assembleContext(opts: {
     ? `Conversation summary (earlier messages): ${convState.summary}`
     : "";
 
+  // Build task block if there is an active task
+  const taskBlock = activeTask ? buildTaskBlock(activeTask) : "";
+
   // Build system prompt
   const systemPrompt = [
     systemInstructions,
@@ -95,6 +104,7 @@ export async function assembleContext(opts: {
     antiPrefs ? `\n## Avoid (user dislikes)\n${antiPrefs}` : "",
     summaryBlock ? `\n## Earlier conversation\n${summaryBlock}` : "",
     factsBlock ? `\n## Conversation context\n${factsBlock}` : "",
+    taskBlock ? `\n## Active task\n${taskBlock}` : "",
     memoryBlock ? `\n## Memory\n${memoryBlock}` : "",
     retrievalBlock ? `\n## Sources\n${retrievalBlock}` : "",
   ]
@@ -107,6 +117,7 @@ export async function assembleContext(opts: {
     memoriesUsed: memories,
     sourcesSearched: [],
     convState,
+    activeTask,
   };
 }
 
@@ -153,10 +164,21 @@ async function retrieveMemories(
       type: m.type,
       content: m.content,
       confidence: m.confidence,
+      pinned: m.pinned,
+      hybridScore: m.hybridScore,
     }));
   } catch {
     return [];
   }
+}
+
+function buildTaskBlock(task: ActiveTask): string {
+  const parts: string[] = [`Goal: ${task.goal || task.title}`];
+  if (task.currentStep) parts.push(`Current step: ${task.currentStep}`);
+  if (task.completedSteps.length) parts.push(`Completed: ${task.completedSteps.join("; ")}`);
+  if (task.nextActions.length) parts.push(`Next: ${task.nextActions.join("; ")}`);
+  if (task.openQuestions.length) parts.push(`Open questions: ${task.openQuestions.join("; ")}`);
+  return parts.join(". ");
 }
 
 function buildFactsBlock(state: ConversationState): string {

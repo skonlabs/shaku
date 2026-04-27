@@ -136,7 +136,16 @@ export const createMemory = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
     z.object({
-      type: z.enum(["preference", "semantic", "episodic", "behavioral", "anti_preference", "correction", "response_style", "project"]),
+      type: z.enum([
+        "preference",
+        "semantic",
+        "episodic",
+        "behavioral",
+        "anti_preference",
+        "correction",
+        "response_style",
+        "project",
+      ]),
       content: z.string().min(1).max(1000),
       project_id: z.string().uuid().nullable().optional(),
     }),
@@ -167,4 +176,18 @@ export const createMemory = createServerFn({ method: "POST" })
 
     if (error) throw new Error("Couldn't create memory.");
     return { id: row.id };
+  });
+
+export const pinMemory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ id: z.string().uuid(), pinned: z.boolean() }))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("memories")
+      .update({ pinned: data.pinned })
+      .eq("id", data.id)
+      .eq("user_id", userId);
+    if (error) throw new Error("Couldn't update pin.");
+    return { success: true };
   });

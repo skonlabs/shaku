@@ -1,5 +1,16 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { MessageSquare, FolderKanban, Database, Plug, Settings, User, Brain, Plus } from "lucide-react";
+import {
+  MessageSquare,
+  FolderKanban,
+  Database,
+  Plug,
+  Settings,
+  User,
+  Brain,
+  Plus,
+  Bug,
+  ListTodo,
+} from "lucide-react";
 import { usePanel, type PanelId } from "@/lib/ui-context";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -10,6 +21,8 @@ const items: { id: PanelId; icon: typeof MessageSquare; label: string }[] = [
   { id: "datasources", icon: Database, label: "Data sources" },
   { id: "connectors", icon: Plug, label: "Connectors" },
   { id: "memory", icon: Brain, label: "Memory & Persona" },
+  { id: "task", icon: ListTodo, label: "Active Task" },
+  { id: "context", icon: Bug, label: "Context Debugger" },
 ];
 
 export function AppSidebar() {
@@ -28,7 +41,8 @@ export function AppSidebar() {
                 onClick={() => setActive(null)}
                 className={cn(
                   "group/brand flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.55_0.18_255)] text-primary-foreground shadow-[0_4px_12px_-4px_oklch(0.6_0.16_245/0.5)] transition-all duration-200 hover:shadow-[0_6px_18px_-4px_oklch(0.6_0.16_245/0.6)]",
-                  location.pathname === "/" && "ring-2 ring-ring/30 ring-offset-2 ring-offset-sidebar",
+                  location.pathname === "/" &&
+                    "ring-2 ring-ring/30 ring-offset-2 ring-offset-sidebar",
                 )}
                 aria-label="New chat"
               >
