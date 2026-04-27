@@ -118,7 +118,7 @@ export function AppSidebar() {
                 <Settings className="h-[19px] w-[19px] transition-transform duration-300 group-hover/btn:rotate-45" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="right">Settings</TooltipContent>
+            <TooltipContent side="right">Settings &amp; token usage</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
