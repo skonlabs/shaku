@@ -71,6 +71,8 @@ import {
   pinMemory,
   getUkm,
   getMemoryStats,
+  getMemoryPreferences,
+  updateMemoryPreferences,
 } from "@/lib/memory.functions";
 import {
   listProjects,
@@ -572,6 +574,92 @@ function SettingsPanel() {
         </p>
       </div>
       <TokenUsageSection />
+      <MemoryPreferencesSection />
+    </div>
+  );
+}
+
+function MemoryPreferencesSection() {
+  const qc = useQueryClient();
+  const { data: prefs, isLoading } = useQuery({
+    queryKey: ["memory-preferences"],
+    queryFn: () => getMemoryPreferences({ data: {} }),
+    staleTime: 60_000,
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (patch: Parameters<typeof updateMemoryPreferences>[0]["data"]) =>
+      updateMemoryPreferences({ data: patch }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["memory-preferences"] });
+      toast.success("Memory preferences saved.");
+    },
+    onError: () => toast.error("Couldn't save preferences."),
+  });
+
+  if (isLoading || !prefs) return null;
+
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        Memory preferences
+      </p>
+      <div className="space-y-3 rounded-lg border border-border bg-card p-3">
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span>Auto-extract memories</span>
+          <button
+            onClick={() => updateMut.mutate({ auto_extract: !prefs.autoExtract })}
+            className={cn(
+              "relative h-5 w-9 rounded-full transition-colors",
+              prefs.autoExtract ? "bg-primary" : "bg-muted-foreground/30",
+            )}
+          >
+            <span
+              className={cn(
+                "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform",
+                prefs.autoExtract ? "translate-x-4" : "translate-x-0.5",
+              )}
+            />
+          </button>
+        </label>
+
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span>Confidence threshold</span>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={0.1}
+              max={1.0}
+              step={0.05}
+              defaultValue={prefs.minConfidenceThreshold}
+              onBlur={(e) => {
+                const v = parseFloat(e.target.value);
+                if (Number.isFinite(v) && v >= 0.1 && v <= 1.0) {
+                  updateMut.mutate({ min_confidence_threshold: v });
+                }
+              }}
+              className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm outline-none focus:border-ring/60"
+            />
+          </div>
+        </label>
+
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span>Memories per response</span>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            defaultValue={prefs.maxMemoriesPerCall}
+            onBlur={(e) => {
+              const v = parseInt(e.target.value, 10);
+              if (Number.isFinite(v) && v >= 1 && v <= 50) {
+                updateMut.mutate({ max_memories_per_call: v });
+              }
+            }}
+            className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm outline-none focus:border-ring/60"
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -868,7 +956,10 @@ type MemoryType =
   | "anti_preference"
   | "correction"
   | "response_style"
-  | "project";
+  | "project"
+  | "short_term"
+  | "long_term"
+  | "document";
 
 const MEMORY_TYPE_META: { value: MemoryType; label: string; emoji: string }[] = [
   { value: "preference", label: "Preferences", emoji: "💡" },
@@ -879,6 +970,9 @@ const MEMORY_TYPE_META: { value: MemoryType; label: string; emoji: string }[] = 
   { value: "project", label: "Projects", emoji: "📁" },
   { value: "episodic", label: "Events", emoji: "📅" },
   { value: "semantic", label: "Facts", emoji: "🧠" },
+  { value: "long_term", label: "Long-term", emoji: "🔒" },
+  { value: "short_term", label: "Short-term", emoji: "⏱️" },
+  { value: "document", label: "Documents", emoji: "📄" },
 ];
 
 interface MemoryEntry {

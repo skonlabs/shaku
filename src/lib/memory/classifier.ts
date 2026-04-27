@@ -48,7 +48,7 @@ export interface ExtractionResult {
 }
 
 const EXTRACTION_SCHEMA = `{
-  "new_memories": [{"type":"preference|semantic|episodic|behavioral|anti_preference|correction|response_style|project|long_term","content":"concise fact","confidence":0.0-1.0}],
+  "new_memories": [{"type":"preference|semantic|episodic|behavioral|anti_preference|correction|response_style|project|short_term|long_term|document","content":"concise fact","confidence":0.0-1.0}],
   "memory_updates": [{"existing_content":"substring of existing memory to update","updated_content":"new version","confidence":0.0-1.0}],
   "task_updates": {"title":"string","goal":"string","current_step":"string","completed_steps":["..."],"open_questions":["..."],"decisions":["..."],"next_actions":["..."]} | null,
   "conversation_summary_update": "one-sentence summary of this exchange, or empty string",
@@ -104,6 +104,8 @@ MEMORY TYPES:
 - episodic: important event/decision from this exchange
 - semantic: factual knowledge about user/domain
 - long_term: stable identity facts (name, role, company)
+- short_term: temporary context relevant only within this conversation (NOT for permanent storage)
+- document: key fact extracted from an uploaded document
 
 TASK UPDATES: if the conversation is working on a specific goal/project,
 extract structured task progress updates.
@@ -178,7 +180,8 @@ Assistant: ${assistantResponse.slice(0, 600)}`;
         type: m.type,
         content: m.content.slice(0, 500),
         confidence: m.confidence,
-        shouldPromote: m.confidence >= 0.8,
+        // short_term memories are conversation-scoped and must never be promoted
+        shouldPromote: m.confidence >= 0.8 && m.type !== "short_term",
       }));
 
     const memoryUpdates: MemoryUpdate[] = (parsed.memory_updates ?? [])
