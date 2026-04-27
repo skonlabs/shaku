@@ -104,26 +104,34 @@ function NewChatPage() {
   });
 
   const firstName = profile?.name ? profile.name.split(" ")[0] : null;
+  const hour = new Date().getHours();
+  const timeOfDay =
+    hour < 5 ? "Hello" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const greeting = welcomeBack
     ? firstName
       ? `Welcome back, ${firstName}`
       : "Welcome back"
     : firstName
-    ? `Hello, ${firstName}`
-    : "Hello";
+    ? `${timeOfDay}, ${firstName}`
+    : timeOfDay;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto">
+    <div className="relative flex h-full flex-col">
+      {/* Soft warm halo behind the greeting — adds atmosphere */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-0 h-[420px] bg-[radial-gradient(ellipse_at_top,oklch(0.88_0.04_130/0.55),transparent_70%)]"
+      />
+      <div className="relative flex-1 overflow-y-auto">
         <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-4 py-12 text-center">
-          <div className="animate-fade-rise mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-primary/10">
-            <Sparkles className="h-7 w-7" />
+          <div className="animate-fade-rise mb-7 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-[oklch(0.62_0.08_145)] to-[oklch(0.50_0.07_150)] text-primary-foreground shadow-[0_10px_30px_-10px_oklch(0.50_0.07_150/0.5)]">
+            <Leaf className="h-8 w-8" />
           </div>
-          <h1 className="animate-fade-rise text-4xl font-semibold tracking-tight sm:text-5xl [animation-delay:60ms]">
+          <h1 className="font-display animate-fade-rise text-4xl font-semibold sm:text-5xl [animation-delay:60ms]">
             {greeting}
           </h1>
-          <p className="animate-fade-rise mt-3 max-w-md text-base text-muted-foreground [animation-delay:120ms]">
-            What can I help you with today?
+          <p className="animate-fade-rise mt-4 max-w-md text-base leading-relaxed text-muted-foreground [animation-delay:120ms]">
+            I'm here whenever you need me. Type below, or pick something to get started — there's no wrong way to begin.
           </p>
 
           {lastConvo && (
@@ -131,28 +139,34 @@ function NewChatPage() {
               onClick={() =>
                 void navigate({ to: "/c/$id", params: { id: lastConvo.id } })
               }
-              className="animate-fade-rise group mt-6 inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-4 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur transition-all duration-200 hover:border-primary/40 hover:bg-card hover:text-foreground hover:shadow-md [animation-delay:180ms]"
+              className="animate-fade-rise group mt-7 inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-5 py-2.5 text-sm text-muted-foreground shadow-sm backdrop-blur transition-all duration-200 hover:border-primary/40 hover:bg-card hover:text-foreground hover:shadow-md [animation-delay:180ms]"
             >
-              Continue last chat
+              Pick up where we left off
               {lastConvo.title ? (
                 <span className="font-medium text-foreground">— {lastConvo.title}</span>
               ) : null}
-              <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5" />
+              <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
             </button>
           )}
 
-          <div className="mt-10 grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:grid-cols-3">
-            {suggestions.map((s, i) => (
-              <button
-                key={s}
-                onClick={() => startMut.mutate({ text: s, attachments: [] })}
-                disabled={startMut.isPending}
-                style={{ animationDelay: `${280 + i * 60}ms` }}
-                className="animate-fade-rise group rounded-xl border border-border/70 bg-card/80 px-4 py-3.5 text-left text-sm text-muted-foreground shadow-sm backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-card hover:text-foreground hover:shadow-md disabled:opacity-50"
-              >
-                {s}
-              </button>
-            ))}
+          <div className="mt-12 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+            {suggestions.map((s, i) => {
+              const Icon = s.icon;
+              return (
+                <button
+                  key={s.label}
+                  onClick={() => startMut.mutate({ text: s.prompt, attachments: [] })}
+                  disabled={startMut.isPending}
+                  style={{ animationDelay: `${280 + i * 70}ms` }}
+                  className="animate-fade-rise group flex items-center gap-3 rounded-2xl border border-border/70 bg-card/80 px-4 py-4 text-left text-sm text-foreground shadow-sm backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-card hover:shadow-md disabled:opacity-50"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/60 text-primary transition-colors duration-200 group-hover:bg-accent">
+                    <Icon className="h-[18px] w-[18px]" />
+                  </span>
+                  <span className="font-medium">{s.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -163,7 +177,7 @@ function NewChatPage() {
         isStreaming={startMut.isPending}
         draftKey="cortex.draft.new"
         autoFocus
-        placeholder="Ask me anything…"
+        placeholder="Type a message, or just say hello…"
       />
     </div>
   );
