@@ -1,6 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
+type UsageEvent = {
+  model_used: string | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  cost_usd: number | string | null;
+  latency_ms?: number | null;
+  created_at: string;
+};
+
 export const getUsageSummary = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -37,7 +46,10 @@ export const getUsageSummary = createServerFn({ method: "POST" })
       .gte("created_at", thirtyDaysAgo)
       .order("created_at", { ascending: true });
 
-    const events = (usageEvents?.length ?? 0) > 0 ? usageEvents! : await getUsageFromMessageMetadata(supabase, userId, thirtyDaysAgo);
+    const events: UsageEvent[] =
+      (usageEvents?.length ?? 0) > 0
+        ? (usageEvents as UsageEvent[])
+        : await getUsageFromMessageMetadata(supabase, userId, thirtyDaysAgo);
     const totalTokensIn = events.reduce((s, e) => s + (e.tokens_in ?? 0), 0);
     const totalTokensOut = events.reduce((s, e) => s + (e.tokens_out ?? 0), 0);
     const totalCost = events.reduce((s, e) => s + Number(e.cost_usd ?? 0), 0);
@@ -81,7 +93,8 @@ export const getUsageByConversation = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(200);
 
-    const events = (data?.length ?? 0) > 0 ? data! : await getUsageFromMessageMetadata(supabase, userId);
+    const events: UsageEvent[] =
+      (data?.length ?? 0) > 0 ? (data as UsageEvent[]) : await getUsageFromMessageMetadata(supabase, userId);
     return { events };
   });
 
@@ -93,7 +106,7 @@ async function getUsageFromMessageMetadata(
   supabase: SupabaseLike,
   userId: string,
   sinceIso?: string,
-) {
+): Promise<UsageEvent[]> {
   let query = supabase
     .from("messages")
     .select("metadata, created_at, conversations!inner(user_id)")
@@ -121,5 +134,5 @@ async function getUsageFromMessageMetadata(
         created_at: row.created_at,
       };
     })
-    .filter(Boolean);
+    .filter((event): event is UsageEvent => event !== null);
 }
