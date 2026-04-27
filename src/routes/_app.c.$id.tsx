@@ -42,7 +42,10 @@ function ChatPage() {
     is_edited: m.is_edited,
     metadata: m.metadata,
   }));
-  const messages = [...serverMessages, ...streamingMessages];
+  // De-dupe: hide any streaming placeholders whose real id has now arrived from the server.
+  const serverIds = new Set(serverMessages.map((m) => m.id));
+  const visibleStreaming = streamingMessages.filter((m) => !serverIds.has(m.id));
+  const messages = [...serverMessages, ...visibleStreaming];
 
   const send = async (text: string, attachments: Attachment[] = []) => {
     if (sendInFlightRef.current) return;
@@ -75,9 +78,11 @@ function ChatPage() {
             ),
           );
         },
-        onDone: ({ assistantMessageId }) => {
+        onDone: async ({ assistantMessageId }) => {
           sendInFlightRef.current = false;
           setStreamingId(null);
+          // Refetch first, THEN clear streaming buffer to avoid flicker.
+          await qc.refetchQueries({ queryKey: ["conversation", id] });
           if (assistantMessageId) {
             setStreamingMessages([]);
           } else {
@@ -85,7 +90,6 @@ function ChatPage() {
               cur.map((m) => (m.id === tempAsstId ? { ...m, pending: false } : m)),
             );
           }
-          qc.invalidateQueries({ queryKey: ["conversation", id] });
           qc.invalidateQueries({ queryKey: ["conversations"] });
         },
         onInterrupted: () => {
@@ -125,9 +129,10 @@ function ChatPage() {
             ),
           );
         },
-        onDone: ({ assistantMessageId }) => {
+        onDone: async ({ assistantMessageId }) => {
           sendInFlightRef.current = false;
           setStreamingId(null);
+          await qc.refetchQueries({ queryKey: ["conversation", id] });
           if (assistantMessageId) {
             setStreamingMessages([]);
           } else {
@@ -135,7 +140,6 @@ function ChatPage() {
               cur.map((m) => (m.id === tempAsstId ? { ...m, pending: false } : m)),
             );
           }
-          qc.invalidateQueries({ queryKey: ["conversation", id] });
         },
         onInterrupted: () => {
           sendInFlightRef.current = false;
