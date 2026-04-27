@@ -705,7 +705,10 @@ function TokenUsageSection() {
     cur.calls += 1;
     byModel.set(model, cur);
   }
-  const rows = [...byModel.entries()].sort((a, b) => b[1].in + b[1].out - (a[1].in + a[1].out));
+  const totalTokens = totalIn + totalOut;
+  const rows = [...byModel.entries()]
+    .map(([model, v]) => ({ model, ...v, total: v.in + v.out }))
+    .sort((a, b) => b.total - a.total);
 
   return (
     <div>
@@ -723,11 +726,23 @@ function TokenUsageSection() {
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-2 rounded-lg border border-border bg-card/60 p-3 text-center">
-            <UsageStat label="Input" value={formatTokens(totalIn)} tone="text-foreground" />
-            <UsageStat label="Output" value={formatTokens(totalOut)} tone="text-primary" />
-            <UsageStat label="Cost" value={`$${totalCost.toFixed(4)}`} tone="text-foreground" />
+          {/* Total across all models */}
+          <div className="rounded-lg border border-border bg-card/60 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Total · {rows.length} model{rows.length === 1 ? "" : "s"}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {events.length} call{events.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <UsageStat label="Input" value={formatTokens(totalIn)} tone="text-foreground" />
+              <UsageStat label="Output" value={formatTokens(totalOut)} tone="text-primary" />
+              <UsageStat label="Cost" value={`$${totalCost.toFixed(4)}`} tone="text-foreground" />
+            </div>
           </div>
+
           {summaryData && (
             <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-border bg-card/60 p-3 text-center">
               <UsageStat
@@ -742,38 +757,49 @@ function TokenUsageSection() {
               />
             </div>
           )}
-          <div className="mt-3 space-y-1.5">
-            {rows.map(([model, v]) => {
-              const total = v.in + v.out || 1;
-              const inPct = (v.in / total) * 100;
+
+          {/* Per-model breakdown */}
+          <p className="mb-1.5 mt-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            By model
+          </p>
+          <div className="space-y-1.5">
+            {rows.map((r) => {
+              const sharePct = totalTokens > 0 ? (r.total / totalTokens) * 100 : 0;
+              const inPct = r.total > 0 ? (r.in / r.total) * 100 : 0;
               return (
                 <div
-                  key={model}
+                  key={r.model}
                   className="rounded-md border border-border bg-card/60 px-2.5 py-2 text-[11px]"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-medium text-foreground" title={model}>
-                      {model}
+                    <span className="truncate font-medium text-foreground" title={r.model}>
+                      {prettyModel(r.model)}
                     </span>
-                    <span className="text-muted-foreground">
-                      {v.calls} call{v.calls === 1 ? "" : "s"} · ${v.cost.toFixed(4)}
+                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+                      {sharePct.toFixed(0)}%
                     </span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>
+                      {r.calls} call{r.calls === 1 ? "" : "s"}
+                    </span>
+                    <span>${r.cost.toFixed(4)}</span>
                   </div>
                   <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted">
                     <div
                       className="bg-foreground/70"
                       style={{ width: `${inPct}%` }}
-                      title={`Input: ${v.in.toLocaleString()}`}
+                      title={`Input: ${r.in.toLocaleString()}`}
                     />
                     <div
                       className="bg-primary"
                       style={{ width: `${100 - inPct}%` }}
-                      title={`Output: ${v.out.toLocaleString()}`}
+                      title={`Output: ${r.out.toLocaleString()}`}
                     />
                   </div>
                   <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-                    <span>↓ {formatTokens(v.in)} in</span>
-                    <span>↑ {formatTokens(v.out)} out</span>
+                    <span>↓ {formatTokens(r.in)} in</span>
+                    <span>↑ {formatTokens(r.out)} out</span>
                   </div>
                 </div>
               );
@@ -786,6 +812,13 @@ function TokenUsageSection() {
       )}
     </div>
   );
+}
+
+function prettyModel(id: string): string {
+  if (!id || id === "unknown" || id === "chat") return "Unknown model";
+  // Strip provider prefix e.g. "openai/gpt-4o-mini" -> "gpt-4o-mini"
+  const slash = id.lastIndexOf("/");
+  return slash >= 0 ? id.slice(slash + 1) : id;
 }
 
 function UsageStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
