@@ -139,8 +139,7 @@ export function SidePanel({ side = "left" }: { side?: "left" | "right" }) {
         {active === "datasources" && <DatasourcesPanel />}
         {active === "connectors" && <ConnectorsPanel />}
         {active === "memory" && <MemoryPanel />}
-        {active === "context" && <ContextDebuggerPanel />}
-        {active === "task" && <TaskPanel />}
+        {/* "context" and "task" panels were retired — see ActiveTaskBanner & BehindAnswerChip. */}
         {active === "settings" && <SettingsPanel />}
         {active === "account" && <AccountPanel />}
         {active === "document" && <DocumentPanel />}
