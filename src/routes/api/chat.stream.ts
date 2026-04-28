@@ -845,21 +845,21 @@ export const Route = createFileRoute("/api/chat/stream")({
             // Record usage event (fire-and-forget; non-blocking)
             if (totalInputTokens > 0 || totalOutputTokens > 0) {
               runAfterResponse(
-                Promise.resolve(
-                  supabase
+                (async () => {
+                  const { error: usageErr } = await supabase
                     .from("usage_events")
                     .insert({
                       user_id: userId,
                       event_type: "chat",
                       model_used: activeModel.id,
-                      tokens_in: totalInputTokens,
-                      tokens_out: totalOutputTokens,
+                      tokens_in: Math.round(totalInputTokens) || 0,
+                      tokens_out: Math.round(totalOutputTokens) || 0,
                       cost_usd: costUsd,
-                      latency_ms: latencyMs,
+                      latency_ms: Math.round(latencyMs) || 0,
                       conversation_id: convo.id,
-                    })
-                    .then(() => {}),
-                ),
+                    });
+                  if (usageErr) console.error("[usage_events] insert failed:", usageErr);
+                })(),
               );
             }
 

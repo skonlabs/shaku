@@ -77,14 +77,14 @@ export async function promoteConversationMemories(
   }
 
   if (extraction.conversationSummaryUpdate) {
-    await supabase
+    const { error: convStateErr } = await supabase
       .from("conversation_states")
       .upsert({
         conversation_id: conversationId,
         summary: extraction.conversationSummaryUpdate,
         updated_at: new Date().toISOString(),
-      })
-      .then(() => {});
+      });
+    if (convStateErr) console.error("[promotion] conversation_states upsert failed:", convStateErr);
   }
 
   return { created, suggested };
