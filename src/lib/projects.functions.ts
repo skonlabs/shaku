@@ -13,7 +13,41 @@ export const listProjects = createServerFn({ method: "POST" })
       .eq("status", "active")
       .order("updated_at", { ascending: false });
     if (error) return { projects: [], error: "Couldn't load projects." };
-    return { projects: data ?? [], error: null };
+
+    // Enrich with per-space counts (chats + memories) for the mini-card.
+    const projects = data ?? [];
+    const ids = projects.map((p) => p.id);
+    const counts: Record<string, { chats: number; memories: number }> = {};
+    for (const id of ids) counts[id] = { chats: 0, memories: 0 };
+
+    if (ids.length > 0) {
+      const [convRes, memRes] = await Promise.all([
+        supabase
+          .from("conversations")
+          .select("project_id")
+          .eq("user_id", userId)
+          .in("project_id", ids)
+          .neq("status", "deleted"),
+        supabase
+          .from("memories")
+          .select("project_id")
+          .eq("user_id", userId)
+          .in("project_id", ids),
+      ]);
+      for (const row of convRes.data ?? []) {
+        const k = row.project_id as string | null;
+        if (k && counts[k]) counts[k].chats += 1;
+      }
+      for (const row of memRes.data ?? []) {
+        const k = row.project_id as string | null;
+        if (k && counts[k]) counts[k].memories += 1;
+      }
+    }
+
+    return {
+      projects: projects.map((p) => ({ ...p, ...counts[p.id] })),
+      error: null,
+    };
   });
 
 export const createProject = createServerFn({ method: "POST" })
