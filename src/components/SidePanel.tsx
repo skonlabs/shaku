@@ -79,7 +79,8 @@ import {
   updateProject,
   listProjectConversations,
 } from "@/lib/projects.functions";
-import { getContextLog, getActiveTaskForConversation } from "@/lib/context.functions";
+// getContextLog and getActiveTaskForConversation are now consumed inline by
+// MessageList (BehindAnswerChip) and ActiveTaskBanner respectively.
 import { listFiles, createDatasourceFile, deleteDatasourceFile } from "@/lib/datasources.functions";
 import {
   listConnectors,
