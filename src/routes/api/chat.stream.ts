@@ -864,39 +864,53 @@ export const Route = createFileRoute("/api/chat/stream")({
             }
 
             // Insert context log for observability (fire-and-forget)
+            const UUID_RE =
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const onlyUuids = (arr: unknown[]): string[] =>
+              arr
+                .filter((x): x is string => typeof x === "string" && UUID_RE.test(x));
+            const safeMemoryIds = onlyUuids(assembled.memoriesUsed.map((m) => m.id));
+            const safeChunkIds = onlyUuids(finalChunks.map((c) => c.id));
+            const safeTaskId =
+              assembled.activeTask?.id && UUID_RE.test(assembled.activeTask.id)
+                ? assembled.activeTask.id
+                : null;
             runAfterResponse(
-              Promise.resolve(
-                supabase
-                  .rpc("insert_context_log", {
-                    p_user_id: userId,
-                    p_conversation_id: convo.id,
-                    p_message_id: assistantId,
-                    p_provider: activeModel.provider,
-                    p_model: activeModel.id,
-                    p_tokens_in: totalInputTokens,
-                    p_tokens_out: totalOutputTokens,
-                    p_tokens_saved: inputSavingsTokens,
-                    p_savings_pct: savingsPct,
-                    p_cost_usd: costUsd,
-                    p_latency_ms: latencyMs,
-                    p_retrieved_memory_ids: assembled.memoriesUsed.map((m) => m.id),
-                    p_retrieved_chunk_ids: finalChunks.map((c) => c.id).filter(Boolean),
-                    p_task_id: assembled.activeTask?.id ?? null,
-                    p_ranking_scores: JSON.stringify(
-                      Object.fromEntries(
-                        assembled.memoriesUsed.map((m) => [m.id, m.hybridScore ?? m.confidence]),
-                      ),
+              (async () => {
+                const { error: ctxLogErr } = await supabase.rpc("insert_context_log", {
+                  p_user_id: userId,
+                  p_conversation_id: convo.id,
+                  p_message_id: assistantId,
+                  p_provider: activeModel.provider,
+                  p_model: activeModel.id,
+                  p_tokens_in: Math.round(totalInputTokens) || 0,
+                  p_tokens_out: Math.round(totalOutputTokens) || 0,
+                  p_tokens_saved: Math.round(inputSavingsTokens) || 0,
+                  p_savings_pct: Math.round(savingsPct) || 0,
+                  p_cost_usd: costUsd,
+                  p_latency_ms: Math.round(latencyMs) || 0,
+                  p_retrieved_memory_ids: safeMemoryIds,
+                  p_retrieved_chunk_ids: safeChunkIds,
+                  p_task_id: safeTaskId,
+                  p_ranking_scores: JSON.stringify(
+                    Object.fromEntries(
+                      assembled.memoriesUsed
+                        .filter((m) => UUID_RE.test(m.id))
+                        .map((m) => [m.id, m.hybridScore ?? m.confidence]),
                     ),
-                    p_context_sections: JSON.stringify({
-                      memories: assembled.memoriesUsed.length,
-                      chunks: finalChunks.length,
-                      hasTask: Boolean(assembled.activeTask),
-                      hasSummary: Boolean(assembled.convState.summary),
-                    }),
-                    p_warnings: streamError ? ["stream_error"] : [],
-                  })
-                  .then(() => {}),
-              ),
+                  ),
+                  p_context_sections: JSON.stringify({
+                    memories: assembled.memoriesUsed.length,
+                    chunks: finalChunks.length,
+                    hasTask: Boolean(assembled.activeTask),
+                    hasSummary: Boolean(assembled.convState.summary),
+                  }),
+                  p_warnings: streamError ? ["stream_error"] : [],
+                });
+                if (ctxLogErr) {
+                  console.error("[context_log] insert failed:", ctxLogErr);
+                }
+              })(),
             );
           }
 
