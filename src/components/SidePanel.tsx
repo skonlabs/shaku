@@ -579,7 +579,6 @@ function SettingsPanel() {
         </p>
       </div>
       <TokenUsageSection />
-      <MemoryPreferencesSection />
       </div>
     </ScrollArea>
   );
