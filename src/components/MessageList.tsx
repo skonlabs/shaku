@@ -374,28 +374,8 @@ function MessageRow({
                 {showOriginal ? "Show new response" : "Previous response"}
               </button>
             )}
-            {(() => {
-              const tin = message.metadata?.tokens_in as number | undefined;
-              const tout = message.metadata?.tokens_out as number | undefined;
-              const saved = message.metadata?.tokens_saved as number | undefined;
-              const pct = message.metadata?.savings_pct as number | undefined;
-              if (!tin && !tout) return null;
-              const hasSavings = saved && saved > 0;
-              return (
-                <span
-                  title={
-                    `Input: ${tin ?? 0} tokens · Output: ${tout ?? 0} tokens` +
-                    (hasSavings ? ` · Saved: ${saved} tokens (${pct ?? 0}% optimized)` : "")
-                  }
-                  className="ml-1.5 inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                >
-                  {fmtTok(tin)}↑ {fmtTok(tout)}↓
-                  {hasSavings && (
-                    <span className="text-emerald-600 dark:text-emerald-400">-{pct ?? 0}%</span>
-                  )}
-                </span>
-              );
-            })()}
+            {/* Token usage intentionally not shown here — see Settings → Usage. */}
+
           </div>
         )}
       </div>
