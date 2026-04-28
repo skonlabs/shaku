@@ -71,7 +71,6 @@ import {
   getMemoryStats,
   getMemoryPreferences,
   updateMemoryPreferences,
-  getMemoriesByIds,
 } from "@/lib/memory.functions";
 import {
   listProjects,
