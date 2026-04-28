@@ -11,7 +11,7 @@ import {
   FileText,
   Sparkles,
   PanelRightOpen,
-  Brain,
+  Share2,
   Share2,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
