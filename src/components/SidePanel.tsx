@@ -579,7 +579,6 @@ function SettingsPanel() {
         </p>
       </div>
       <TokenUsageSection />
-      <MemoryPreferencesSection />
       </div>
     </ScrollArea>
   );
@@ -2407,6 +2406,9 @@ function MemoriesTab({
           />
         </button>
       </div>
+
+      {/* Granular memory preferences (only meaningful when memory is on) */}
+      {memoryEnabled && <MemoryPreferencesSection />}
 
       {/* How it works — always visible, teaches the mental model */}
       <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
