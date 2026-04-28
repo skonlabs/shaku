@@ -113,8 +113,24 @@ export const deleteConversation = createServerFn({ method: "POST" })
     return { success: true };
   });
 
-/**
- * Edit a user message: stamp original_content (first edit only),
+export const setConversationProject = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    z.object({
+      id: z.string().uuid(),
+      project_id: z.string().uuid().nullable(),
+    }),
+  )
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("conversations")
+      .update({ project_id: data.project_id })
+      .eq("id", data.id)
+      .eq("user_id", userId);
+    if (error) throw new Error("Couldn't move this chat.");
+    return { success: true };
+  });
  * mark is_edited, and DEACTIVATE all subsequent active messages
  * in the conversation so the chat re-streams from this point.
  */
