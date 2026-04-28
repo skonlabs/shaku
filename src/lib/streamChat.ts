@@ -119,6 +119,10 @@ export async function streamChat(
               } else if (event === "delta") {
                 receivedAnyToken = true;
                 cb.onDelta(parsed.text);
+              } else if (event === "citations") {
+                if (Array.isArray(parsed.sources)) {
+                  cb.onCitations?.(parsed.sources);
+                }
               } else if (event === "done") {
                 sawDoneEvent = true;
                 cb.onDone({
