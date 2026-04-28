@@ -131,6 +131,9 @@ export const setConversationProject = createServerFn({ method: "POST" })
     if (error) throw new Error("Couldn't move this chat.");
     return { success: true };
   });
+
+/**
+ * Edit a user message: stamp original_content (first edit only),
  * mark is_edited, and DEACTIVATE all subsequent active messages
  * in the conversation so the chat re-streams from this point.
  */
