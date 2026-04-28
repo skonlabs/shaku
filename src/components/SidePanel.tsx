@@ -2257,6 +2257,37 @@ function MemoryPanel() {
 
   return (
     <div className="flex h-full flex-col">
+      {/* Master learning controls — govern both Memories and Persona */}
+      <div className="shrink-0 space-y-3 border-b border-border px-3 py-3">
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+          <div className="flex items-start gap-2">
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-foreground">Cortex learns as you chat</p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Mention things naturally — like <span className="italic">"I'm vegetarian"</span> or{" "}
+                <span className="italic">"keep answers short"</span> — and Cortex remembers.
+                Both your memories and persona below are built from these chats.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
+          <div className="pr-3">
+            <p className="text-sm font-medium">Learn from conversations</p>
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Turn off to stop saving anything new. Existing entries stay until you delete them.
+            </p>
+          </div>
+          <Switch
+            checked={memoryEnabled}
+            onCheckedChange={(v) => toggleMut.mutate(v)}
+            aria-label={memoryEnabled ? "Disable learning" : "Enable learning"}
+          />
+        </div>
+      </div>
+
       {/* Tab switcher */}
       <div className="flex shrink-0 border-b border-border">
         {TABS.map((t) => (
