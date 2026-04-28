@@ -333,12 +333,10 @@ function MessageRow({
           </div>
         )}
 
-        {/* Memory usage indicator */}
-        {!isStreaming &&
-          Array.isArray(message.metadata?.memories_used) &&
-          (message.metadata!.memories_used as MemoryChipEntry[]).length > 0 && (
-            <MemoryUsedChip memories={message.metadata!.memories_used as MemoryChipEntry[]} />
-          )}
+        {/* "Behind the answer" — per-message transparency affordance */}
+        {!isStreaming && message.role === "assistant" && message.content && !message.pending && (
+          <BehindAnswerChip metadata={message.metadata} />
+        )}
 
         {!isStreaming && message.content && !message.pending && (
           <div className="mt-1 flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
