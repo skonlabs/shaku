@@ -886,6 +886,8 @@ export const Route = createFileRoute("/api/chat/stream")({
             if (priorVersion) metadata.versions = [priorVersion];
             if (streamError) metadata.partial = true;
             if (hitFinalCap) metadata.truncated = true;
+            if (webCitations.length) metadata.web_citations = webCitations;
+            if (webGroundingEnabled) metadata.web_grounded = true;
 
             const asst = await supabase
               .from("messages")
