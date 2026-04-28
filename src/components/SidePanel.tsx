@@ -160,10 +160,6 @@ function labelFor(p: string) {
       return "Connectors";
     case "memory":
       return "Memory & Persona";
-    case "context":
-      return "Context Debugger";
-    case "task":
-      return "Active Task";
     case "settings":
       return "Settings";
     case "account":
