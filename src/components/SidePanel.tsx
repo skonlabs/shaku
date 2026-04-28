@@ -154,7 +154,7 @@ function labelFor(p: string) {
     case "chats":
       return "Chats";
     case "projects":
-      return "Projects";
+      return "Spaces";
     case "datasources":
       return "Data sources";
     case "connectors":
@@ -995,7 +995,7 @@ const MEMORY_TYPE_META: { value: MemoryType; label: string; emoji: string }[] = 
   { value: "behavioral", label: "Behavioral", emoji: "🎯" },
   { value: "response_style", label: "Response style", emoji: "✍️" },
   { value: "correction", label: "Corrections", emoji: "✏️" },
-  { value: "project", label: "Projects", emoji: "📁" },
+  { value: "project", label: "Spaces", emoji: "📁" },
   { value: "episodic", label: "Events", emoji: "📅" },
   { value: "semantic", label: "Facts", emoji: "🧠" },
   { value: "long_term", label: "Long-term", emoji: "🔒" },
@@ -1020,10 +1020,9 @@ type RecentPersonaSignal = {
   createdAt: string;
 };
 
-// ─── Projects ────────────────────────────────────────────────────────────────
+// ─── Spaces (formerly Projects) ─────────────────────────────────────────────
 
 function ProjectsPanel() {
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -1042,22 +1041,38 @@ function ProjectsPanel() {
       qc.invalidateQueries({ queryKey: ["projects"] });
       setCreating(false);
       setNewName("");
+      toast.success("Space created.");
     },
-    onError: () => toast.error("Couldn't create project."),
+    onError: () => toast.error("Couldn't create space."),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deleteProject({ data: { id } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects"] });
-      toast.success("Project archived.");
+      toast.success("Space archived.");
     },
-    onError: () => toast.error("Couldn't archive project."),
+    onError: () => toast.error("Couldn't archive space."),
   });
   const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState<string | null>(null);
 
   return (
     <div className="flex h-full flex-col">
+      {/* Always-visible explainer */}
+      <div className="mx-3 mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+        <div className="flex items-start gap-2">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-foreground">What's a space?</p>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              A space groups chats and memories around a topic — like a job search,
+              a trip, or a long project. Cortex remembers context across every chat
+              inside it.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="flex shrink-0 items-center px-4 py-2">
         <button
           onClick={() => {
@@ -1066,7 +1081,7 @@ function ProjectsPanel() {
           }}
           className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline"
         >
-          <FolderPlus className="h-3.5 w-3.5" /> New project
+          <FolderPlus className="h-3.5 w-3.5" /> New space
         </button>
       </div>
 
@@ -1082,7 +1097,7 @@ function ProjectsPanel() {
             autoFocus
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Project name"
+            placeholder="e.g. Job search, Trip to Japan"
             maxLength={100}
             className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:border-ring/60"
           />
@@ -1113,12 +1128,23 @@ function ProjectsPanel() {
           <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>
         )}
         {!isLoading && projects.length === 0 && !creating && (
-          <div className="px-4 py-8 text-center">
-            <FolderPlus className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
-            <p className="text-xs text-muted-foreground">No projects yet.</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Create a project to organize related chats together.
+          <div className="mx-3 rounded-lg border border-dashed border-border bg-card/50 p-4 text-center">
+            <FolderPlus className="mx-auto mb-2 h-6 w-6 text-primary/40" />
+            <p className="text-xs font-medium text-foreground">No spaces yet</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Try one for something you'll keep coming back to — Cortex will get
+              smarter every time.
             </p>
+            <Button
+              size="sm"
+              className="mt-3 h-7 text-xs"
+              onClick={() => {
+                setCreating(true);
+                setNewName("");
+              }}
+            >
+              Create your first space
+            </Button>
           </div>
         )}
         <div className="space-y-0.5 px-2 pb-2">
@@ -1141,9 +1167,9 @@ function ProjectsPanel() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Archive this project?</AlertDialogTitle>
+            <AlertDialogTitle>Archive this space?</AlertDialogTitle>
             <AlertDialogDescription>
-              The project's chats will remain accessible individually.
+              The chats inside will remain accessible individually.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1172,7 +1198,7 @@ function ProjectRow({
   onToggle,
   onDelete,
 }: {
-  project: { id: string; name: string; color: string };
+  project: { id: string; name: string; color: string; chats?: number; memories?: number };
   isExpanded: boolean;
   onToggle: () => void;
   onDelete: () => void;
@@ -1204,10 +1230,12 @@ function ProjectRow({
   const renameMut = useMutation({
     mutationFn: (name: string) => updateProject({ data: { id: project.id, name } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
-    onError: () => toast.error("Couldn't rename project."),
+    onError: () => toast.error("Couldn't rename space."),
   });
 
   const convs = convData?.conversations ?? [];
+  const chatCount = project.chats ?? 0;
+  const memCount = project.memories ?? 0;
 
   return (
     <div>
@@ -1256,7 +1284,7 @@ function ProjectRow({
               e.stopPropagation();
               createMut.mutate();
             }}
-            title="New chat in project"
+            title="New chat in this space"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -1267,7 +1295,7 @@ function ProjectRow({
               setEditingName(true);
               setEditName(project.name);
             }}
-            title="Rename project"
+            title="Rename space"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -1277,7 +1305,7 @@ function ProjectRow({
               e.stopPropagation();
               onDelete();
             }}
-            title="Archive project"
+            title="Archive space"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-destructive"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -1287,9 +1315,20 @@ function ProjectRow({
 
       {isExpanded && (
         <div className="mb-0.5 ml-5 border-l border-border pl-2">
+          {/* What's in this space — mini-card */}
+          <div className="mb-1.5 mt-1 flex items-center gap-3 rounded-md bg-accent/30 px-2 py-1.5 text-[11px] text-muted-foreground">
+            <span title="Chats in this space" className="flex items-center gap-1">
+              <span className="font-medium text-foreground">{chatCount}</span> chat{chatCount === 1 ? "" : "s"}
+            </span>
+            <span aria-hidden className="opacity-30">·</span>
+            <span title="Memories saved from chats in this space" className="flex items-center gap-1">
+              <span className="font-medium text-foreground">{memCount}</span> memor{memCount === 1 ? "y" : "ies"}
+            </span>
+          </div>
+
           {convs.length === 0 ? (
             <p className="py-1 text-xs text-muted-foreground">
-              No chats yet. Click + to create one.
+              No chats yet. Click + to start one — Cortex will remember what you discuss here.
             </p>
           ) : (
             convs.map((c) => (
