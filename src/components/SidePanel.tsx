@@ -1198,7 +1198,7 @@ function ProjectRow({
   onToggle,
   onDelete,
 }: {
-  project: { id: string; name: string; color: string };
+  project: { id: string; name: string; color: string; chats?: number; memories?: number };
   isExpanded: boolean;
   onToggle: () => void;
   onDelete: () => void;
@@ -1230,10 +1230,12 @@ function ProjectRow({
   const renameMut = useMutation({
     mutationFn: (name: string) => updateProject({ data: { id: project.id, name } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
-    onError: () => toast.error("Couldn't rename project."),
+    onError: () => toast.error("Couldn't rename space."),
   });
 
   const convs = convData?.conversations ?? [];
+  const chatCount = project.chats ?? 0;
+  const memCount = project.memories ?? 0;
 
   return (
     <div>
@@ -1282,7 +1284,7 @@ function ProjectRow({
               e.stopPropagation();
               createMut.mutate();
             }}
-            title="New chat in project"
+            title="New chat in this space"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -1293,7 +1295,7 @@ function ProjectRow({
               setEditingName(true);
               setEditName(project.name);
             }}
-            title="Rename project"
+            title="Rename space"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -1303,7 +1305,7 @@ function ProjectRow({
               e.stopPropagation();
               onDelete();
             }}
-            title="Archive project"
+            title="Archive space"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-destructive"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -1313,9 +1315,20 @@ function ProjectRow({
 
       {isExpanded && (
         <div className="mb-0.5 ml-5 border-l border-border pl-2">
+          {/* What's in this space — mini-card */}
+          <div className="mb-1.5 mt-1 flex items-center gap-3 rounded-md bg-accent/30 px-2 py-1.5 text-[11px] text-muted-foreground">
+            <span title="Chats in this space" className="flex items-center gap-1">
+              <span className="font-medium text-foreground">{chatCount}</span> chat{chatCount === 1 ? "" : "s"}
+            </span>
+            <span aria-hidden className="opacity-30">·</span>
+            <span title="Memories saved from chats in this space" className="flex items-center gap-1">
+              <span className="font-medium text-foreground">{memCount}</span> memor{memCount === 1 ? "y" : "ies"}
+            </span>
+          </div>
+
           {convs.length === 0 ? (
             <p className="py-1 text-xs text-muted-foreground">
-              No chats yet. Click + to create one.
+              No chats yet. Click + to start one — Cortex will remember what you discuss here.
             </p>
           ) : (
             convs.map((c) => (
