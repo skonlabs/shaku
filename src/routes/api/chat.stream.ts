@@ -25,6 +25,7 @@ import {
   scoreAmbiguity,
 } from "@/lib/pipeline/output-validation";
 import { route, estimatePreRetrievalTokens } from "@/lib/llm/router";
+import { shouldGroundWithWeb } from "@/lib/pipeline/web-grounding";
 import { recordModelResult, HAIKU_MODEL_ID } from "@/lib/llm/registry";
 import type { ContextType, RoutingTaskType } from "@/lib/llm/types";
 import { enqueueMemoryJob, processPendingMemoryJobs } from "@/lib/memory/jobs";
