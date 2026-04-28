@@ -6,6 +6,7 @@ import { MessageList, type DisplayMessage } from "@/components/MessageList";
 import { getConversation } from "@/lib/conversations.functions";
 import { streamChat } from "@/lib/streamChat";
 import { RateLimitBanner } from "@/components/RateLimitBanner";
+import { ActiveTaskBanner } from "@/components/ActiveTaskBanner";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 
