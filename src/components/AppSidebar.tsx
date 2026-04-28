@@ -23,7 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 // as an ambient banner above the chat (see ActiveTaskBanner).
 const items: { id: PanelId; icon: typeof MessageSquare; label: string }[] = [
   { id: "chats", icon: MessageSquare, label: "My chats" },
-  { id: "projects", icon: FolderHeart, label: "Projects" },
+  { id: "projects", icon: FolderHeart, label: "Spaces" },
   { id: "datasources", icon: BookOpen, label: "My library (data sources)" },
   { id: "connectors", icon: Plug, label: "Connections" },
   { id: "memory", icon: Sparkles, label: "What I remember (Memory & Persona)" },
