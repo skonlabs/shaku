@@ -25,6 +25,7 @@ import {
   scoreAmbiguity,
 } from "@/lib/pipeline/output-validation";
 import { route, estimatePreRetrievalTokens } from "@/lib/llm/router";
+import { shouldGroundWithWeb } from "@/lib/pipeline/web-grounding";
 import { recordModelResult, HAIKU_MODEL_ID } from "@/lib/llm/registry";
 import type { ContextType, RoutingTaskType } from "@/lib/llm/types";
 import { enqueueMemoryJob, processPendingMemoryJobs } from "@/lib/memory/jobs";
@@ -433,6 +434,16 @@ export const Route = createFileRoute("/api/chat/stream")({
         });
         const selectedModel = routingDecision.selected;
 
+        // ---- Web grounding decision ----
+        // Detect entity / recency / proper-noun questions and enable the
+        // provider's native web-search tool for the turn. The model itself
+        // decides whether to actually invoke the tool — our heuristic just
+        // makes it AVAILABLE. This brings Cortex to ChatGPT/Claude parity for
+        // questions about non-famous people, niche companies, recent events.
+        const groundingDecision = shouldGroundWithWeb(currentUserMessage, intent);
+        const webGroundingEnabled = groundingDecision.enabled;
+        const webCitations: { title: string; url: string }[] = [];
+
         // ---- Final messages for the provider ----
         // assembleContext is the single budget owner: it has already trimmed history,
         // capped retrieval, and capped memory blocks. We do not re-process here.
@@ -571,12 +582,22 @@ export const Route = createFileRoute("/api/chat/stream")({
                   ];
 
                   for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
-                    const claudeStream = anthropic.messages.stream({
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const streamArgs: any = {
                       model: candidateModel.id,
                       max_tokens: PER_TURN_MAX_TOKENS,
                       system: systemBlocks,
                       messages: turnMessages,
-                    });
+                    };
+                    if (webGroundingEnabled) {
+                      // Anthropic's server-side web search tool. The model
+                      // calls it on its own when it needs current/external
+                      // info; we never have to round-trip the tool call.
+                      streamArgs.tools = [
+                        { type: "web_search_20250305", name: "web_search", max_uses: 3 },
+                      ];
+                    }
+                    const claudeStream = anthropic.messages.stream(streamArgs);
 
                     let turnText = "";
                     const isContinuation = turn > 0;
@@ -618,6 +639,22 @@ export const Route = createFileRoute("/api/chat/stream")({
                       } else if (event.type === "message_delta") {
                         stopReason = event.delta.stop_reason ?? stopReason;
                         totalOutputTokens += event.usage?.output_tokens ?? 0;
+                      } else if (event.type === "content_block_start") {
+                        // Capture web_search citations as they stream in.
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const block: any = event.content_block;
+                        if (block?.type === "web_search_tool_result" && Array.isArray(block.content)) {
+                          for (const r of block.content) {
+                            if (r?.type === "web_search_result" && r.url) {
+                              if (!webCitations.some((c) => c.url === r.url)) {
+                                webCitations.push({ title: r.title || r.url, url: r.url });
+                              }
+                            }
+                          }
+                          if (webCitations.length) {
+                            send("citations", { sources: webCitations });
+                          }
+                        }
                       }
                     }
 
@@ -674,8 +711,20 @@ export const Route = createFileRoute("/api/chat/stream")({
                     })),
                   ];
 
+                  // OpenAI native web search: gpt-4o family supports a
+                  // `-search-preview` variant on Chat Completions that runs
+                  // the search tool server-side. We swap to it transparently
+                  // when grounding is enabled — the user never sees a model
+                  // name change.
+                  const oaiModelId =
+                    webGroundingEnabled && candidateModel.id === "gpt-4o"
+                      ? "gpt-4o-search-preview"
+                      : webGroundingEnabled && candidateModel.id === "gpt-4o-mini"
+                      ? "gpt-4o-mini-search-preview"
+                      : candidateModel.id;
+
                   const stream = await openai.chat.completions.create({
-                    model: candidateModel.id,
+                    model: oaiModelId,
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     messages: oaiMessages as any,
                     stream: true,
@@ -691,6 +740,21 @@ export const Route = createFileRoute("/api/chat/stream")({
                       assistantText += safeChunk;
                       const visible = stripFollowupsTagPartial(safeChunk, assistantText);
                       if (visible) send("delta", { text: visible });
+                    }
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const annotations: any[] | undefined = (chunk.choices[0]?.delta as any)
+                      ?.annotations;
+                    if (Array.isArray(annotations)) {
+                      let added = false;
+                      for (const a of annotations) {
+                        const url = a?.url_citation?.url ?? a?.url;
+                        const title = a?.url_citation?.title ?? a?.title ?? url;
+                        if (url && !webCitations.some((c) => c.url === url)) {
+                          webCitations.push({ title, url });
+                          added = true;
+                        }
+                      }
+                      if (added) send("citations", { sources: webCitations });
                     }
                     if (chunk.usage) {
                       // Accumulate (not overwrite) so prior fallback attempts are preserved.
@@ -822,6 +886,8 @@ export const Route = createFileRoute("/api/chat/stream")({
             if (priorVersion) metadata.versions = [priorVersion];
             if (streamError) metadata.partial = true;
             if (hitFinalCap) metadata.truncated = true;
+            if (webCitations.length) metadata.web_citations = webCitations;
+            if (webGroundingEnabled) metadata.web_grounded = true;
 
             const asst = await supabase
               .from("messages")

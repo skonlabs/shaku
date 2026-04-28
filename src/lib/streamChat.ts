@@ -1,14 +1,21 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export interface CitationSource {
+  title: string;
+  url: string;
+}
+
 export interface StreamCallbacks {
   onUserMessage: (id: string, createdAt: string) => void;
   onDelta: (text: string) => void;
+  onCitations?: (sources: CitationSource[]) => void;
   onDone: (info: {
     assistantMessageId?: string;
     followups?: string[];
     memoriesUsed?: number;
     tokensIn?: number;
     tokensOut?: number;
+    citations?: CitationSource[];
   }) => void;
   onInterrupted?: () => void;
   onError: (message: string) => void;
@@ -112,6 +119,10 @@ export async function streamChat(
               } else if (event === "delta") {
                 receivedAnyToken = true;
                 cb.onDelta(parsed.text);
+              } else if (event === "citations") {
+                if (Array.isArray(parsed.sources)) {
+                  cb.onCitations?.(parsed.sources);
+                }
               } else if (event === "done") {
                 sawDoneEvent = true;
                 cb.onDone({

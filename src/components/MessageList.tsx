@@ -12,6 +12,8 @@ import {
   Sparkles,
   PanelRightOpen,
   Share2,
+  Globe,
+  ExternalLink,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { MessageContent } from "@/components/MessageContent";
@@ -332,6 +334,11 @@ function MessageRow({
           </div>
         )}
 
+        {/* Web sources used by the model — shown as compact chips */}
+        {message.role === "assistant" && message.content && (
+          <SourcesRow metadata={message.metadata} />
+        )}
+
         {/* "Behind the answer" — per-message transparency affordance */}
         {!isStreaming && message.role === "assistant" && message.content && !message.pending && (
           <BehindAnswerChip metadata={message.metadata} />
@@ -614,3 +621,57 @@ function BehindAnswerChip({ metadata }: { metadata: Message["metadata"] | undefi
   );
 }
 
+
+interface WebCitation {
+  title: string;
+  url: string;
+}
+
+function SourcesRow({ metadata }: { metadata: Message["metadata"] | undefined }) {
+  const raw = (metadata as Record<string, unknown> | undefined)?.web_citations;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const sources = raw as WebCitation[];
+
+  // Deduplicate by hostname for a tidy display while keeping the full list reachable.
+  const seen = new Set<string>();
+  const display: (WebCitation & { host: string })[] = [];
+  for (const s of sources) {
+    if (!s?.url) continue;
+    let host = "";
+    try {
+      host = new URL(s.url).hostname.replace(/^www\./, "");
+    } catch {
+      host = s.url;
+    }
+    if (seen.has(host)) continue;
+    seen.add(host);
+    display.push({ ...s, host });
+    if (display.length >= 4) break;
+  }
+  const extra = sources.length - display.length;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <div className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+        <Globe className="h-3 w-3" />
+        <span>Sources</span>
+      </div>
+      {display.map((s) => (
+        <a
+          key={s.url}
+          href={s.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={s.title}
+          className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-foreground/80 transition hover:border-primary/40 hover:bg-accent hover:text-foreground"
+        >
+          <span className="max-w-[140px] truncate">{s.host}</span>
+          <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+        </a>
+      ))}
+      {extra > 0 && (
+        <span className="text-[11px] text-muted-foreground">+{extra} more</span>
+      )}
+    </div>
+  );
+}
