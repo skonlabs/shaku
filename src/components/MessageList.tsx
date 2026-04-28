@@ -515,10 +515,12 @@ function BehindAnswerChip({ metadata }: { metadata: Message["metadata"] | undefi
   const hasSummary = Boolean(metadata?.has_summary);
   const usedAnything = memories.length > 0 || chunkCount > 0 || hasTask || hasSummary;
 
-  // Build a compact label
+  // Build a compact label. The empty state is intentionally distinct so
+  // people can tell the chip is a feature (transparency control) and not
+  // just a status note.
   let label: string;
   if (!usedAnything) {
-    label = "Answered from this conversation";
+    label = "Behind this answer";
   } else {
     const parts: string[] = [];
     if (memories.length > 0) {
@@ -538,8 +540,8 @@ function BehindAnswerChip({ metadata }: { metadata: Message["metadata"] | undefi
           className={cn(
             "mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition",
             usedAnything
-              ? "border-primary/20 bg-primary/[0.06] text-primary/90 hover:border-primary/40 hover:bg-primary/[0.1]"
-              : "border-border/60 bg-card text-muted-foreground hover:border-border hover:text-foreground",
+              ? "border-primary/30 bg-primary/[0.08] text-primary hover:border-primary/50 hover:bg-primary/[0.12]"
+              : "border-dashed border-border/70 bg-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/[0.04] hover:text-foreground",
           )}
           aria-label="Behind the answer"
         >
@@ -551,10 +553,15 @@ function BehindAnswerChip({ metadata }: { metadata: Message["metadata"] | undefi
         <p className="mb-2.5 text-xs font-semibold text-foreground">Behind this answer</p>
 
         {!usedAnything && (
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Cortex composed this reply from your conversation alone — no saved memories,
-            documents, or active task were needed.
-          </p>
+          <div className="space-y-2">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              For this reply, Cortex didn't need to pull in saved memories, documents,
+              or an active task — your conversation alone was enough.
+            </p>
+            <p className="text-[11px] leading-relaxed text-muted-foreground/80">
+              When Cortex does use them, you'll see what was used right here.
+            </p>
+          </div>
         )}
 
         {memories.length > 0 && (
