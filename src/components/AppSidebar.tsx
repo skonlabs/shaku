@@ -15,15 +15,18 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Friendly labels — keep the original term in parentheses so power users
-// can still find Memory, Persona, Context, and Token usage.
+// can still find Memory, Persona, and other features.
+//
+// Note: "Active task" and "Context debugger" used to live here. They were
+// retired because per-message context belongs inline with each message
+// (see BehindAnswerChip in MessageList) and the active task now appears
+// as an ambient banner above the chat (see ActiveTaskBanner).
 const items: { id: PanelId; icon: typeof MessageSquare; label: string }[] = [
   { id: "chats", icon: MessageSquare, label: "My chats" },
   { id: "projects", icon: FolderHeart, label: "Projects" },
   { id: "datasources", icon: BookOpen, label: "My library (data sources)" },
   { id: "connectors", icon: Plug, label: "Connections" },
   { id: "memory", icon: Sparkles, label: "What I remember (Memory & Persona)" },
-  { id: "task", icon: ListChecks, label: "What I'm working on (Active task)" },
-  { id: "context", icon: Wrench, label: "Behind the scenes (Context debugger)" },
 ];
 
 export function AppSidebar() {
