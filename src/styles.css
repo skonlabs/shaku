@@ -139,8 +139,8 @@
   --secondary-foreground: oklch(0.95 0.012 95);
   --muted: oklch(0.275 0.015 145);
   --muted-foreground: oklch(0.74 0.018 110);
-  --accent: oklch(0.34 0.04 145);
-  --accent-foreground: oklch(0.95 0.012 95);
+  --accent: oklch(0.74 0.10 80);                /* warm gold accent in dark too */
+  --accent-foreground: oklch(0.20 0.03 80);
 
   --destructive: oklch(0.65 0.16 30);
   --destructive-foreground: oklch(0.985 0.01 95);
