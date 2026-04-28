@@ -711,8 +711,20 @@ export const Route = createFileRoute("/api/chat/stream")({
                     })),
                   ];
 
+                  // OpenAI native web search: gpt-4o family supports a
+                  // `-search-preview` variant on Chat Completions that runs
+                  // the search tool server-side. We swap to it transparently
+                  // when grounding is enabled — the user never sees a model
+                  // name change.
+                  const oaiModelId =
+                    webGroundingEnabled && candidateModel.id === "gpt-4o"
+                      ? "gpt-4o-search-preview"
+                      : webGroundingEnabled && candidateModel.id === "gpt-4o-mini"
+                      ? "gpt-4o-mini-search-preview"
+                      : candidateModel.id;
+
                   const stream = await openai.chat.completions.create({
-                    model: candidateModel.id,
+                    model: oaiModelId,
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     messages: oaiMessages as any,
                     stream: true,
