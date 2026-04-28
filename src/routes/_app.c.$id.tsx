@@ -8,6 +8,7 @@ import { streamChat } from "@/lib/streamChat";
 import { RateLimitBanner } from "@/components/RateLimitBanner";
 import { ActiveTaskBanner } from "@/components/ActiveTaskBanner";
 import { SpaceNudge } from "@/components/SpaceNudge";
+import { ChatContextHeader } from "@/components/ChatContextHeader";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 
@@ -211,17 +212,28 @@ function ChatPage() {
   return (
     <div className="flex h-full flex-col">
       <ActiveTaskBanner conversationId={id} />
-      <div className="px-4 pt-2">
+      <ChatContextHeader
+        conversationId={id}
+        projectId={(data.conversation as { project_id: string | null }).project_id ?? null}
+        isEmpty={messages.length === 0}
+      />
+      <div className="px-4">
         <SpaceNudge />
       </div>
       <div className="flex-1 overflow-hidden">
         {messages.length === 0 ? (
           <div className="flex h-full animate-fade-in items-center justify-center px-4 text-center">
-            <div className="flex flex-col items-center gap-3 text-muted-foreground">
+            <div className="flex max-w-md flex-col items-center gap-3 text-muted-foreground">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <span className="text-lg font-bold">C</span>
               </div>
-              <p className="text-sm">Start the conversation — type below.</p>
+              <p className="text-sm font-medium text-foreground">
+                What's on your mind?
+              </p>
+              <p className="text-xs leading-relaxed">
+                Type below to start. Share preferences naturally — Cortex will
+                remember them for next time.
+              </p>
             </div>
           </div>
         ) : (
