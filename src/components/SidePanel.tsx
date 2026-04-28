@@ -2221,22 +2221,6 @@ function MemoriesTab({
   onDelete: (id: string) => void;
   onRefresh: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [newType, setNewType] = useState<MemoryType>("preference");
-  const [newContent, setNewContent] = useState("");
-  const qc = useQueryClient();
-
-  const createMut = useMutation({
-    mutationFn: ({ type, content }: { type: MemoryType; content: string }) =>
-      createMemory({ data: { type, content } }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["memories"] });
-      setAdding(false);
-      setNewContent("");
-      toast.success("Memory saved.");
-    },
-    onError: () => toast.error("Couldn't save memory."),
-  });
 
   return (
     <div className="space-y-4 px-3 py-3">
@@ -2263,51 +2247,6 @@ function MemoriesTab({
         </button>
       </div>
 
-      {/* Add memory */}
-      {adding ? (
-        <div className="space-y-2 rounded-lg border border-border p-3">
-          <select
-            value={newType}
-            onChange={(e) => setNewType(e.target.value as MemoryType)}
-            className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:border-ring/60"
-          >
-            {MEMORY_TYPE_META.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.emoji} {t.label}
-              </option>
-            ))}
-          </select>
-          <textarea
-            value={newContent}
-            onChange={(e) => setNewContent(e.target.value)}
-            placeholder="Describe this memory…"
-            maxLength={1000}
-            rows={3}
-            className="w-full resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs outline-none focus:border-ring/60"
-          />
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => createMut.mutate({ type: newType, content: newContent.trim() })}
-              disabled={!newContent.trim() || createMut.isPending}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <Button
-          size="sm"
-          variant="outline"
-          className="w-full justify-start gap-2"
-          onClick={() => setAdding(true)}
-        >
-          <Plus className="h-3.5 w-3.5" /> Add memory
-        </Button>
-      )}
 
       {/* Memory list */}
       {isLoading ? (
