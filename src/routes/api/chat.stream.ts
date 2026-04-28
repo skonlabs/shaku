@@ -582,12 +582,22 @@ export const Route = createFileRoute("/api/chat/stream")({
                   ];
 
                   for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
-                    const claudeStream = anthropic.messages.stream({
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const streamArgs: any = {
                       model: candidateModel.id,
                       max_tokens: PER_TURN_MAX_TOKENS,
                       system: systemBlocks,
                       messages: turnMessages,
-                    });
+                    };
+                    if (webGroundingEnabled) {
+                      // Anthropic's server-side web search tool. The model
+                      // calls it on its own when it needs current/external
+                      // info; we never have to round-trip the tool call.
+                      streamArgs.tools = [
+                        { type: "web_search_20250305", name: "web_search", max_uses: 3 },
+                      ];
+                    }
+                    const claudeStream = anthropic.messages.stream(streamArgs);
 
                     let turnText = "";
                     const isContinuation = turn > 0;
