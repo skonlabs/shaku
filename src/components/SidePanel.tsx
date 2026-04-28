@@ -620,34 +620,6 @@ function MemoryPreferencesSection() {
           Memory preferences
         </p>
         <div className="space-y-5 rounded-lg border border-border bg-card p-3">
-          {/* Auto-extract */}
-          <div>
-            <label className="flex items-center justify-between gap-3 text-sm">
-              <span className="flex items-center gap-1.5 font-medium">
-                Remember things automatically
-                <HelpTip>
-                  <p className="mb-1 font-medium">What this changes</p>
-                  <p className="mb-2 text-muted-foreground">
-                    Cortex watches each chat for useful facts and saves them quietly.
-                  </p>
-                  <p className="mb-1 font-medium">Example</p>
-                  <p className="text-muted-foreground">
-                    You say <em>"I'm vegetarian"</em> → next time you ask for dinner ideas,
-                    Cortex skips meat dishes without you reminding it.
-                  </p>
-                </HelpTip>
-              </span>
-              <Switch
-                checked={prefs.autoExtract}
-                onCheckedChange={(v) => updateMut.mutate({ auto_extract: v })}
-              />
-            </label>
-            <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
-              When on, Cortex quietly saves useful facts from your chats (your name, preferences,
-              ongoing projects) so it doesn't ask twice.
-            </p>
-          </div>
-
           {/* Confidence */}
           <div>
             <p className="mb-1 flex items-center gap-1.5 text-sm font-medium">
@@ -2384,33 +2356,7 @@ function MemoriesTab({
 
   return (
     <div className="space-y-4 px-3 py-3">
-      {/* Memory toggle */}
-      <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
-        <div>
-          <p className="text-sm font-medium">Learn from conversations</p>
-          <p className="text-[11px] text-muted-foreground">Build your persona over time</p>
-        </div>
-        <button
-          onClick={() => onToggle(!memoryEnabled)}
-          aria-label={memoryEnabled ? "Disable memory" : "Enable memory"}
-          className={cn(
-            "relative h-5 w-9 rounded-full transition-colors",
-            memoryEnabled ? "bg-primary" : "bg-muted-foreground/30",
-          )}
-        >
-          <span
-            className={cn(
-              "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform",
-              memoryEnabled ? "translate-x-4" : "translate-x-0.5",
-            )}
-          />
-        </button>
-      </div>
-
-      {/* Granular memory preferences (only meaningful when memory is on) */}
-      {memoryEnabled && <MemoryPreferencesSection />}
-
-      {/* How it works — always visible, teaches the mental model */}
+      {/* How it works — at the top so users understand before toggling */}
       <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
         <div className="flex items-start gap-2">
           <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -2424,6 +2370,24 @@ function MemoriesTab({
           </div>
         </div>
       </div>
+
+      {/* Memory master toggle */}
+      <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
+        <div className="pr-3">
+          <p className="text-sm font-medium">Learn from conversations</p>
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Turn off to stop saving anything new. Existing memories below stay until you delete them.
+          </p>
+        </div>
+        <Switch
+          checked={memoryEnabled}
+          onCheckedChange={onToggle}
+          aria-label={memoryEnabled ? "Disable memory" : "Enable memory"}
+        />
+      </div>
+
+      {/* Granular memory preferences (only meaningful when memory is on) */}
+      {memoryEnabled && <MemoryPreferencesSection />}
 
       {/* Memory list */}
       {isLoading ? (
