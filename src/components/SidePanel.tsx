@@ -513,11 +513,12 @@ function SettingsPanel() {
   const { theme, setTheme } = useTheme();
   const [maxMb, setMaxMb] = useUploadMaxMb();
   return (
-    <div className="space-y-6 px-4 py-2">
-      <div>
-        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Appearance
-        </p>
+    <ScrollArea className="h-full">
+      <div className="space-y-6 px-4 py-2 pb-8">
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Appearance
+          </p>
         <div className="grid grid-cols-3 gap-1.5">
           {(
             [
@@ -570,7 +571,8 @@ function SettingsPanel() {
       </div>
       <TokenUsageSection />
       <MemoryPreferencesSection />
-    </div>
+      </div>
+    </ScrollArea>
   );
 }
 
