@@ -26,6 +26,7 @@ import {
   Pause,
   Play,
   Upload,
+  Sparkles,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
@@ -2247,6 +2248,20 @@ function MemoriesTab({
         </button>
       </div>
 
+      {/* How it works — always visible, teaches the mental model */}
+      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+        <div className="flex items-start gap-2">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-foreground">Cortex learns as you chat</p>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Just mention things naturally — like <span className="italic">"I'm vegetarian"</span> or{" "}
+              <span className="italic">"keep answers short"</span> — and Cortex will remember.
+              You can delete anything here anytime.
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Memory list */}
       {isLoading ? (
@@ -2257,16 +2272,27 @@ function MemoriesTab({
         </div>
       ) : memories.length === 0 ? (
         <div className="space-y-3">
-          <div className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
-            <Brain className="mb-2 h-5 w-5 text-primary/40" />
-            No saved memories yet. Recent conversation signals are shown below while the memory profile builds.
-          </div>
-          {recentSignals.map((signal, index) => (
-            <div key={`${signal.createdAt}-${index}`} className="rounded-md bg-accent/40 px-3 py-2">
-              <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">{signal.content}</p>
-              <p className="mt-1 text-[10px] text-muted-foreground">{relativeTime(signal.createdAt)}</p>
+          {recentSignals.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border bg-card/50 p-4 text-center">
+              <Brain className="mx-auto mb-2 h-6 w-6 text-primary/40" />
+              <p className="text-xs font-medium text-foreground">Nothing saved yet</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Start a conversation and share a preference or detail about yourself.
+              </p>
             </div>
-          ))}
+          ) : (
+            <>
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Recent signals
+              </p>
+              {recentSignals.map((signal, index) => (
+                <div key={`${signal.createdAt}-${index}`} className="rounded-md bg-accent/40 px-3 py-2">
+                  <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">{signal.content}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">{relativeTime(signal.createdAt)}</p>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
