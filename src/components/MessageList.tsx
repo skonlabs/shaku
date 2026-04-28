@@ -492,35 +492,119 @@ const MEMORY_EMOJI: Record<string, string> = {
   correction: "✏️",
   response_style: "✍️",
   project: "📁",
+  fact: "📌",
+  skill: "🎯",
+  goal: "🚀",
+  relationship: "👤",
+  event: "📅",
 };
 
-function MemoryUsedChip({ memories }: { memories: MemoryChipEntry[] }) {
+/**
+ * "Behind the answer" — per-message transparency. Shows what Cortex used to
+ * compose this specific reply: memories, document snippets, the active task,
+ * or a clear note that nothing extra was needed. Replaces the global
+ * Context Debugger panel for the common case.
+ */
+function BehindAnswerChip({ metadata }: { metadata: Message["metadata"] | undefined }) {
   const [open, setOpen] = useState(false);
+  const memories = (Array.isArray(metadata?.memories_used)
+    ? (metadata!.memories_used as MemoryChipEntry[])
+    : []) as MemoryChipEntry[];
+  const chunkCount =
+    typeof metadata?.chunks_used === "number" ? (metadata!.chunks_used as number) : 0;
+  const hasTask = Boolean(metadata?.task_id);
+  const hasSummary = Boolean(metadata?.has_summary);
+  const usedAnything = memories.length > 0 || chunkCount > 0 || hasTask || hasSummary;
+
+  // Build a compact label
+  let label: string;
+  if (!usedAnything) {
+    label = "Answered from this conversation";
+  } else {
+    const parts: string[] = [];
+    if (memories.length > 0) {
+      parts.push(`${memories.length} ${memories.length === 1 ? "memory" : "memories"}`);
+    }
+    if (chunkCount > 0) {
+      parts.push(`${chunkCount} ${chunkCount === 1 ? "snippet" : "snippets"}`);
+    }
+    if (hasTask) parts.push("active task");
+    label = `Used ${parts.join(" + ")}`;
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition hover:border-primary/30 hover:text-foreground">
-          <Brain className="h-3 w-3" />
-          {memories.length} {memories.length === 1 ? "memory" : "memories"} used
+        <button
+          className={cn(
+            "mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition",
+            usedAnything
+              ? "border-primary/20 bg-primary/[0.06] text-primary/90 hover:border-primary/40 hover:bg-primary/[0.1]"
+              : "border-border/60 bg-card text-muted-foreground hover:border-border hover:text-foreground",
+          )}
+          aria-label="Behind the answer"
+        >
+          <Sparkles className="h-3 w-3" />
+          {label}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-3">
-        <p className="mb-2.5 text-xs font-medium">Memories that shaped this response</p>
-        <div className="space-y-2">
-          {memories.map((m) => (
-            <div key={m.id} className="flex items-start gap-2">
-              <span className="mt-0.5 shrink-0 text-sm">{MEMORY_EMOJI[m.type] ?? "💡"}</span>
-              <p className="text-xs leading-relaxed text-foreground/90">{m.content}</p>
+      <PopoverContent align="start" className="w-80 p-3">
+        <p className="mb-2.5 text-xs font-semibold text-foreground">Behind this answer</p>
+
+        {!usedAnything && (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Cortex composed this reply from your conversation alone — no saved memories,
+            documents, or active task were needed.
+          </p>
+        )}
+
+        {memories.length > 0 && (
+          <div className="mb-3">
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Memories ({memories.length})
+            </p>
+            <div className="space-y-2">
+              {memories.map((m) => (
+                <div key={m.id} className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 text-sm">
+                    {MEMORY_EMOJI[m.type] ?? "💡"}
+                  </span>
+                  <p className="text-xs leading-relaxed text-foreground/90">{m.content}</p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        )}
+
+        {chunkCount > 0 && (
+          <div className="mb-3 flex items-start gap-2">
+            <span className="mt-0.5 shrink-0 text-sm">📄</span>
+            <p className="text-xs leading-relaxed text-foreground/90">
+              {chunkCount} {chunkCount === 1 ? "snippet" : "snippets"} from your library
+              were referenced.
+            </p>
+          </div>
+        )}
+
+        {hasTask && (
+          <div className="mb-3 flex items-start gap-2">
+            <span className="mt-0.5 shrink-0 text-sm">🎯</span>
+            <p className="text-xs leading-relaxed text-foreground/90">
+              Connected to your active task — see the banner above the chat for details.
+            </p>
+          </div>
+        )}
+
+        {hasSummary && (
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 shrink-0 text-sm">📝</span>
+            <p className="text-xs leading-relaxed text-foreground/90">
+              Earlier conversation context was included as a summary.
+            </p>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );
 }
 
-function fmtTok(n: number | undefined): string {
-  if (!n) return "0";
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
-}
