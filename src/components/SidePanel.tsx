@@ -779,8 +779,6 @@ function HelpTip({ children }: { children: ReactNode }) {
     </Tooltip>
   );
 }
-  );
-}
 
 function TokenUsageSection() {
   const { user, loading } = useAuth();
