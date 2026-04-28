@@ -639,6 +639,22 @@ export const Route = createFileRoute("/api/chat/stream")({
                       } else if (event.type === "message_delta") {
                         stopReason = event.delta.stop_reason ?? stopReason;
                         totalOutputTokens += event.usage?.output_tokens ?? 0;
+                      } else if (event.type === "content_block_start") {
+                        // Capture web_search citations as they stream in.
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const block: any = event.content_block;
+                        if (block?.type === "web_search_tool_result" && Array.isArray(block.content)) {
+                          for (const r of block.content) {
+                            if (r?.type === "web_search_result" && r.url) {
+                              if (!webCitations.some((c) => c.url === r.url)) {
+                                webCitations.push({ title: r.title || r.url, url: r.url });
+                              }
+                            }
+                          }
+                          if (webCitations.length) {
+                            send("citations", { sources: webCitations });
+                          }
+                        }
                       }
                     }
 
