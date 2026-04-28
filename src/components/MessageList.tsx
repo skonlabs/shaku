@@ -12,7 +12,6 @@ import {
   Sparkles,
   PanelRightOpen,
   Share2,
-  Share2,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { MessageContent } from "@/components/MessageContent";
