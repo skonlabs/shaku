@@ -35,6 +35,7 @@ import { HARD_UPLOAD_MAX_MB, useUploadMaxMb } from "@/lib/upload-settings";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -597,56 +598,96 @@ function MemoryPreferencesSection() {
 
   if (isLoading || !prefs) return null;
 
+  // Map raw confidence threshold (0.1–1.0) to 3 friendly presets.
+  const confPreset: "eager" | "balanced" | "cautious" =
+    prefs.minConfidenceThreshold <= 0.45
+      ? "eager"
+      : prefs.minConfidenceThreshold >= 0.75
+        ? "cautious"
+        : "balanced";
+  const confValue = { eager: 0.4, balanced: 0.6, cautious: 0.8 } as const;
+
   return (
     <div>
       <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
         Memory preferences
       </p>
-      <div className="space-y-3 rounded-lg border border-border bg-card p-3">
-        <label className="flex items-center justify-between gap-3 text-sm">
-          <span>Auto-extract memories</span>
-          <Switch
-            checked={prefs.autoExtract}
-            onCheckedChange={(v) => updateMut.mutate({ auto_extract: v })}
-          />
-        </label>
-
-        <label className="flex items-center justify-between gap-3 text-sm">
-          <span>Confidence threshold</span>
-          <div className="flex items-center gap-1.5">
-            <input
-              type="number"
-              min={0.1}
-              max={1.0}
-              step={0.05}
-              defaultValue={prefs.minConfidenceThreshold}
-              onBlur={(e) => {
-                const v = parseFloat(e.target.value);
-                if (Number.isFinite(v) && v >= 0.1 && v <= 1.0) {
-                  updateMut.mutate({ min_confidence_threshold: v });
-                }
-              }}
-              className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm outline-none focus:border-ring/60"
+      <div className="space-y-5 rounded-lg border border-border bg-card p-3">
+        {/* Auto-extract */}
+        <div>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span className="font-medium">Remember things automatically</span>
+            <Switch
+              checked={prefs.autoExtract}
+              onCheckedChange={(v) => updateMut.mutate({ auto_extract: v })}
             />
-          </div>
-        </label>
+          </label>
+          <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+            When on, Cortex quietly saves useful facts from your chats (your name, preferences,
+            ongoing projects) so it doesn't ask twice.
+          </p>
+        </div>
 
-        <label className="flex items-center justify-between gap-3 text-sm">
-          <span>Memories per response</span>
-          <input
-            type="number"
+        {/* Confidence — friendly preset picker */}
+        <div>
+          <p className="mb-1 text-sm font-medium">How sure should Cortex be before saving?</p>
+          <p className="mb-2 text-[12px] leading-snug text-muted-foreground">
+            Higher means fewer, more reliable memories. Lower means more memories but some may be
+            wrong.
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(
+              [
+                { v: "eager", label: "Eager", hint: "Save more" },
+                { v: "balanced", label: "Balanced", hint: "Recommended" },
+                { v: "cautious", label: "Cautious", hint: "Only sure things" },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.v}
+                onClick={() =>
+                  updateMut.mutate({ min_confidence_threshold: confValue[opt.v] })
+                }
+                className={cn(
+                  "rounded-md border border-border px-2 py-2 text-center text-xs transition",
+                  confPreset === opt.v
+                    ? "border-primary bg-accent"
+                    : "hover:bg-accent/60",
+                )}
+              >
+                <div className="font-medium">{opt.label}</div>
+                <div className="text-[10px] text-muted-foreground">{opt.hint}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Memories per response — slider */}
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-sm font-medium">How much to remember per chat</p>
+            <span className="text-xs tabular-nums text-muted-foreground">
+              up to {prefs.maxMemoriesPerCall}
+            </span>
+          </div>
+          <p className="mb-2 text-[12px] leading-snug text-muted-foreground">
+            Most chats produce 1–3 useful facts. A higher limit lets Cortex capture more from long
+            conversations.
+          </p>
+          <Slider
             min={1}
-            max={50}
-            defaultValue={prefs.maxMemoriesPerCall}
-            onBlur={(e) => {
-              const v = parseInt(e.target.value, 10);
-              if (Number.isFinite(v) && v >= 1 && v <= 50) {
-                updateMut.mutate({ max_memories_per_call: v });
-              }
-            }}
-            className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm outline-none focus:border-ring/60"
+            max={20}
+            step={1}
+            value={[Math.min(prefs.maxMemoriesPerCall, 20)]}
+            onValueChange={(vals) =>
+              updateMut.mutate({ max_memories_per_call: vals[0] })
+            }
           />
-        </label>
+          <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+            <span>Just essentials</span>
+            <span>Capture everything</span>
+          </div>
+        </div>
       </div>
     </div>
   );
