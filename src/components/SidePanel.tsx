@@ -35,6 +35,7 @@ import { HARD_UPLOAD_MAX_MB, useUploadMaxMb } from "@/lib/upload-settings";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import {
   DropdownMenu,
   DropdownMenuContent,
