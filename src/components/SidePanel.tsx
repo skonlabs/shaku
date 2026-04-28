@@ -2387,37 +2387,7 @@ function MemoriesTab({
 
   return (
     <div className="space-y-4 px-3 py-3">
-      {/* How it works — at the top so users understand before toggling */}
-      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-        <div className="flex items-start gap-2">
-          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-foreground">Cortex learns as you chat</p>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              Just mention things naturally — like <span className="italic">"I'm vegetarian"</span> or{" "}
-              <span className="italic">"keep answers short"</span> — and Cortex will remember.
-              You can delete anything here anytime.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Memory master toggle */}
-      <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
-        <div className="pr-3">
-          <p className="text-sm font-medium">Learn from conversations</p>
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            Turn off to stop saving anything new. Existing memories below stay until you delete them.
-          </p>
-        </div>
-        <Switch
-          checked={memoryEnabled}
-          onCheckedChange={onToggle}
-          aria-label={memoryEnabled ? "Disable memory" : "Enable memory"}
-        />
-      </div>
-
-      {/* Granular memory preferences (only meaningful when memory is on) */}
+      {/* Granular memory preferences (only meaningful when learning is on) */}
       {memoryEnabled && <MemoryPreferencesSection />}
 
       {/* Memory list */}
