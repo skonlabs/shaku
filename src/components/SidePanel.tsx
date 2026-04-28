@@ -995,7 +995,7 @@ const MEMORY_TYPE_META: { value: MemoryType; label: string; emoji: string }[] = 
   { value: "behavioral", label: "Behavioral", emoji: "🎯" },
   { value: "response_style", label: "Response style", emoji: "✍️" },
   { value: "correction", label: "Corrections", emoji: "✏️" },
-  { value: "project", label: "Projects", emoji: "📁" },
+  { value: "project", label: "Spaces", emoji: "📁" },
   { value: "episodic", label: "Events", emoji: "📅" },
   { value: "semantic", label: "Facts", emoji: "🧠" },
   { value: "long_term", label: "Long-term", emoji: "🔒" },
