@@ -81,6 +81,15 @@ function ChatPage() {
             ),
           );
         },
+        onCitations: (sources) => {
+          setStreamingMessages((cur) =>
+            cur.map((m) =>
+              m.id === tempAsstId
+                ? { ...m, metadata: { ...(m.metadata ?? {}), web_citations: sources, web_grounded: true } }
+                : m,
+            ),
+          );
+        },
         onDone: async ({ assistantMessageId }) => {
           sendInFlightRef.current = false;
           setStreamingId(null);
