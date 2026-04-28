@@ -3112,6 +3112,118 @@ function ContextDebuggerPanel() {
   );
 }
 
+const MEMORY_TYPE_LABELS: Record<string, { label: string; emoji: string }> = {
+  fact: { label: "Fact", emoji: "📌" },
+  preference: { label: "Preference", emoji: "💭" },
+  skill: { label: "Skill", emoji: "🎯" },
+  goal: { label: "Goal", emoji: "🚀" },
+  relationship: { label: "Person", emoji: "👤" },
+  event: { label: "Event", emoji: "📅" },
+};
+
+function ContextAssemblySection({
+  sections,
+  memoryIds,
+  chunkCount,
+  rankingScores,
+}: {
+  sections: Record<string, string | number | boolean>;
+  memoryIds: string[];
+  chunkCount: number;
+  rankingScores: Record<string, number>;
+}) {
+  const memCount = Number(sections.memories ?? memoryIds.length ?? 0);
+  const hasTask = Boolean(sections.hasTask);
+  const hasSummary = Boolean(sections.hasSummary);
+  const nothing = memCount === 0 && chunkCount === 0 && !hasTask && !hasSummary;
+
+  const { data: memData } = useQuery({
+    queryKey: ["context-memories", memoryIds],
+    queryFn: () => getMemoriesByIds({ data: { ids: memoryIds } }),
+    enabled: memoryIds.length > 0,
+    staleTime: 60_000,
+  });
+  const memories = memData?.memories ?? [];
+
+  if (nothing) {
+    return (
+      <div className="rounded-lg border border-dashed border-border bg-card/50 p-4 text-center">
+        <p className="text-xs text-muted-foreground">
+          Cortex answered from the conversation alone — no memories or documents were needed.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-border bg-card p-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          What Cortex used
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {memCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
+              💡 {memCount} {memCount === 1 ? "memory" : "memories"}
+            </span>
+          )}
+          {chunkCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-accent/30 px-2.5 py-1 text-[11px] font-medium text-accent-foreground">
+              📄 {chunkCount} document {chunkCount === 1 ? "snippet" : "snippets"}
+            </span>
+          )}
+          {hasTask && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-secondary-foreground">
+              ✅ Active task
+            </span>
+          )}
+          {hasSummary && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-secondary-foreground">
+              📝 Conversation summary
+            </span>
+          )}
+        </div>
+      </div>
+
+      {memories.length > 0 && (
+        <div className="rounded-lg border border-border bg-card p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Memories used ({memories.length})
+          </p>
+          <div className="mt-2 space-y-2">
+            {memories.map((m) => {
+              const meta = MEMORY_TYPE_LABELS[m.type] ?? { label: m.type, emoji: "•" };
+              const score = rankingScores[m.id];
+              return (
+                <div
+                  key={m.id}
+                  className="rounded-md border border-border/60 bg-background/60 p-2.5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <span>{meta.emoji}</span>
+                      {meta.label}
+                    </span>
+                    {score != null && (
+                      <span className="shrink-0 text-[10px] tabular-nums text-primary/80">
+                        {(score * 100).toFixed(0)}% match
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-foreground line-clamp-3">
+                    {m.content}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function TaskPanel() {
   const location = useLocation();
   const convId = location.pathname.match(/^\/c\/([a-f0-9-]{36})/)?.[1] ?? null;
