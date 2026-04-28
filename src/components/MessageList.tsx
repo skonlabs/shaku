@@ -553,10 +553,15 @@ function BehindAnswerChip({ metadata }: { metadata: Message["metadata"] | undefi
         <p className="mb-2.5 text-xs font-semibold text-foreground">Behind this answer</p>
 
         {!usedAnything && (
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Cortex composed this reply from your conversation alone — no saved memories,
-            documents, or active task were needed.
-          </p>
+          <div className="space-y-2">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              For this reply, Cortex didn't need to pull in saved memories, documents,
+              or an active task — your conversation alone was enough.
+            </p>
+            <p className="text-[11px] leading-relaxed text-muted-foreground/80">
+              When Cortex does use them, you'll see what was used right here.
+            </p>
+          </div>
         )}
 
         {memories.length > 0 && (
