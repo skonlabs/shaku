@@ -154,7 +154,7 @@ function labelFor(p: string) {
     case "chats":
       return "Chats";
     case "projects":
-      return "Projects";
+      return "Spaces";
     case "datasources":
       return "Data sources";
     case "connectors":
