@@ -605,20 +605,10 @@ function MemoryPreferencesSection() {
       <div className="space-y-3 rounded-lg border border-border bg-card p-3">
         <label className="flex items-center justify-between gap-3 text-sm">
           <span>Auto-extract memories</span>
-          <button
-            onClick={() => updateMut.mutate({ auto_extract: !prefs.autoExtract })}
-            className={cn(
-              "relative h-5 w-9 rounded-full transition-colors",
-              prefs.autoExtract ? "bg-primary" : "bg-muted-foreground/30",
-            )}
-          >
-            <span
-              className={cn(
-                "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform",
-                prefs.autoExtract ? "translate-x-4" : "translate-x-0.5",
-              )}
-            />
-          </button>
+          <Switch
+            checked={prefs.autoExtract}
+            onCheckedChange={(v) => updateMut.mutate({ auto_extract: v })}
+          />
         </label>
 
         <label className="flex items-center justify-between gap-3 text-sm">
