@@ -6,6 +6,7 @@ import { MessageList, type DisplayMessage } from "@/components/MessageList";
 import { getConversation } from "@/lib/conversations.functions";
 import { streamChat } from "@/lib/streamChat";
 import { RateLimitBanner } from "@/components/RateLimitBanner";
+import { ActiveTaskBanner } from "@/components/ActiveTaskBanner";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 
@@ -208,6 +209,7 @@ function ChatPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <ActiveTaskBanner conversationId={id} />
       <div className="flex-1 overflow-hidden">
         {messages.length === 0 ? (
           <div className="flex h-full animate-fade-in items-center justify-center px-4 text-center">
