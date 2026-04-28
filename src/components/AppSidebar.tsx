@@ -8,8 +8,6 @@ import {
   User,
   Sparkles,
   Plus,
-  Wrench,
-  ListChecks,
   Leaf,
 } from "lucide-react";
 import { usePanel, type PanelId } from "@/lib/ui-context";
