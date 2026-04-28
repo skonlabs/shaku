@@ -620,34 +620,6 @@ function MemoryPreferencesSection() {
           Memory preferences
         </p>
         <div className="space-y-5 rounded-lg border border-border bg-card p-3">
-          {/* Auto-extract */}
-          <div>
-            <label className="flex items-center justify-between gap-3 text-sm">
-              <span className="flex items-center gap-1.5 font-medium">
-                Remember things automatically
-                <HelpTip>
-                  <p className="mb-1 font-medium">What this changes</p>
-                  <p className="mb-2 text-muted-foreground">
-                    Cortex watches each chat for useful facts and saves them quietly.
-                  </p>
-                  <p className="mb-1 font-medium">Example</p>
-                  <p className="text-muted-foreground">
-                    You say <em>"I'm vegetarian"</em> → next time you ask for dinner ideas,
-                    Cortex skips meat dishes without you reminding it.
-                  </p>
-                </HelpTip>
-              </span>
-              <Switch
-                checked={prefs.autoExtract}
-                onCheckedChange={(v) => updateMut.mutate({ auto_extract: v })}
-              />
-            </label>
-            <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
-              When on, Cortex quietly saves useful facts from your chats (your name, preferences,
-              ongoing projects) so it doesn't ask twice.
-            </p>
-          </div>
-
           {/* Confidence */}
           <div>
             <p className="mb-1 flex items-center gap-1.5 text-sm font-medium">
