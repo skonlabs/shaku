@@ -334,6 +334,11 @@ function MessageRow({
           </div>
         )}
 
+        {/* Web sources used by the model — shown as compact chips */}
+        {message.role === "assistant" && message.content && (
+          <SourcesRow metadata={message.metadata} />
+        )}
+
         {/* "Behind the answer" — per-message transparency affordance */}
         {!isStreaming && message.role === "assistant" && message.content && !message.pending && (
           <BehindAnswerChip metadata={message.metadata} />
