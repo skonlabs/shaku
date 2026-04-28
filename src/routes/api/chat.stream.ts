@@ -434,6 +434,16 @@ export const Route = createFileRoute("/api/chat/stream")({
         });
         const selectedModel = routingDecision.selected;
 
+        // ---- Web grounding decision ----
+        // Detect entity / recency / proper-noun questions and enable the
+        // provider's native web-search tool for the turn. The model itself
+        // decides whether to actually invoke the tool — our heuristic just
+        // makes it AVAILABLE. This brings Cortex to ChatGPT/Claude parity for
+        // questions about non-famous people, niche companies, recent events.
+        const groundingDecision = shouldGroundWithWeb(currentUserMessage, intent);
+        const webGroundingEnabled = groundingDecision.enabled;
+        const webCitations: { title: string; url: string }[] = [];
+
         // ---- Final messages for the provider ----
         // assembleContext is the single budget owner: it has already trimmed history,
         // capped retrieval, and capped memory blocks. We do not re-process here.
