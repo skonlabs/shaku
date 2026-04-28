@@ -815,6 +815,9 @@ export const Route = createFileRoute("/api/chat/stream")({
                 content: m.content.slice(0, 150),
               }));
             }
+            if (finalChunks.length > 0) metadata.chunks_used = finalChunks.length;
+            if (assembled.activeTask?.id) metadata.task_id = assembled.activeTask.id;
+            if (assembled.convState?.summary) metadata.has_summary = true;
             if (followups.length) metadata.follow_ups = followups;
             if (priorVersion) metadata.versions = [priorVersion];
             if (streamError) metadata.partial = true;
