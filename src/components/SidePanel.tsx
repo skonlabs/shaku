@@ -2307,6 +2307,11 @@ function MemoryPanel() {
       </div>
 
       <ScrollArea className="flex-1">
+        {!memoryEnabled && (
+          <div className="mx-3 mt-3 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+            Learning is paused. Cortex won't add to your memories or persona until you turn it back on. Existing entries are kept.
+          </div>
+        )}
         {tab === "memories" && (
           <MemoriesTab
             memories={memories}
