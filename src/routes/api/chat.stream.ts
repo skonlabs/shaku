@@ -741,6 +741,21 @@ export const Route = createFileRoute("/api/chat/stream")({
                       const visible = stripFollowupsTagPartial(safeChunk, assistantText);
                       if (visible) send("delta", { text: visible });
                     }
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const annotations: any[] | undefined = (chunk.choices[0]?.delta as any)
+                      ?.annotations;
+                    if (Array.isArray(annotations)) {
+                      let added = false;
+                      for (const a of annotations) {
+                        const url = a?.url_citation?.url ?? a?.url;
+                        const title = a?.url_citation?.title ?? a?.title ?? url;
+                        if (url && !webCitations.some((c) => c.url === url)) {
+                          webCitations.push({ title, url });
+                          added = true;
+                        }
+                      }
+                      if (added) send("citations", { sources: webCitations });
+                    }
                     if (chunk.usage) {
                       // Accumulate (not overwrite) so prior fallback attempts are preserved.
                       totalInputTokens += chunk.usage.prompt_tokens ?? 0;
