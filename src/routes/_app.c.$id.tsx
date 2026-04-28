@@ -209,6 +209,7 @@ function ChatPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <ActiveTaskBanner conversationId={id} />
       <div className="flex-1 overflow-hidden">
         {messages.length === 0 ? (
           <div className="flex h-full animate-fade-in items-center justify-center px-4 text-center">
