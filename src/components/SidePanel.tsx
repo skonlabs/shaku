@@ -615,88 +615,170 @@ function MemoryPreferencesSection() {
   const confValue = { eager: 0.4, balanced: 0.6, cautious: 0.8 } as const;
 
   return (
-    <div>
-      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        Memory preferences
-      </p>
-      <div className="space-y-5 rounded-lg border border-border bg-card p-3">
-        {/* Auto-extract */}
-        <div>
-          <label className="flex items-center justify-between gap-3 text-sm">
-            <span className="font-medium">Remember things automatically</span>
-            <Switch
-              checked={prefs.autoExtract}
-              onCheckedChange={(v) => updateMut.mutate({ auto_extract: v })}
+    <TooltipProvider delayDuration={150}>
+      <div>
+        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Memory preferences
+        </p>
+        <div className="space-y-5 rounded-lg border border-border bg-card p-3">
+          {/* Auto-extract */}
+          <div>
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span className="flex items-center gap-1.5 font-medium">
+                Remember things automatically
+                <HelpTip>
+                  <p className="mb-1 font-medium">What this changes</p>
+                  <p className="mb-2 text-muted-foreground">
+                    Cortex watches each chat for useful facts and saves them quietly.
+                  </p>
+                  <p className="mb-1 font-medium">Example</p>
+                  <p className="text-muted-foreground">
+                    You say <em>"I'm vegetarian"</em> → next time you ask for dinner ideas,
+                    Cortex skips meat dishes without you reminding it.
+                  </p>
+                </HelpTip>
+              </span>
+              <Switch
+                checked={prefs.autoExtract}
+                onCheckedChange={(v) => updateMut.mutate({ auto_extract: v })}
+              />
+            </label>
+            <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+              When on, Cortex quietly saves useful facts from your chats (your name, preferences,
+              ongoing projects) so it doesn't ask twice.
+            </p>
+          </div>
+
+          {/* Confidence */}
+          <div>
+            <p className="mb-1 flex items-center gap-1.5 text-sm font-medium">
+              How sure should Cortex be before saving?
+              <HelpTip>
+                <p className="mb-1 font-medium">What this changes</p>
+                <p className="mb-2 text-muted-foreground">
+                  Sets the bar Cortex uses before turning something into a memory.
+                </p>
+                <p className="mb-1 font-medium">Examples</p>
+                <ul className="space-y-1.5 text-muted-foreground">
+                  <li>
+                    <b className="text-foreground">Eager —</b> "I think I'd like to learn
+                    French someday" gets saved. You'll see more reminders, some off-base.
+                  </li>
+                  <li>
+                    <b className="text-foreground">Balanced —</b> "I'm learning French" gets
+                    saved. Casual asides usually don't.
+                  </li>
+                  <li>
+                    <b className="text-foreground">Cautious —</b> only clear statements like
+                    "My name is Sam" or "I live in Berlin" stick.
+                  </li>
+                </ul>
+              </HelpTip>
+            </p>
+            <p className="mb-2 text-[12px] leading-snug text-muted-foreground">
+              Higher means fewer, more reliable memories. Lower means more memories but some may
+              be wrong.
+            </p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(
+                [
+                  { v: "eager", label: "Eager", hint: "Save more" },
+                  { v: "balanced", label: "Balanced", hint: "Recommended" },
+                  { v: "cautious", label: "Cautious", hint: "Only sure things" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.v}
+                  onClick={() =>
+                    updateMut.mutate({ min_confidence_threshold: confValue[opt.v] })
+                  }
+                  className={cn(
+                    "rounded-md border border-border px-2 py-2 text-center text-xs transition",
+                    confPreset === opt.v
+                      ? "border-primary bg-accent"
+                      : "hover:bg-accent/60",
+                  )}
+                >
+                  <div className="font-medium">{opt.label}</div>
+                  <div className="text-[10px] text-muted-foreground">{opt.hint}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Memories per response */}
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                How much to remember per chat
+                <HelpTip>
+                  <p className="mb-1 font-medium">What this changes</p>
+                  <p className="mb-2 text-muted-foreground">
+                    The most facts Cortex will pull out of a single conversation.
+                  </p>
+                  <p className="mb-1 font-medium">Examples</p>
+                  <ul className="space-y-1.5 text-muted-foreground">
+                    <li>
+                      <b className="text-foreground">1–3 (Just essentials) —</b> from a long
+                      planning chat, Cortex might only save "trip to Lisbon in June."
+                    </li>
+                    <li>
+                      <b className="text-foreground">5–8 (Recommended) —</b> also saves
+                      "traveling with partner," "wants museums and food," "budget €1500."
+                    </li>
+                    <li>
+                      <b className="text-foreground">15–20 (Capture everything) —</b> adds
+                      smaller details like preferred neighborhoods and dietary notes.
+                    </li>
+                  </ul>
+                </HelpTip>
+              </p>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                up to {prefs.maxMemoriesPerCall}
+              </span>
+            </div>
+            <p className="mb-2 text-[12px] leading-snug text-muted-foreground">
+              Most chats produce 1–3 useful facts. A higher limit lets Cortex capture more from
+              long conversations.
+            </p>
+            <Slider
+              min={1}
+              max={20}
+              step={1}
+              value={[Math.min(prefs.maxMemoriesPerCall, 20)]}
+              onValueChange={(vals) =>
+                updateMut.mutate({ max_memories_per_call: vals[0] })
+              }
             />
-          </label>
-          <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
-            When on, Cortex quietly saves useful facts from your chats (your name, preferences,
-            ongoing projects) so it doesn't ask twice.
-          </p>
-        </div>
-
-        {/* Confidence — friendly preset picker */}
-        <div>
-          <p className="mb-1 text-sm font-medium">How sure should Cortex be before saving?</p>
-          <p className="mb-2 text-[12px] leading-snug text-muted-foreground">
-            Higher means fewer, more reliable memories. Lower means more memories but some may be
-            wrong.
-          </p>
-          <div className="grid grid-cols-3 gap-1.5">
-            {(
-              [
-                { v: "eager", label: "Eager", hint: "Save more" },
-                { v: "balanced", label: "Balanced", hint: "Recommended" },
-                { v: "cautious", label: "Cautious", hint: "Only sure things" },
-              ] as const
-            ).map((opt) => (
-              <button
-                key={opt.v}
-                onClick={() =>
-                  updateMut.mutate({ min_confidence_threshold: confValue[opt.v] })
-                }
-                className={cn(
-                  "rounded-md border border-border px-2 py-2 text-center text-xs transition",
-                  confPreset === opt.v
-                    ? "border-primary bg-accent"
-                    : "hover:bg-accent/60",
-                )}
-              >
-                <div className="font-medium">{opt.label}</div>
-                <div className="text-[10px] text-muted-foreground">{opt.hint}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Memories per response — slider */}
-        <div>
-          <div className="mb-1 flex items-center justify-between">
-            <p className="text-sm font-medium">How much to remember per chat</p>
-            <span className="text-xs tabular-nums text-muted-foreground">
-              up to {prefs.maxMemoriesPerCall}
-            </span>
-          </div>
-          <p className="mb-2 text-[12px] leading-snug text-muted-foreground">
-            Most chats produce 1–3 useful facts. A higher limit lets Cortex capture more from long
-            conversations.
-          </p>
-          <Slider
-            min={1}
-            max={20}
-            step={1}
-            value={[Math.min(prefs.maxMemoriesPerCall, 20)]}
-            onValueChange={(vals) =>
-              updateMut.mutate({ max_memories_per_call: vals[0] })
-            }
-          />
-          <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-            <span>Just essentials</span>
-            <span>Capture everything</span>
+            <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+              <span>Just essentials</span>
+              <span>Capture everything</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
+  );
+}
+
+function HelpTip({ children }: { children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="More info"
+          className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/70 hover:text-foreground"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="left" align="start" className="max-w-[280px] text-[12px] leading-snug">
+        {children}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
   );
 }
 
