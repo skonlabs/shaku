@@ -3086,60 +3086,13 @@ function ContextDebuggerPanel() {
           )}
         </div>
 
-        {/* Context sections */}
-        {Object.keys(data.contextSections).length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Context
-            </p>
-            {Object.entries(data.contextSections).map(([k, v]) => (
-              <div key={k} className="flex justify-between text-xs">
-                <span className="text-muted-foreground capitalize">{k}</span>
-                <span className="font-medium">{String(v)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Retrieved memories */}
-        {data.retrievedMemoryIds.length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Retrieved memories ({data.retrievedMemoryIds.length})
-            </p>
-            {data.retrievedMemoryIds.map((id) => {
-              const score = data.rankingScores[id];
-              return (
-                <div key={id} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate font-mono text-[10px] text-muted-foreground">
-                    {id.slice(0, 8)}…
-                  </span>
-                  {score != null && (
-                    <span className="shrink-0 text-[10px] tabular-nums text-primary">
-                      {(score * 100).toFixed(0)}%
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Retrieved chunks */}
-        {data.retrievedChunkIds.length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Retrieved chunks ({data.retrievedChunkIds.length})
-            </p>
-            <div className="mt-1.5 space-y-0.5">
-              {data.retrievedChunkIds.map((id) => (
-                <p key={id} className="font-mono text-[10px] text-muted-foreground truncate">
-                  {id.slice(0, 8)}…
-                </p>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* What Cortex pulled in to answer */}
+        <ContextAssemblySection
+          sections={data.contextSections}
+          memoryIds={data.retrievedMemoryIds}
+          chunkCount={data.retrievedChunkIds.length}
+          rankingScores={data.rankingScores}
+        />
 
         {/* Warnings */}
         {data.warnings.length > 0 && (
