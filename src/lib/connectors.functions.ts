@@ -4,6 +4,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { CONNECTOR_CONFIGS } from "@/lib/connectors/types";
 import { buildAuthUrl, encryptToken, exchangeCodeForTokens } from "@/lib/connectors/google-drive";
 import { buildSlackAuthUrl, exchangeSlackCode } from "@/lib/connectors/slack";
+import { buildGoogleAuthUrl, exchangeGoogleCode } from "@/lib/connectors/google";
+import { buildMicrosoftAuthUrl, exchangeMicrosoftCode } from "@/lib/connectors/microsoft";
 import { cleanupDisconnectedConnector } from "@/lib/connectors/sync-worker";
 
 // Generate OAuth URL with CSRF state, stored in DB before redirect
