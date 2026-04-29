@@ -56,6 +56,24 @@ export const initiateConnectorAuth = createServerFn({ method: "POST" })
     let authUrl: string;
     if (data.service === "google_drive") {
       authUrl = buildAuthUrl(data.redirect_uri, oauthState);
+    } else if (
+      data.service === "google_docs" ||
+      data.service === "google_sheets" ||
+      data.service === "google_slides" ||
+      data.service === "gmail" ||
+      data.service === "google_calendar"
+    ) {
+      authUrl = buildGoogleAuthUrl(data.service, data.redirect_uri, oauthState);
+    } else if (
+      data.service === "onedrive" ||
+      data.service === "microsoft_word" ||
+      data.service === "microsoft_excel" ||
+      data.service === "microsoft_powerpoint" ||
+      data.service === "microsoft_onenote" ||
+      data.service === "microsoft_outlook" ||
+      data.service === "microsoft_teams"
+    ) {
+      authUrl = buildMicrosoftAuthUrl(data.service, data.redirect_uri, oauthState);
     } else if (data.service === "slack") {
       authUrl = buildSlackAuthUrl(data.redirect_uri, oauthState);
     } else {
