@@ -1458,30 +1458,15 @@ function fmtBytes(n: number): string {
 }
 
 const CLOUD_STORAGE_SERVICES = [
-  {
-    service: "google_drive",
-    name: "Google Drive",
-    desc: "Sync Docs, Sheets, Slides and files",
-    implemented: true,
-  },
-  {
-    service: "onedrive",
-    name: "OneDrive / SharePoint",
-    desc: "Sync files from Microsoft OneDrive",
-    implemented: false,
-  },
-  {
-    service: "dropbox",
-    name: "Dropbox",
-    desc: "Sync documents and files from Dropbox",
-    implemented: false,
-  },
-  {
-    service: "shared_folder",
-    name: "Shared / Network Folder",
-    desc: "Mount a local or network shared folder",
-    implemented: false,
-  },
+  { service: "google_drive", name: "Google Drive", desc: "Sync Docs, Sheets, Slides and files", implemented: true },
+  { service: "google_docs", name: "Google Docs", desc: "Index your Google Docs documents", implemented: true },
+  { service: "google_sheets", name: "Google Sheets", desc: "Index your Google Sheets spreadsheets", implemented: true },
+  { service: "google_slides", name: "Google Slides", desc: "Index your Google Slides presentations", implemented: true },
+  { service: "onedrive", name: "OneDrive", desc: "Sync files from Microsoft OneDrive", implemented: true },
+  { service: "microsoft_word", name: "Microsoft Word", desc: "Index .docx files from OneDrive", implemented: true },
+  { service: "microsoft_excel", name: "Microsoft Excel", desc: "Index .xlsx files from OneDrive", implemented: true },
+  { service: "microsoft_powerpoint", name: "Microsoft PowerPoint", desc: "Index .pptx files from OneDrive", implemented: true },
+  { service: "microsoft_onenote", name: "Microsoft OneNote", desc: "Index OneNote notebooks and pages", implemented: true },
 ];
 
 function DatasourcesPanel() {
@@ -1927,43 +1912,24 @@ const CONNECTOR_STATUS_STYLES: Record<string, { badge: string; label: string }> 
 // Services that appear in Connectors (not cloud storage)
 const CONNECTOR_ONLY_SERVICES = new Set([
   "slack",
-  "teams",
+  "microsoft_teams",
   "gmail",
+  "microsoft_outlook",
   "google_calendar",
-  "jira",
-  "github",
-  "notion",
-  "confluence",
 ]);
 
 const CONNECTOR_GROUPS: { label: string; services: string[]; desc: string }[] = [
-  { label: "Communication", services: ["slack", "teams", "gmail"], desc: "" },
-  { label: "Knowledge", services: ["notion", "confluence"], desc: "" },
-  { label: "Dev & Code", services: ["github"], desc: "" },
-  { label: "Productivity", services: ["jira", "google_calendar"], desc: "" },
+  { label: "Messaging", services: ["slack", "microsoft_teams"], desc: "" },
+  { label: "Email", services: ["gmail", "microsoft_outlook"], desc: "" },
+  { label: "Calendar", services: ["google_calendar"], desc: "" },
 ];
 
 const CONNECTOR_META: Record<string, { name: string; desc: string; implemented: boolean }> = {
   slack: { name: "Slack", desc: "Index channel messages, threads and files", implemented: true },
-  teams: { name: "Microsoft Teams", desc: "Index Teams messages and channels", implemented: false },
-  gmail: { name: "Gmail", desc: "Index email threads and attachments", implemented: false },
-  google_calendar: {
-    name: "Google Calendar",
-    desc: "Access calendar events in chat context",
-    implemented: false,
-  },
-  jira: {
-    name: "Jira (Atlassian)",
-    desc: "Index issues, epics, sprints and comments",
-    implemented: false,
-  },
-  github: { name: "GitHub", desc: "Index issues, PRs, discussions and code", implemented: false },
-  notion: { name: "Notion", desc: "Index pages, databases and wikis", implemented: false },
-  confluence: {
-    name: "Confluence (Atlassian)",
-    desc: "Index spaces, pages and comments",
-    implemented: false,
-  },
+  microsoft_teams: { name: "Microsoft Teams", desc: "Index Teams messages and channels", implemented: true },
+  gmail: { name: "Gmail", desc: "Index email threads and attachments", implemented: true },
+  microsoft_outlook: { name: "Microsoft Outlook", desc: "Index Outlook email threads", implemented: true },
+  google_calendar: { name: "Google Calendar", desc: "Index events from your primary calendar", implemented: true },
 };
 
 function ConnectorsPanel() {

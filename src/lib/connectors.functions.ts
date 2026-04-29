@@ -4,6 +4,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { CONNECTOR_CONFIGS } from "@/lib/connectors/types";
 import { buildAuthUrl, encryptToken, exchangeCodeForTokens } from "@/lib/connectors/google-drive";
 import { buildSlackAuthUrl, exchangeSlackCode } from "@/lib/connectors/slack";
+import { buildGoogleAuthUrl, exchangeGoogleCode } from "@/lib/connectors/google";
+import { buildMicrosoftAuthUrl, exchangeMicrosoftCode } from "@/lib/connectors/microsoft";
 import { cleanupDisconnectedConnector } from "@/lib/connectors/sync-worker";
 
 // Generate OAuth URL with CSRF state, stored in DB before redirect
@@ -54,6 +56,24 @@ export const initiateConnectorAuth = createServerFn({ method: "POST" })
     let authUrl: string;
     if (data.service === "google_drive") {
       authUrl = buildAuthUrl(data.redirect_uri, oauthState);
+    } else if (
+      data.service === "google_docs" ||
+      data.service === "google_sheets" ||
+      data.service === "google_slides" ||
+      data.service === "gmail" ||
+      data.service === "google_calendar"
+    ) {
+      authUrl = buildGoogleAuthUrl(data.service, data.redirect_uri, oauthState);
+    } else if (
+      data.service === "onedrive" ||
+      data.service === "microsoft_word" ||
+      data.service === "microsoft_excel" ||
+      data.service === "microsoft_powerpoint" ||
+      data.service === "microsoft_onenote" ||
+      data.service === "microsoft_outlook" ||
+      data.service === "microsoft_teams"
+    ) {
+      authUrl = buildMicrosoftAuthUrl(data.service, data.redirect_uri, oauthState);
     } else if (data.service === "slack") {
       authUrl = buildSlackAuthUrl(data.redirect_uri, oauthState);
     } else {
@@ -143,11 +163,32 @@ export const completeConnectorAuth = createServerFn({ method: "POST" })
       const tokens = await exchangeCodeForTokens(data.code, data.redirect_uri);
       encryptedToken = await encryptToken(tokens.accessToken);
       encryptedRefresh = await encryptToken(tokens.refreshToken);
+    } else if (
+      data.service === "google_docs" ||
+      data.service === "google_sheets" ||
+      data.service === "google_slides" ||
+      data.service === "gmail" ||
+      data.service === "google_calendar"
+    ) {
+      const tokens = await exchangeGoogleCode(data.code, data.redirect_uri);
+      encryptedToken = await encryptToken(tokens.accessToken);
+      encryptedRefresh = await encryptToken(tokens.refreshToken);
+    } else if (
+      data.service === "onedrive" ||
+      data.service === "microsoft_word" ||
+      data.service === "microsoft_excel" ||
+      data.service === "microsoft_powerpoint" ||
+      data.service === "microsoft_onenote" ||
+      data.service === "microsoft_outlook" ||
+      data.service === "microsoft_teams"
+    ) {
+      const tokens = await exchangeMicrosoftCode(data.service, data.code, data.redirect_uri);
+      encryptedToken = await encryptToken(tokens.accessToken);
+      encryptedRefresh = await encryptToken(tokens.refreshToken);
     } else if (data.service === "slack") {
       const result = await exchangeSlackCode(data.code, data.redirect_uri);
       encryptedToken = await encryptToken(result.accessToken);
-      encryptedRefresh = await encryptToken(""); // Slack uses long-lived tokens
-      // Store team_id in metadata for webhook workspace filtering
+      encryptedRefresh = await encryptToken("");
       await supabase.from("connectors").update({
         metadata: { team_id: result.teamId, team_name: result.teamName },
       }).eq("id", connector.id);
@@ -155,28 +196,37 @@ export const completeConnectorAuth = createServerFn({ method: "POST" })
       throw new Error("Unknown service");
     }
 
-    // Save tokens, clear CSRF state
     await supabase.from("connectors").update({
       status: "connected",
       oauth_token_encrypted: encryptedToken,
       oauth_refresh_token_encrypted: encryptedRefresh,
-      oauth_state: null, // clear state after successful use
+      oauth_state: null,
     }).eq("id", connector.id);
 
     return { success: true, connector_id: connector.id };
   });
 
 // Returns which services have OAuth credentials configured server-side.
-// Used by the UI to show "Connect" vs "Not configured" without leaking secrets.
-// Derives availability from CONNECTOR_CONFIGS.implemented rather than hard-coding each service.
+// Availability is grouped by provider — one credential set covers all services
+// from that provider (Google, Microsoft, Slack).
 export const getConnectorAvailability = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async () => {
-    const envConfigured: Record<string, boolean> = {
-      google_drive: !!(process.env.GOOGLE_DRIVE_CLIENT_ID && process.env.GOOGLE_DRIVE_CLIENT_SECRET),
-      slack: !!(process.env.SLACK_CLIENT_ID && process.env.SLACK_CLIENT_SECRET),
+    const googleConfigured =
+      !!((process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_DRIVE_CLIENT_ID) &&
+         (process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_DRIVE_CLIENT_SECRET));
+    const microsoftConfigured =
+      !!(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET);
+    const slackConfigured =
+      !!(process.env.SLACK_CLIENT_ID && process.env.SLACK_CLIENT_SECRET);
+
+    const providerConfigured: Record<string, boolean> = {
+      google: googleConfigured,
+      microsoft: microsoftConfigured,
+      slack: slackConfigured,
     };
+
     return Object.fromEntries(
-      CONNECTOR_CONFIGS.map(c => [c.service, c.implemented && (envConfigured[c.service] ?? false)])
+      CONNECTOR_CONFIGS.map((c) => [c.service, c.implemented && providerConfigured[c.provider]]),
     ) as Record<string, boolean>;
   });

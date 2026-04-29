@@ -68,11 +68,44 @@ export const Route = createFileRoute("/api/connectors/callback")({
             const tokens = await exchangeCodeForTokens(code, redirectUri);
             const encryptedAccess = await encryptToken(tokens.accessToken);
             const encryptedRefresh = await encryptToken(tokens.refreshToken);
-
             await serviceSupabase.from("connectors").update({
               status: "connected",
               oauth_token_encrypted: encryptedAccess,
               oauth_refresh_token_encrypted: encryptedRefresh,
+              oauth_state: null,
+            }).eq("id", connector.id);
+          } else if (
+            connector.service === "google_docs" ||
+            connector.service === "google_sheets" ||
+            connector.service === "google_slides" ||
+            connector.service === "gmail" ||
+            connector.service === "google_calendar"
+          ) {
+            const { exchangeGoogleCode } = await import("@/lib/connectors/google");
+            const { encryptToken } = await import("@/lib/connectors/google-drive");
+            const tokens = await exchangeGoogleCode(code, redirectUri);
+            await serviceSupabase.from("connectors").update({
+              status: "connected",
+              oauth_token_encrypted: await encryptToken(tokens.accessToken),
+              oauth_refresh_token_encrypted: await encryptToken(tokens.refreshToken),
+              oauth_state: null,
+            }).eq("id", connector.id);
+          } else if (
+            connector.service === "onedrive" ||
+            connector.service === "microsoft_word" ||
+            connector.service === "microsoft_excel" ||
+            connector.service === "microsoft_powerpoint" ||
+            connector.service === "microsoft_onenote" ||
+            connector.service === "microsoft_outlook" ||
+            connector.service === "microsoft_teams"
+          ) {
+            const { exchangeMicrosoftCode } = await import("@/lib/connectors/microsoft");
+            const { encryptToken } = await import("@/lib/connectors/google-drive");
+            const tokens = await exchangeMicrosoftCode(connector.service, code, redirectUri);
+            await serviceSupabase.from("connectors").update({
+              status: "connected",
+              oauth_token_encrypted: await encryptToken(tokens.accessToken),
+              oauth_refresh_token_encrypted: await encryptToken(tokens.refreshToken),
               oauth_state: null,
             }).eq("id", connector.id);
           } else if (connector.service === "slack") {
@@ -86,7 +119,6 @@ export const Route = createFileRoute("/api/connectors/callback")({
               oauth_token_encrypted: encryptedAccess,
               oauth_refresh_token_encrypted: await encryptToken(""),
               oauth_state: null,
-              // Store team_id in metadata so webhook handler can filter by workspace
               metadata: { team_id: result.teamId, team_name: result.teamName },
             }).eq("id", connector.id);
           }
