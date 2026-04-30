@@ -14,8 +14,8 @@ export function buildAuthUrl(
   redirectUri: string,
   oauthState: string,
 ): string {
-  const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
-  if (!clientId) throw new Error("GOOGLE_DRIVE_CLIENT_ID not configured");
+  const clientId = process.env.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_DRIVE_CLIENT_ID;
+  if (!clientId) throw new Error("Google OAuth not configured");
 
   const params = new URLSearchParams({
     client_id: clientId,
