@@ -5,6 +5,7 @@ import { ChatComposer, type Attachment } from "@/components/ChatComposer";
 import { MessageList, type DisplayMessage } from "@/components/MessageList";
 import { getConversation } from "@/lib/conversations.functions";
 import { streamChat } from "@/lib/streamChat";
+import { showUpgradeToast } from "@/lib/upgrade-toast";
 import { RateLimitBanner } from "@/components/RateLimitBanner";
 import { ActiveTaskBanner } from "@/components/ActiveTaskBanner";
 import { SpaceNudge } from "@/components/SpaceNudge";
@@ -120,6 +121,12 @@ function ChatPage() {
           );
         },
         onRateLimit: (resetAt) => setRateLimitedUntil(resetAt),
+        onUpgradeRequired: (info) => {
+          sendInFlightRef.current = false;
+          setStreamingId(null);
+          showUpgradeToast(info);
+          setStreamingMessages([]);
+        },
       },
     );
     abortRef.current = controller;
@@ -173,6 +180,12 @@ function ChatPage() {
           sendInFlightRef.current = false;
           setStreamingId(null);
           toast.error(msg);
+          setStreamingMessages([]);
+        },
+        onUpgradeRequired: (info) => {
+          sendInFlightRef.current = false;
+          setStreamingId(null);
+          showUpgradeToast(info);
           setStreamingMessages([]);
         },
       },
