@@ -16,7 +16,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
-  return new Stripe(key, { apiVersion: "2025-09-30.clover" });
+  // Pin to the SDK's default api version (no override) to avoid TS literal mismatch.
+  return new Stripe(key);
 }
 
 function getOrigin(): string {
@@ -35,12 +36,16 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => CheckoutSchema.parse(data))
   .handler(async ({ data, context }) => {
-    const { supabase, userId, claims } = context as {
-      supabase: any;
-      userId: string;
-      claims: { email?: string };
-    };
+    const { supabase, userId } = context as { supabase: any; userId: string };
     const stripe = getStripe();
+    // Best-effort fetch user email for Stripe customer creation.
+    let userEmail: string | undefined;
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      userEmail = u.user?.email ?? undefined;
+    } catch {
+      /* ignore */
+    }
 
     const priceId = process.env.STRIPE_PRICE_BASIC;
     if (!priceId) {
@@ -61,7 +66,7 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
 
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: claims?.email,
+        email: userEmail,
         metadata: { supabase_user_id: userId },
       });
       customerId = customer.id;
