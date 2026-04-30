@@ -154,6 +154,17 @@ export const Route = createFileRoute("/api/chat/stream")({
 
         // ---- Rate limit ----
         let memoryEnabled = true;
+        // Credit / plan state — populated below for both new turns and regenerate.
+        let userPlan = "free";
+        let planFeatures: PlanFeatures = {
+          models: ["gpt-4o-mini", "claude-haiku-4-5-20251001"],
+          memory: false,
+          documents: false,
+          max_context_tokens: 10_000,
+          advanced_routing: false,
+        };
+        let creditBalance = 0;
+
         if (!body.regenerate) {
           const { data: userRow } = await supabase
             .from("users")
@@ -173,6 +184,34 @@ export const Route = createFileRoute("/api/chat/stream")({
                 remaining: 0,
               }),
               { status: 429, headers: { "Content-Type": "application/json" } },
+            );
+          }
+        }
+
+        // Load credit state (plan + balance + features) — used for plan enforcement
+        // before routing, and for the upfront balance gate.
+        {
+          const { data: stateRaw } = await supabase
+            .rpc("credits_get_state", { p_user_id: userId })
+            .maybeSingle();
+          const state = stateRaw as
+            | { plan: string; balance: number; features: PlanFeatures }
+            | null;
+          if (state) {
+            userPlan = state.plan;
+            creditBalance = state.balance;
+            planFeatures = state.features;
+          }
+          if (creditBalance <= 0) {
+            return new Response(
+              JSON.stringify({
+                error: "out_of_credits",
+                message:
+                  "You're out of credits this month. Upgrade to Basic for 5,000 credits, or wait for your monthly reset.",
+                plan: userPlan,
+                upgrade_url: "/billing",
+              }),
+              { status: 402, headers: { "Content-Type": "application/json" } },
             );
           }
         }
