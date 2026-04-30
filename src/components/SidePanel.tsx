@@ -99,6 +99,7 @@ import {
   disconnectConnector,
   getConnectorAvailability,
 } from "@/lib/connectors.functions";
+import { verifyGoogleConnection } from "@/lib/connectors/verify.functions";
 import { supabase } from "@/integrations/supabase/client";
 import type { UserKnowledgeModel } from "@/lib/knowledge/ukm";
 import { MessageContent } from "@/components/MessageContent";
@@ -1537,6 +1538,19 @@ function DatasourcesPanel() {
     onError: () => toast.error("Couldn't disconnect."),
   });
 
+  const verifyMut = useMutation({
+    mutationFn: (service: string) => verifyGoogleConnection({ data: { service } }),
+    onSuccess: (res) => {
+      const r = res as { ok: boolean; message: string; account?: { email?: string | null } };
+      if (r.ok) {
+        toast.success(r.account?.email ? `${r.message} (${r.account.email})` : r.message);
+      } else {
+        toast.error(r.message);
+      }
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Verification failed."),
+  });
+
   const [pendingDeleteFileId, setPendingDeleteFileId] = useState<string | null>(null);
   const [pendingDisconnectId, setPendingDisconnectId] = useState<string | null>(null);
 
@@ -1770,6 +1784,18 @@ function DatasourcesPanel() {
                           {c.last_synced_at ? ` · synced ${relativeTime(c.last_synced_at)}` : ""}
                         </p>
                         <div className="mt-2 flex gap-1.5">
+                          {c.service.startsWith("google") || c.service === "gmail" ? (
+                            <button
+                              onClick={() => verifyMut.mutate(c.service)}
+                              disabled={verifyMut.isPending}
+                              className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                            >
+                              {verifyMut.isPending && verifyMut.variables === c.service ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : null}
+                              Verify
+                            </button>
+                          ) : null}
                           <button
                             onClick={() => setPendingDisconnectId(c.id)}
                             disabled={disconnectMut.isPending}
