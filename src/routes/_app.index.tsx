@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Leaf, ArrowRight, Sun, Mail, Lightbulb, ListChecks, BookOpen, MessageCircle } from "lucide-react";
+import { Leaf, ArrowRight, Sun, Mail, Lightbulb, ListChecks, BookOpen, MessageCircle, Brain, Compass } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ChatComposer, type Attachment } from "@/components/ChatComposer";
 import { RateLimitBanner } from "@/components/RateLimitBanner";
