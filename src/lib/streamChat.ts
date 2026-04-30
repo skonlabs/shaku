@@ -99,6 +99,33 @@ export async function streamChat(
           return;
         }
 
+        if (res.status === 402) {
+          const data = await res.json().catch(() => ({}));
+          const reason: "out_of_credits" | "plan_required" =
+            data.error === "out_of_credits" ? "out_of_credits" : "plan_required";
+          const blocked: UpgradeRequiredInfo["blocked"] =
+            reason === "out_of_credits"
+              ? "credits"
+              : /memory/i.test(data.message ?? "")
+                ? "memory"
+                : /document/i.test(data.message ?? "")
+                  ? "documents"
+                  : "model";
+          cb.onUpgradeRequired?.({
+            reason,
+            message:
+              data.message ??
+              "This needs the Basic plan. Upgrade to keep going with Cortex's full toolkit.",
+            blocked,
+            currentPlan: data.plan,
+            requiredPlan: data.required_plan ?? "basic",
+            upgradeUrl: data.upgrade_url ?? "/billing",
+          });
+          // Also surface a short error so the composer doesn't hang silently.
+          cb.onError(data.message ?? "Upgrade required.");
+          return;
+        }
+
         if (!res.ok || !res.body) {
           const err = await res.json().catch(() => ({ error: "I ran into a problem." }));
           throw new Error(err.error ?? "I ran into a problem.");
