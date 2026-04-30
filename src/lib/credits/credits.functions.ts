@@ -196,16 +196,17 @@ export const getCreditLedger = createServerFn({ method: "POST" })
     const { data: rows, error } = await q;
     if (error) throw error;
 
+    type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
     type LedgerRow = {
       id: string;
       delta: number;
       reason: string;
       balance_after: number;
       request_id: string | null;
-      metadata: unknown;
+      metadata: JsonValue;
       created_at: string;
     };
-    const list = (rows ?? []) as LedgerRow[];
+    const list = (rows ?? []) as unknown as LedgerRow[];
     return {
       entries: list,
       nextCursor: list.length === data.limit ? list[list.length - 1].created_at : null,
