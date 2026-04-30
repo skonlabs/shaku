@@ -131,12 +131,24 @@ function NewChatPage() {
             {greeting}
           </h1>
 
-          {/* Differentiator tagline — what makes Cortex different from ChatGPT & co. */}
-          <p className="animate-fade-rise mt-5 max-w-xl text-balance text-base leading-relaxed text-muted-foreground sm:text-[17px] [animation-delay:120ms]">
-            The AI that{" "}
-            <span className="font-medium text-foreground">remembers everything</span>{" "}
-            and{" "}
-            <span className="font-medium text-foreground">understands your work</span>.
+          {/* Differentiator — two trait chips that tell people why Cortex isn't just another chatbot */}
+          <div className="animate-fade-rise mt-6 flex flex-wrap items-center justify-center gap-2 [animation-delay:120ms]">
+            <span className="group inline-flex items-center gap-2 rounded-full border border-primary/20 bg-card/80 py-1.5 pl-2 pr-3.5 text-[13px] font-medium text-foreground shadow-sm backdrop-blur transition-all hover:border-primary/40 hover:shadow-md">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[oklch(0.62_0.08_145)] to-[oklch(0.46_0.075_150)] text-primary-foreground">
+                <Brain className="h-3.5 w-3.5" />
+              </span>
+              Remembers everything
+            </span>
+            <span aria-hidden className="text-muted-foreground/50">·</span>
+            <span className="group inline-flex items-center gap-2 rounded-full border border-accent/30 bg-card/80 py-1.5 pl-2 pr-3.5 text-[13px] font-medium text-foreground shadow-sm backdrop-blur transition-all hover:border-accent/60 hover:shadow-md">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[oklch(0.82_0.11_80)] to-[oklch(0.70_0.12_70)] text-accent-foreground">
+                <Compass className="h-3.5 w-3.5" />
+              </span>
+              Understands your work
+            </span>
+          </div>
+          <p className="animate-fade-rise mt-5 max-w-md text-[15px] leading-relaxed text-muted-foreground [animation-delay:200ms]">
+            Not just another chatbot — Cortex grows with you, every conversation.
           </p>
 
           {lastConvo && (
