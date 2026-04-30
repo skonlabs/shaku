@@ -1520,7 +1520,7 @@ function DatasourcesPanel() {
       initiateConnectorAuth({
         data: {
           service,
-          redirect_uri: `${window.location.origin}/api/connectors/callback?service=${service}`,
+          redirect_uri: `${window.location.origin}/api/connectors/callback`,
         },
       }),
     onSuccess: (res) => {
@@ -1982,7 +1982,7 @@ function ConnectorsPanel() {
       initiateConnectorAuth({
         data: {
           service,
-          redirect_uri: `${window.location.origin}/api/connectors/callback?service=${service}`,
+          redirect_uri: `${window.location.origin}/api/connectors/callback`,
         },
       }),
     onSuccess: (res) => {
