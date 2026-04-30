@@ -9,6 +9,7 @@ import {
   Sparkles,
   Plus,
   Leaf,
+  Receipt,
 } from "lucide-react";
 import { usePanel, type PanelId } from "@/lib/ui-context";
 import { cn } from "@/lib/utils";
@@ -102,6 +103,24 @@ export function AppSidebar() {
         </div>
 
         <div className="flex flex-col items-center gap-1.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                to="/billing"
+                aria-label="Billing & credits"
+                className={cn(
+                  "relative flex h-11 w-11 items-center justify-center rounded-2xl text-sidebar-foreground/65 transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  location.pathname === "/billing" && "bg-sidebar-accent text-primary",
+                )}
+              >
+                {location.pathname === "/billing" && (
+                  <span className="absolute -left-[14px] top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
+                )}
+                <Receipt className="h-[19px] w-[19px]" />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="right">Billing &amp; credits</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
