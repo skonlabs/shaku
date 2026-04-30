@@ -474,6 +474,51 @@ export const Route = createFileRoute("/api/chat/stream")({
         });
         const selectedModel = routingDecision.selected;
 
+        // ---- Plan enforcement: model + feature access -----------------------
+        // Spec: "Reject with upgrade prompt" when a Free user routes to a
+        // Basic-only model or hits a Basic-only feature (memory/documents).
+        if (!planAllowsModel(planFeatures, selectedModel.id)) {
+          return new Response(
+            JSON.stringify({
+              error: "plan_required",
+              message:
+                "This question is best answered by our higher-quality model, which is available on the Basic plan.",
+              plan: userPlan,
+              required_plan: "basic",
+              upgrade_url: "/billing",
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        const usingMemory = assembled.memoriesUsed.length > 0;
+        const usingDocuments = finalChunks.length > 0;
+        if (usingMemory && !planAllowsFeature(planFeatures, "memory")) {
+          return new Response(
+            JSON.stringify({
+              error: "plan_required",
+              message:
+                "Memory is a Basic-plan feature. Upgrade to let Cortex remember context across conversations.",
+              plan: userPlan,
+              required_plan: "basic",
+              upgrade_url: "/billing",
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (usingDocuments && !planAllowsFeature(planFeatures, "documents")) {
+          return new Response(
+            JSON.stringify({
+              error: "plan_required",
+              message:
+                "Document Q&A is a Basic-plan feature. Upgrade to chat with your uploaded documents.",
+              plan: userPlan,
+              required_plan: "basic",
+              upgrade_url: "/billing",
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+
         // ---- Web grounding decision ----
         // Detect entity / recency / proper-noun questions and enable the
         // provider's native web-search tool for the turn. The model itself
