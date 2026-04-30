@@ -99,6 +99,7 @@ import {
   disconnectConnector,
   getConnectorAvailability,
 } from "@/lib/connectors.functions";
+import { verifyGoogleConnection } from "@/lib/connectors/verify.functions";
 import { supabase } from "@/integrations/supabase/client";
 import type { UserKnowledgeModel } from "@/lib/knowledge/ukm";
 import { MessageContent } from "@/components/MessageContent";
