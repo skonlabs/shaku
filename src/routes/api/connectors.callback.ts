@@ -15,7 +15,6 @@ export const Route = createFileRoute("/api/connectors/callback")({
         const code = url.searchParams.get("code");
         const state = url.searchParams.get("state");
         const error = url.searchParams.get("error");
-        const service = url.searchParams.get("service");
 
         // OAuth provider returned an error
         if (error) {
@@ -24,12 +23,6 @@ export const Route = createFileRoute("/api/connectors/callback")({
 
         if (!code || !state) {
           return redirect("/?connector_error=missing_params");
-        }
-
-        // Validate service param presence — it must be in the query string
-        if (!service) {
-          console.warn("[connectors.callback] Missing service param in callback URL");
-          return redirect("/?error=oauth_missing_service");
         }
 
         // Use service-role client for the callback: the oauth_state UUID acts as the CSRF
@@ -54,14 +47,8 @@ export const Route = createFileRoute("/api/connectors/callback")({
             return redirect("/?connector_error=invalid_state");
           }
 
-          // Validate that the service in the URL matches the service stored in the DB
-          if (connector.service !== service) {
-            console.warn(`[connectors.callback] service mismatch: URL="${service}" DB="${connector.service}"`);
-            return redirect("/?error=oauth_state_mismatch");
-          }
-
           const userId = connector.user_id;
-          const redirectUri = `${url.origin}/api/connectors/callback?service=${connector.service}`;
+          const redirectUri = `${url.origin}/api/connectors/callback`;
 
           if (connector.service === "google_drive") {
             const { exchangeCodeForTokens, encryptToken } = await import("@/lib/connectors/google-drive");
