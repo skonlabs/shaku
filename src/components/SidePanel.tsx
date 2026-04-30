@@ -1819,13 +1819,15 @@ function DatasourcesPanel() {
                   (s) => !connectedStorage.some((c) => c.service === s.service),
                 ).map((s) => {
                   const isConfigured = availability[s.service] ?? false;
-                  const canConnect = s.implemented && isConfigured;
+                  const isPremiumOnly = s.service !== "google_drive";
+                  const canConnect = s.implemented && isConfigured && !isPremiumOnly;
                   return (
                     <div
                       key={s.service}
                       className={cn(
                         "rounded-lg border border-border bg-background p-3",
                         !canConnect && "opacity-60",
+                        isPremiumOnly && "grayscale",
                       )}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1833,7 +1835,11 @@ function DatasourcesPanel() {
                           <p className="text-sm font-medium">{s.name}</p>
                           <p className="mt-0.5 text-[11px] text-muted-foreground">{s.desc}</p>
                         </div>
-                        {canConnect ? (
+                        {isPremiumOnly ? (
+                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            Premium
+                          </span>
+                        ) : canConnect ? (
                           <button
                             onClick={() => connectMut.mutate(s.service)}
                             disabled={connectMut.isPending}
