@@ -1538,6 +1538,19 @@ function DatasourcesPanel() {
     onError: () => toast.error("Couldn't disconnect."),
   });
 
+  const verifyMut = useMutation({
+    mutationFn: (service: string) => verifyGoogleConnection({ data: { service } }),
+    onSuccess: (res) => {
+      const r = res as { ok: boolean; message: string; account?: { email?: string | null } };
+      if (r.ok) {
+        toast.success(r.account?.email ? `${r.message} (${r.account.email})` : r.message);
+      } else {
+        toast.error(r.message);
+      }
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Verification failed."),
+  });
+
   const [pendingDeleteFileId, setPendingDeleteFileId] = useState<string | null>(null);
   const [pendingDisconnectId, setPendingDisconnectId] = useState<string | null>(null);
 
