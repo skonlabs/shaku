@@ -5,6 +5,18 @@ export interface CitationSource {
   url: string;
 }
 
+export interface UpgradeRequiredInfo {
+  /** out_of_credits | plan_required */
+  reason: "out_of_credits" | "plan_required";
+  /** What's blocked, in friendly copy. */
+  message: string;
+  /** What feature/model triggered the block, if any. */
+  blocked?: "model" | "memory" | "documents" | "credits";
+  currentPlan?: string;
+  requiredPlan?: string;
+  upgradeUrl: string;
+}
+
 export interface StreamCallbacks {
   onUserMessage: (id: string, createdAt: string) => void;
   onDelta: (text: string) => void;
@@ -20,6 +32,8 @@ export interface StreamCallbacks {
   onInterrupted?: () => void;
   onError: (message: string) => void;
   onRateLimit?: (resetAt: string) => void;
+  /** Called when the server returns 402 — show an upgrade prompt with a link to /billing. */
+  onUpgradeRequired?: (info: UpgradeRequiredInfo) => void;
 }
 
 export interface StreamRequest {
