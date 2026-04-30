@@ -1784,6 +1784,18 @@ function DatasourcesPanel() {
                           {c.last_synced_at ? ` · synced ${relativeTime(c.last_synced_at)}` : ""}
                         </p>
                         <div className="mt-2 flex gap-1.5">
+                          {c.service.startsWith("google") || c.service === "gmail" ? (
+                            <button
+                              onClick={() => verifyMut.mutate(c.service)}
+                              disabled={verifyMut.isPending}
+                              className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                            >
+                              {verifyMut.isPending && verifyMut.variables === c.service ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : null}
+                              Verify
+                            </button>
+                          ) : null}
                           <button
                             onClick={() => setPendingDisconnectId(c.id)}
                             disabled={disconnectMut.isPending}
