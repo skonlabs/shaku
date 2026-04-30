@@ -32,9 +32,20 @@ export const getCreditState = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    const { data, error } = await supabase
+    const { data: raw, error } = await supabase
       .rpc("credits_get_state", { p_user_id: userId })
       .maybeSingle();
+    const data = raw as
+      | {
+          plan: string;
+          balance: number;
+          monthly_quota: number;
+          last_reset_at: string;
+          features: PlanFeatures;
+          current_period_end: string | null;
+          subscription_status: string | null;
+        }
+      | null;
 
     if (error || !data) {
       // Wallet not provisioned yet — fall back to free defaults rather than crash.
@@ -88,9 +99,10 @@ export const estimateRequestCredits = createServerFn({ method: "POST" })
     });
 
     // Check if user can afford it.
-    const { data: state } = await supabase
+    const { data: stateRaw } = await supabase
       .rpc("credits_get_state", { p_user_id: userId })
       .maybeSingle();
+    const state = stateRaw as { balance: number; features: PlanFeatures } | null;
     const balance: number = state?.balance ?? 0;
     const features: PlanFeatures = state?.features ?? {
       models: [],
@@ -125,7 +137,7 @@ const DeductSchema = z.object({
     "admin_adjust",
   ]),
   requestId: z.string().min(1).max(120).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const deductCredits = createServerFn({ method: "POST" })
@@ -133,7 +145,7 @@ export const deductCredits = createServerFn({ method: "POST" })
   .inputValidator((data) => DeductSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { data: row, error } = await supabase
+    const { data: rawRow, error } = await supabase
       .rpc("credits_deduct", {
         p_user_id: userId,
         p_amount: data.amount,
@@ -142,6 +154,9 @@ export const deductCredits = createServerFn({ method: "POST" })
         p_metadata: data.metadata ?? {},
       })
       .maybeSingle();
+    const row = rawRow as
+      | { ledger_id: string; balance_after: number; charged: number }
+      | null;
 
     if (error) {
       if (error.message?.includes("insufficient_credits")) {
@@ -151,9 +166,9 @@ export const deductCredits = createServerFn({ method: "POST" })
     }
     return {
       ok: true as const,
-      ledgerId: row?.ledger_id as string,
-      balanceAfter: row?.balance_after as number,
-      charged: row?.charged as number,
+      ledgerId: row?.ledger_id ?? "",
+      balanceAfter: row?.balance_after ?? 0,
+      charged: row?.charged ?? data.amount,
     };
   });
 
@@ -181,17 +196,19 @@ export const getCreditLedger = createServerFn({ method: "POST" })
     const { data: rows, error } = await q;
     if (error) throw error;
 
+    type LedgerRow = {
+      id: string;
+      delta: number;
+      reason: string;
+      balance_after: number;
+      request_id: string | null;
+      metadata: unknown;
+      created_at: string;
+    };
+    const list = (rows ?? []) as LedgerRow[];
     return {
-      entries: (rows ?? []) as Array<{
-        id: string;
-        delta: number;
-        reason: string;
-        balance_after: number;
-        request_id: string | null;
-        metadata: Record<string, unknown>;
-        created_at: string;
-      }>,
-      nextCursor: rows && rows.length === data.limit ? rows[rows.length - 1].created_at : null,
+      entries: list,
+      nextCursor: list.length === data.limit ? list[list.length - 1].created_at : null,
     };
   });
 
