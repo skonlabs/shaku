@@ -1017,6 +1017,43 @@ export const Route = createFileRoute("/api/chat/stream")({
               );
             }
 
+            // ---- Charge credits (atomic, idempotent on assistant message id) ----
+            // Uses observed token counts → calculateCredits → credits_deduct RPC.
+            // If the stream errored before any output, we skip the charge entirely.
+            // The DB function is idempotent on (user_id, request_id) so retries
+            // never double-charge.
+            if (assistantId && (totalInputTokens > 0 || totalOutputTokens > 0) && !streamError) {
+              const breakdown = calculateCredits({
+                modelId: activeModel.id,
+                inputTokens: totalInputTokens,
+                outputTokens: totalOutputTokens,
+                memoryRead: assembled.memoriesUsed.length > 0,
+                documentRead: finalChunks.length > 0,
+              });
+              runAfterResponse(
+                (async () => {
+                  const { error: creditErr } = await supabase.rpc("credits_deduct", {
+                    p_user_id: userId,
+                    p_amount: breakdown.total,
+                    p_reason: "chat",
+                    p_request_id: assistantId,
+                    p_metadata: {
+                      model: activeModel.id,
+                      tokens_in: Math.round(totalInputTokens),
+                      tokens_out: Math.round(totalOutputTokens),
+                      cost_usd: costUsd,
+                      breakdown: {
+                        multiplier: breakdown.model.multiplier,
+                        contextMult: breakdown.contextMult,
+                        addOns: breakdown.addOns,
+                      },
+                    },
+                  });
+                  if (creditErr) console.error("[credits_deduct] failed:", creditErr);
+                })(),
+              );
+            }
+
             // Insert context log for observability (fire-and-forget)
             const UUID_RE =
               /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
