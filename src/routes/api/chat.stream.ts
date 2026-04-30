@@ -42,6 +42,7 @@ import { InputCleaner } from "@/lib/token-optimization/input-cleaner";
 import { TASK_OUTPUT_TOKENS } from "@/lib/token-optimization/budget-manager";
 import type { TaskType } from "@/lib/token-optimization/types";
 import type { ModelConfig } from "@/lib/llm/types";
+import { calculateCredits, planAllowsModel, planAllowsFeature, type PlanFeatures } from "@/lib/credits/engine";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
 const SUPABASE_PUBLISHABLE_KEY =
@@ -153,6 +154,17 @@ export const Route = createFileRoute("/api/chat/stream")({
 
         // ---- Rate limit ----
         let memoryEnabled = true;
+        // Credit / plan state — populated below for both new turns and regenerate.
+        let userPlan = "free";
+        let planFeatures: PlanFeatures = {
+          models: ["gpt-4o-mini", "claude-haiku-4-5-20251001"],
+          memory: false,
+          documents: false,
+          max_context_tokens: 10_000,
+          advanced_routing: false,
+        };
+        let creditBalance = 0;
+
         if (!body.regenerate) {
           const { data: userRow } = await supabase
             .from("users")
@@ -172,6 +184,34 @@ export const Route = createFileRoute("/api/chat/stream")({
                 remaining: 0,
               }),
               { status: 429, headers: { "Content-Type": "application/json" } },
+            );
+          }
+        }
+
+        // Load credit state (plan + balance + features) — used for plan enforcement
+        // before routing, and for the upfront balance gate.
+        {
+          const { data: stateRaw } = await supabase
+            .rpc("credits_get_state", { p_user_id: userId })
+            .maybeSingle();
+          const state = stateRaw as
+            | { plan: string; balance: number; features: PlanFeatures }
+            | null;
+          if (state) {
+            userPlan = state.plan;
+            creditBalance = state.balance;
+            planFeatures = state.features;
+          }
+          if (creditBalance <= 0) {
+            return new Response(
+              JSON.stringify({
+                error: "out_of_credits",
+                message:
+                  "You're out of credits this month. Upgrade to Basic for 5,000 credits, or wait for your monthly reset.",
+                plan: userPlan,
+                upgrade_url: "/billing",
+              }),
+              { status: 402, headers: { "Content-Type": "application/json" } },
             );
           }
         }
@@ -433,6 +473,51 @@ export const Route = createFileRoute("/api/chat/stream")({
           taskType: routingTaskType,
         });
         const selectedModel = routingDecision.selected;
+
+        // ---- Plan enforcement: model + feature access -----------------------
+        // Spec: "Reject with upgrade prompt" when a Free user routes to a
+        // Basic-only model or hits a Basic-only feature (memory/documents).
+        if (!planAllowsModel(planFeatures, selectedModel.id)) {
+          return new Response(
+            JSON.stringify({
+              error: "plan_required",
+              message:
+                "This question is best answered by our higher-quality model, which is available on the Basic plan.",
+              plan: userPlan,
+              required_plan: "basic",
+              upgrade_url: "/billing",
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        const usingMemory = assembled.memoriesUsed.length > 0;
+        const usingDocuments = finalChunks.length > 0;
+        if (usingMemory && !planAllowsFeature(planFeatures, "memory")) {
+          return new Response(
+            JSON.stringify({
+              error: "plan_required",
+              message:
+                "Memory is a Basic-plan feature. Upgrade to let Cortex remember context across conversations.",
+              plan: userPlan,
+              required_plan: "basic",
+              upgrade_url: "/billing",
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (usingDocuments && !planAllowsFeature(planFeatures, "documents")) {
+          return new Response(
+            JSON.stringify({
+              error: "plan_required",
+              message:
+                "Document Q&A is a Basic-plan feature. Upgrade to chat with your uploaded documents.",
+              plan: userPlan,
+              required_plan: "basic",
+              upgrade_url: "/billing",
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
 
         // ---- Web grounding decision ----
         // Detect entity / recency / proper-noun questions and enable the
@@ -928,6 +1013,43 @@ export const Route = createFileRoute("/api/chat/stream")({
                       conversation_id: convo.id,
                     });
                   if (usageErr) console.error("[usage_events] insert failed:", usageErr);
+                })(),
+              );
+            }
+
+            // ---- Charge credits (atomic, idempotent on assistant message id) ----
+            // Uses observed token counts → calculateCredits → credits_deduct RPC.
+            // If the stream errored before any output, we skip the charge entirely.
+            // The DB function is idempotent on (user_id, request_id) so retries
+            // never double-charge.
+            if (assistantId && (totalInputTokens > 0 || totalOutputTokens > 0) && !streamError) {
+              const breakdown = calculateCredits({
+                modelId: activeModel.id,
+                inputTokens: totalInputTokens,
+                outputTokens: totalOutputTokens,
+                memoryRead: assembled.memoriesUsed.length > 0,
+                documentRead: finalChunks.length > 0,
+              });
+              runAfterResponse(
+                (async () => {
+                  const { error: creditErr } = await supabase.rpc("credits_deduct", {
+                    p_user_id: userId,
+                    p_amount: breakdown.total,
+                    p_reason: "chat",
+                    p_request_id: assistantId,
+                    p_metadata: {
+                      model: activeModel.id,
+                      tokens_in: Math.round(totalInputTokens),
+                      tokens_out: Math.round(totalOutputTokens),
+                      cost_usd: costUsd,
+                      breakdown: {
+                        multiplier: breakdown.model.multiplier,
+                        contextMult: breakdown.contextMult,
+                        addOns: breakdown.addOns,
+                      },
+                    },
+                  });
+                  if (creditErr) console.error("[credits_deduct] failed:", creditErr);
                 })(),
               );
             }
