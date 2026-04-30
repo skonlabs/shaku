@@ -2014,6 +2014,13 @@ function ConnectorsPanel() {
   return (
     <ScrollArea className="h-full">
       <div className="space-y-5 px-4 py-3">
+        <div className="rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300">
+          <p className="font-medium">Connectors are a premium feature</p>
+          <p className="mt-0.5 text-amber-700 dark:text-amber-400/90">
+            Upgrade to a premium plan to connect your apps and bring their data into Cortex.
+          </p>
+        </div>
+
         {isLoading && <p className="py-4 text-center text-xs text-muted-foreground">Loading…</p>}
 
         {connected.length > 0 && (
