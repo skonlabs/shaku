@@ -113,14 +113,13 @@ async function handleStripeEvent(
       if (isActive) {
         await grantPeriod(supabase, userId, "basic", sub, customerId);
       } else {
-        // past_due / unpaid / incomplete — sync status only; don't strip credits.
         await supabase.rpc("credits_set_plan", {
           p_user_id: userId,
           p_plan: "basic",
           p_stripe_customer_id: customerId,
           p_stripe_subscription_id: sub.id,
           p_subscription_status: sub.status,
-          p_current_period_end: secondsToIso(sub.current_period_end),
+          p_current_period_end: secondsToIso(getPeriodEnd(sub)),
         });
       }
       return;
@@ -128,8 +127,7 @@ async function handleStripeEvent(
 
     case "invoice.paid": {
       const inv = event.data.object as Stripe.Invoice;
-      const subscriptionId =
-        typeof inv.subscription === "string" ? inv.subscription : inv.subscription?.id;
+      const subscriptionId = getInvoiceSubscriptionId(inv);
       if (!subscriptionId) return;
       const sub = await stripe.subscriptions.retrieve(subscriptionId);
       const userId = await resolveUserId(supabase, sub);
@@ -174,8 +172,8 @@ async function grantPeriod(
   sub: Stripe.Subscription,
   customerId: string | null,
 ): Promise<void> {
-  const periodStart = secondsToIso(sub.current_period_start);
-  const periodEnd = secondsToIso(sub.current_period_end);
+  const periodStart = secondsToIso(getPeriodStart(sub));
+  const periodEnd = secondsToIso(getPeriodEnd(sub));
   if (!periodStart || !periodEnd) {
     console.warn("[webhooks.stripe] subscription missing period bounds:", sub.id);
     return;
