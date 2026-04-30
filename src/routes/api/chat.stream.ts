@@ -42,6 +42,7 @@ import { InputCleaner } from "@/lib/token-optimization/input-cleaner";
 import { TASK_OUTPUT_TOKENS } from "@/lib/token-optimization/budget-manager";
 import type { TaskType } from "@/lib/token-optimization/types";
 import type { ModelConfig } from "@/lib/llm/types";
+import { calculateCredits, planAllowsModel, planAllowsFeature, type PlanFeatures } from "@/lib/credits/engine";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
 const SUPABASE_PUBLISHABLE_KEY =
