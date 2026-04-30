@@ -34,9 +34,9 @@ export async function exchangeCodeForTokens(
   code: string,
   redirectUri: string,
 ): Promise<{ accessToken: string; refreshToken: string; expiresAt: number }> {
-  const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-  if (!clientId || !clientSecret) throw new Error("Google Drive not configured");
+  const clientId = process.env.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_DRIVE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error("Google OAuth not configured");
 
   const res = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",
