@@ -132,34 +132,12 @@ function NewChatPage() {
           </h1>
 
           {/* Differentiator tagline — what makes Cortex different from ChatGPT & co. */}
-          <div className="animate-fade-rise mt-6 [animation-delay:100ms]">
-            <p className="font-display mx-auto max-w-2xl text-balance text-xl font-medium leading-snug sm:text-2xl">
-              The AI that{" "}
-              <span className="relative inline-block">
-                <span className="relative z-10 bg-gradient-to-r from-[oklch(0.46_0.075_150)] to-[oklch(0.62_0.10_140)] bg-clip-text text-transparent">
-                  remembers everything
-                </span>
-                <span
-                  aria-hidden
-                  className="absolute inset-x-0 bottom-0.5 -z-0 h-2.5 rounded-sm bg-[oklch(0.78_0.105_80/0.45)]"
-                />
-              </span>{" "}
-              and{" "}
-              <span className="relative inline-block">
-                <span className="relative z-10 bg-gradient-to-r from-[oklch(0.46_0.075_150)] to-[oklch(0.62_0.10_140)] bg-clip-text text-transparent">
-                  understands your work
-                </span>
-                <span
-                  aria-hidden
-                  className="absolute inset-x-0 bottom-0.5 -z-0 h-2.5 rounded-sm bg-[oklch(0.78_0.105_80/0.45)]"
-                />
-              </span>
-              .
-            </p>
-            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-              Unlike ChatGPT, I keep context across every conversation — so I get sharper the more we talk.
-            </p>
-          </div>
+          <p className="animate-fade-rise mt-5 max-w-xl text-balance text-base leading-relaxed text-muted-foreground sm:text-[17px] [animation-delay:120ms]">
+            The AI that{" "}
+            <span className="font-medium text-foreground">remembers everything</span>{" "}
+            and{" "}
+            <span className="font-medium text-foreground">understands your work</span>.
+          </p>
 
           {lastConvo && (
             <button
