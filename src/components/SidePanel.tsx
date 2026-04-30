@@ -2014,6 +2014,13 @@ function ConnectorsPanel() {
   return (
     <ScrollArea className="h-full">
       <div className="space-y-5 px-4 py-3">
+        <div className="rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300">
+          <p className="font-medium">Connectors are a premium feature</p>
+          <p className="mt-0.5 text-amber-700 dark:text-amber-400/90">
+            Upgrade to a premium plan to connect your apps and bring their data into Cortex.
+          </p>
+        </div>
+
         {isLoading && <p className="py-4 text-center text-xs text-muted-foreground">Loading…</p>}
 
         {connected.length > 0 && (
@@ -2091,13 +2098,14 @@ function ConnectorsPanel() {
                   const meta = CONNECTOR_META[service];
                   if (!meta) return null;
                   const isConfigured = availability[service] ?? false;
-                  const canConnect = meta.implemented && isConfigured;
+                  // Premium-gated: connectors are disabled for all users.
+                  const canConnect = false;
+                  void isConfigured;
                   return (
                     <div
                       key={service}
                       className={cn(
-                        "rounded-lg border border-border bg-background p-3",
-                        !canConnect && "opacity-60",
+                        "rounded-lg border border-border bg-background p-3 opacity-50 grayscale",
                       )}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -2105,26 +2113,9 @@ function ConnectorsPanel() {
                           <p className="text-sm font-medium">{meta.name}</p>
                           <p className="mt-0.5 text-[11px] text-muted-foreground">{meta.desc}</p>
                         </div>
-                        {canConnect ? (
-                          <button
-                            onClick={() => connectMut.mutate(service)}
-                            disabled={connectMut.isPending}
-                            className="flex shrink-0 items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                          >
-                            {connectMut.isPending ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <ExternalLink className="h-3 w-3" />
-                            )}
-                            Connect
-                          </button>
-                        ) : meta.implemented && !isConfigured ? (
-                          <span className="shrink-0 rounded border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">
-                            Config needed
-                          </span>
-                        ) : (
+                        {canConnect ? null : (
                           <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            Soon
+                            Premium
                           </span>
                         )}
                       </div>
