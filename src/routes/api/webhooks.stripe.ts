@@ -211,6 +211,29 @@ function secondsToIso(s: number | null | undefined): string | null {
   return new Date(s * 1000).toISOString();
 }
 
+// Stripe SDK v18+ moved current_period_* off Subscription onto subscription items
+// in some types, but Stripe still sends them at the top level on the wire. Read
+// from either location safely.
+function getPeriodStart(sub: Stripe.Subscription): number | null {
+  const top = (sub as unknown as { current_period_start?: number }).current_period_start;
+  if (typeof top === "number") return top;
+  const item = sub.items?.data?.[0] as unknown as { current_period_start?: number } | undefined;
+  return typeof item?.current_period_start === "number" ? item.current_period_start : null;
+}
+function getPeriodEnd(sub: Stripe.Subscription): number | null {
+  const top = (sub as unknown as { current_period_end?: number }).current_period_end;
+  if (typeof top === "number") return top;
+  const item = sub.items?.data?.[0] as unknown as { current_period_end?: number } | undefined;
+  return typeof item?.current_period_end === "number" ? item.current_period_end : null;
+}
+// Stripe SDK v22 dropped `Invoice.subscription`. Read it via cast — the field is
+// still on the wire for subscription invoices.
+function getInvoiceSubscriptionId(inv: Stripe.Invoice): string | null {
+  const raw = (inv as unknown as { subscription?: string | { id: string } | null }).subscription;
+  if (!raw) return null;
+  return typeof raw === "string" ? raw : raw.id;
+}
+
 // Stripe signature verification using Web Crypto (no Node.js crypto needed)
 async function verifyStripeSignature(
   body: string,
