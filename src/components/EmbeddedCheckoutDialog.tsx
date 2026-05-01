@@ -64,13 +64,14 @@ export function EmbeddedCheckoutDialog({
           Secure checkout powered by Stripe. Your card details are never seen or stored by us.
         </DialogDescription>
 
-        {/* Trust-forward header — leads with Stripe + security */}
+        {/* Trust-forward header — leads with Stripe logo + security */}
         <div className="border-b border-border/50 bg-gradient-to-b from-muted/40 to-background px-6 pt-6 pb-5">
           <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1">
-              <h2 className="font-display text-lg font-semibold tracking-tight text-foreground">
-                Secure checkout by Stripe
-              </h2>
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 text-foreground">
+                <span className="text-xs font-medium text-muted-foreground">Secure checkout by</span>
+                <StripeWordmark className="h-5 w-auto text-foreground" />
+              </div>
               <p className="text-xs leading-relaxed text-muted-foreground">
                 Payments are processed by Stripe, a PCI-DSS Level 1 certified
                 provider. Your card details are encrypted end-to-end — we never
