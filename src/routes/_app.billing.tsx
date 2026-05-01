@@ -22,7 +22,7 @@ import {
   getCreditSummary,
   listPlans,
 } from "@/lib/credits/credits.functions";
-import { createCheckoutSession, createBillingPortalSession, syncCheckoutSession } from "@/lib/credits/billing.functions";
+import { createCheckoutSession, createBillingPortalSession, syncCheckoutSession, resetMyPlanToFree } from "@/lib/credits/billing.functions";
 import { EmbeddedCheckoutDialog } from "@/components/EmbeddedCheckoutDialog";
 
 const SearchSchema = z.object({
@@ -99,6 +99,20 @@ function BillingPage() {
       else toast.error(res.error);
     },
     onError: (e: Error) => toast.error(e.message ?? "Couldn't open billing portal."),
+  });
+  const resetMut = useMutation({
+    mutationFn: () => resetMyPlanToFree(),
+    onSuccess: (res) => {
+      if (res.ok) {
+        toast.success("Switched back to Free plan.");
+        void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
+        void queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
+        void queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
+      } else {
+        toast.error(res.error ?? "Couldn't switch to Free.");
+      }
+    },
+    onError: (e: Error) => toast.error(e.message ?? "Couldn't switch to Free."),
   });
 
   // Toast on return from Stripe
@@ -303,6 +317,23 @@ function BillingPage() {
                   <CreditCard className="mr-2 h-4 w-4" />
                 )}
                 Manage subscription
+              </Button>
+            )}
+            {!isFree && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  if (confirm("Switch back to the Free plan? Your active subscription will be cancelled.")) {
+                    resetMut.mutate();
+                  }
+                }}
+                disabled={resetMut.isPending}
+                className="rounded-full text-muted-foreground hover:text-foreground"
+              >
+                {resetMut.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Switch to Free
               </Button>
             )}
           </div>
