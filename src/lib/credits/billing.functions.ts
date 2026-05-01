@@ -13,6 +13,10 @@ import Stripe from "stripe";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
+export const getStripePublishableKey = createServerFn({ method: "GET" }).handler(async () => {
+  return { publishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? "" };
+});
+
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
@@ -93,21 +97,26 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
     }
 
     const origin = getOrigin();
-    const session = await stripe.checkout.sessions.create({
+    const params = {
       mode: "subscription",
+      ui_mode: "embedded",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/billing?checkout=cancelled`,
+      return_url: `${origin}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       allow_promotion_codes: true,
       client_reference_id: userId,
       subscription_data: {
         metadata: { supabase_user_id: userId, plan: data.plan },
       },
       metadata: { supabase_user_id: userId, plan: data.plan },
-    });
+    } as unknown as Stripe.Checkout.SessionCreateParams;
+    const session = await stripe.checkout.sessions.create(params);
 
-    return { ok: true as const, url: session.url ?? "", sessionId: session.id };
+    return {
+      ok: true as const,
+      clientSecret: session.client_secret ?? "",
+      sessionId: session.id,
+    };
   });
 
 export const createBillingPortalSession = createServerFn({ method: "POST" })

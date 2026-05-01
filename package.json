@@ -43,6 +43,8 @@
     "@radix-ui/react-toggle": "^1.1.10",
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@stripe/react-stripe-js": "^6.3.0",
+    "@stripe/stripe-js": "^9.4.0",
     "@supabase/supabase-js": "^2.104.1",
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/query-core": "^5.100.1",

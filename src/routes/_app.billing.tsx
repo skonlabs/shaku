@@ -23,6 +23,7 @@ import {
   listPlans,
 } from "@/lib/credits/credits.functions";
 import { createCheckoutSession, createBillingPortalSession } from "@/lib/credits/billing.functions";
+import { EmbeddedCheckoutDialog } from "@/components/EmbeddedCheckoutDialog";
 
 const SearchSchema = z.object({
   checkout: z.enum(["success", "cancelled"]).optional(),
@@ -65,7 +66,8 @@ function BillingPage() {
   const search = useSearch({ from: "/_app/billing" });
   const router = useRouter();
   const [billingError, setBillingError] = useState<string | null>(null);
-  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const stateQ = useQuery({
     queryKey: ["credit-state"],
@@ -143,14 +145,12 @@ function BillingPage() {
   const startCheckout = async () => {
     if (checkoutMut.isPending) return;
     setBillingError(null);
-    setCheckoutUrl(null);
 
     try {
       const res = await checkoutMut.mutateAsync();
-      if (res.ok && res.url) {
-        setCheckoutUrl(res.url);
-        const checkoutWindow = window.open(res.url, "_blank", "noopener,noreferrer");
-        checkoutWindow?.focus();
+      if (res.ok && res.clientSecret) {
+        setCheckoutClientSecret(res.clientSecret);
+        setCheckoutOpen(true);
       } else {
         const message = res.ok ? "Couldn't start checkout." : res.error;
         setBillingError(message);
@@ -210,23 +210,14 @@ function BillingPage() {
         </Card>
       )}
 
-      {checkoutUrl && !billingError && !setupRequired && (
-        <Card className="mb-6 border-primary/20 bg-primary/5 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <div>
-              <p className="font-medium text-foreground">Checkout is ready.</p>
-              <p className="mt-1 text-muted-foreground">
-                If Stripe did not open automatically, use the button below.
-              </p>
-            </div>
-            <Button asChild className="rounded-full">
-              <a href={checkoutUrl} target="_blank" rel="noreferrer">
-                Open checkout <ArrowRight className="ml-1.5 h-4 w-4" />
-              </a>
-            </Button>
-          </div>
-        </Card>
-      )}
+      <EmbeddedCheckoutDialog
+        open={checkoutOpen}
+        onOpenChange={(o) => {
+          setCheckoutOpen(o);
+          if (!o) setCheckoutClientSecret(null);
+        }}
+        clientSecret={checkoutClientSecret}
+      />
 
       {/* Plan + balance card */}
       <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-card to-card/60 p-6 shadow-[0_10px_40px_-20px_oklch(0.50_0.07_150/0.35)]">
