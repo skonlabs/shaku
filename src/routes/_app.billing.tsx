@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useSearch, useRouter } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import {
   Sparkles,
@@ -65,6 +65,7 @@ type BillingPlan = {
 function BillingPage() {
   const search = useSearch({ from: "/_app/billing" });
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [billingError, setBillingError] = useState<string | null>(null);
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -163,6 +164,16 @@ function BillingPage() {
     }
   };
 
+  const handleCheckoutComplete = useCallback(() => {
+    setCheckoutOpen(false);
+    setCheckoutClientSecret(null);
+    toast.success("Payment received! Updating your plan…");
+    setPoll(true);
+    void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
+    void queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
+    void queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
+  }, [queryClient]);
+
   return (
     <div className="mx-auto w-full max-w-5xl overflow-y-auto px-6 py-10">
       <header className="mb-8 flex items-start justify-between gap-4">
@@ -217,6 +228,7 @@ function BillingPage() {
           if (!o) setCheckoutClientSecret(null);
         }}
         clientSecret={checkoutClientSecret}
+        onComplete={handleCheckoutComplete}
       />
 
       {/* Plan + balance card */}
