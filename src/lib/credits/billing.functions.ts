@@ -278,16 +278,16 @@ export const schedulePlanChange = createServerFn({ method: "POST" })
     }
 
     // Determine the effective date — when the change will actually apply.
-    // Use current_period_end if it's a real future date (active paid period).
-    // Otherwise apply immediately — there's nothing to wait for.
+    // RULE: never flip the plan immediately on a downgrade/upgrade. The user
+    // keeps their current plan AND their current credits until either:
+    //   (a) their balance reaches 0 (handled by credits_deduct trigger), OR
+    //   (b) the current billing period ends.
+    // If there's no known period end, we leave effectiveAt = null so ONLY
+    // balance-exhaustion can trigger the flip — the user keeps using the
+    // credits they already paid for.
     const periodEnd = wallet.current_period_end ? new Date(wallet.current_period_end) : null;
     const hasFuturePeriod = periodEnd !== null && periodEnd.getTime() > Date.now();
-    let effectiveAt: string | null;
-    if (wallet.stripe_subscription_id && hasFuturePeriod) {
-      effectiveAt = periodEnd!.toISOString();
-    } else {
-      effectiveAt = new Date().toISOString();
-    }
+    const effectiveAt: string | null = hasFuturePeriod ? periodEnd!.toISOString() : null;
 
     // Downgrade path (basic → free): tell Stripe to stop billing at period end,
     // but DO NOT cancel immediately — we want the user to keep using their
