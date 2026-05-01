@@ -7,7 +7,6 @@ import {
   Check,
   Receipt,
   ArrowRight,
-  CreditCard,
   Loader2,
   AlertCircle,
 } from "lucide-react";
