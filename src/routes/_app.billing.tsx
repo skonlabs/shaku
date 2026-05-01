@@ -128,6 +128,9 @@ function BillingPage() {
   const used = Math.max(0, quota - balance);
   const usedPct = quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
   const isFree = (state?.plan ?? "free") === "free";
+  const setupRequired = Boolean(
+    state?.setupRequired || ledgerQ.data?.setupRequired || summaryQ.data?.setupRequired || plansQ.data?.setupRequired,
+  );
 
   return (
     <div className="mx-auto w-full max-w-5xl overflow-y-auto px-6 py-10">
@@ -150,6 +153,20 @@ function BillingPage() {
           ← Back to chat
         </Link>
       </header>
+
+      {setupRequired && (
+        <Card className="mb-6 border-destructive/20 bg-destructive/5 p-4">
+          <div className="flex gap-3 text-sm">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div>
+              <p className="font-medium text-foreground">Billing database setup is not complete.</p>
+              <p className="mt-1 text-muted-foreground">
+                Run `supabase/sql/0010_credits_billing.sql` and `supabase/sql/0011_billing_extensions.sql` in Supabase, then reload the schema cache.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Plan + balance card */}
       <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-card to-card/60 p-6 shadow-[0_10px_40px_-20px_oklch(0.50_0.07_150/0.35)]">
@@ -189,7 +206,7 @@ function BillingPage() {
               <Button
                 size="lg"
                 onClick={() => checkoutMut.mutate()}
-                disabled={checkoutMut.isPending}
+                disabled={checkoutMut.isPending || setupRequired}
                 className="rounded-full"
               >
                 {checkoutMut.isPending ? (
@@ -203,7 +220,7 @@ function BillingPage() {
               <Button
                 variant="outline"
                 onClick={() => portalMut.mutate()}
-                disabled={portalMut.isPending}
+                disabled={portalMut.isPending || setupRequired}
                 className="rounded-full"
               >
                 {portalMut.isPending ? (
@@ -369,7 +386,7 @@ function BillingPage() {
                   ) : p.id === "basic" ? (
                     <Button
                       onClick={() => checkoutMut.mutate()}
-                      disabled={checkoutMut.isPending}
+                      disabled={checkoutMut.isPending || setupRequired}
                       className="w-full rounded-full"
                     >
                       {checkoutMut.isPending ? (
