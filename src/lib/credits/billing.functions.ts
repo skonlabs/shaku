@@ -277,21 +277,14 @@ export const schedulePlanChange = createServerFn({ method: "POST" })
       return { ok: false as const, error: `You're already on the ${data.targetPlan} plan.` };
     }
 
-    // Determine the effective date — when the change will actually apply.
-    // RULE: never flip the plan immediately on a downgrade/upgrade. The user
-    // keeps their current plan AND their current credits until either:
-    //   (a) their balance reaches 0 (handled by credits_deduct trigger), OR
-    //   (b) the current billing period ends.
-    // If there's no known period end, we leave effectiveAt = null so ONLY
-    // balance-exhaustion can trigger the flip — the user keeps using the
-    // credits they already paid for.
-    const periodEnd = wallet.current_period_end ? new Date(wallet.current_period_end) : null;
-    const hasFuturePeriod = periodEnd !== null && periodEnd.getTime() > Date.now();
-    const effectiveAt: string | null = hasFuturePeriod ? periodEnd!.toISOString() : null;
+    // IMMEDIATE plan change — no scheduling, no waiting.
+    // Rules:
+    //   * Plan flips right now (both user_credits.plan and users.plan).
+    //   * Balance is preserved (no refund on downgrade, no top-up on upgrade).
+    //   * current_period_end (expiry) is preserved.
+    //   * On basic → free, set Stripe cancel_at_period_end so no further
+    //     charges happen, but the user keeps access for the period they paid.
 
-    // Downgrade path (basic → free): tell Stripe to stop billing at period end,
-    // but DO NOT cancel immediately — we want the user to keep using their
-    // balance until then.
     if (data.targetPlan === "free" && wallet.stripe_subscription_id) {
       try {
         const stripe = getStripe();
@@ -303,67 +296,61 @@ export const schedulePlanChange = createServerFn({ method: "POST" })
       }
     }
 
+    // Look up the target plan's quota for monthly_quota tracking, but DO NOT
+    // overwrite the current balance — the user keeps what they already have.
+    const { data: planRow } = await writeSupabase
+      .from("plans")
+      .select("monthly_credits")
+      .eq("id", data.targetPlan)
+      .maybeSingle();
+    const targetQuota = (planRow?.monthly_credits as number | null) ?? (data.targetPlan === "basic" ? 500 : 30);
+
     const { error: upErr } = await writeSupabase
       .from("user_credits")
       .update({
-        pending_plan: data.targetPlan,
-        pending_plan_effective_at: effectiveAt,
+        plan: data.targetPlan,
+        monthly_quota: targetQuota,
+        pending_plan: null,
+        pending_plan_effective_at: null,
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", userId);
 
     if (upErr) {
-      const msg = upErr.message ?? "";
-      if (/schema cache|column .* does not exist/i.test(msg) && /pending_plan/i.test(msg)) {
-        return {
-          ok: false as const,
-          error:
-            "Plan scheduling isn't set up yet. Run supabase/sql/0013_pending_plan.sql in your Supabase SQL Editor, then try again.",
-        };
-      }
       console.error("[schedulePlanChange] update failed:", JSON.stringify(upErr));
-      return { ok: false as const, error: msg || "Couldn't schedule plan change." };
+      return { ok: false as const, error: upErr.message || "Couldn't change plan." };
+    }
+
+    // Mirror to public.users so chat/rate-limits see the new plan.
+    try {
+      await writeSupabase.from("users").update({ plan: data.targetPlan }).eq("id", userId);
+    } catch (err) {
+      console.warn("[schedulePlanChange] users.plan update skipped:", err);
     }
 
     try {
-      await writeSupabase.from("credit_ledger").insert({
+      await writeSupabase.from("credits_ledger").insert({
         user_id: userId,
         delta: 0,
         balance_after: wallet.balance,
         reason: "plan_change",
         metadata: {
-          scheduled: true,
+          immediate: true,
           from_plan: wallet.plan,
           to_plan: data.targetPlan,
-          effective_at: effectiveAt,
+          balance_preserved: wallet.balance,
         },
       });
     } catch (err) {
       console.warn("[schedulePlanChange] ledger insert skipped:", err);
     }
 
-    // Try to apply immediately if conditions are already met (e.g. balance
-    // already 0, or effective date is in the past, or there's no active
-    // subscription to wait on). The function is a no-op otherwise.
-    let appliedNow = false;
-    let appliedToPlan: string | null = null;
-    try {
-      const { data: applyRes } = await writeSupabase.rpc("apply_pending_plan", {
-        p_user_id: userId,
-      });
-      const row = Array.isArray(applyRes) ? applyRes[0] : applyRes;
-      appliedNow = !!row?.applied;
-      appliedToPlan = (row?.plan as string | null) ?? null;
-    } catch (err) {
-      console.warn("[schedulePlanChange] apply_pending_plan failed:", err);
-    }
-
     return {
       ok: true as const,
-      pendingPlan: appliedNow ? null : data.targetPlan,
-      effectiveAt: appliedNow ? null : effectiveAt,
-      appliedNow,
-      appliedToPlan,
+      pendingPlan: null,
+      effectiveAt: null,
+      appliedNow: true,
+      appliedToPlan: data.targetPlan,
     };
   });
 
