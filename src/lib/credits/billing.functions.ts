@@ -95,7 +95,11 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
     const origin = getOrigin();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      ui_mode: "embedded" as Stripe.Checkout.SessionCreateParams.UiMode,
+      ui_mode: "embedded",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any as Parameters<typeof stripe.checkout.sessions.create>[0]).then ? null! : (await stripe.checkout.sessions.create({
+      mode: "subscription",
+      ui_mode: "embedded" as never,
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
       return_url: `${origin}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
