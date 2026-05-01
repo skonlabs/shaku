@@ -47,6 +47,20 @@ const REASON_LABELS: Record<string, string> = {
   admin_adjust: "Adjustment",
 };
 
+type BillingPlan = {
+  id: string;
+  display_name: string;
+  monthly_price_usd: number;
+  monthly_credits: number;
+  features?: {
+    models?: string[];
+    memory?: boolean;
+    documents?: boolean;
+    advanced_routing?: boolean;
+    max_context_tokens?: number;
+  };
+};
+
 function BillingPage() {
   const search = useSearch({ from: "/_app/billing" });
   const router = useRouter();
@@ -371,17 +385,11 @@ function BillingPage() {
       <section className="mt-10 mb-12">
         <h3 className="mb-3 text-sm font-medium text-muted-foreground">Available plans</h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {(plansQ.data?.plans ?? [])
-            .filter((p: any) => p.id === "free" || p.id === "basic")
-            .map((p: any) => {
+          {((plansQ.data?.plans ?? []) as BillingPlan[])
+            .filter((p) => p.id === "free" || p.id === "basic")
+            .map((p) => {
               const isCurrent = state?.plan === p.id;
-              const features = (p.features ?? {}) as {
-                models?: string[];
-                memory?: boolean;
-                documents?: boolean;
-                advanced_routing?: boolean;
-                max_context_tokens?: number;
-              };
+              const features = p.features ?? {};
               return (
                 <Card
                   key={p.id}
