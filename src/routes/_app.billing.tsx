@@ -75,20 +75,6 @@ function BillingPage() {
 
   const checkoutMut = useMutation({
     mutationFn: () => createCheckoutSession({ data: { plan: "basic" } }),
-    onSuccess: (res) => {
-      if (res.ok && res.url) {
-        window.open(res.url, "_blank", "noopener,noreferrer");
-      } else {
-        const message = res.ok ? "Couldn't start checkout." : res.error;
-        setBillingError(message);
-        toast.error(message);
-      }
-    },
-    onError: (e: Error) => {
-      const message = e.message ?? "Couldn't start checkout.";
-      setBillingError(message);
-      toast.error(message);
-    },
   });
   const portalMut = useMutation({
     mutationFn: () => createBillingPortalSession(),
@@ -139,9 +125,32 @@ function BillingPage() {
     state?.setupRequired || ledgerQ.data?.setupRequired || summaryQ.data?.setupRequired || plansQ.data?.setupRequired,
   );
 
-  const startCheckout = () => {
+  const startCheckout = async () => {
+    if (checkoutMut.isPending) return;
     setBillingError(null);
-    checkoutMut.mutate();
+    const checkoutWindow = window.open("about:blank", "_blank");
+
+    try {
+      const res = await checkoutMut.mutateAsync();
+      if (res.ok && res.url) {
+        if (checkoutWindow) {
+          checkoutWindow.opener = null;
+          checkoutWindow.location.href = res.url;
+        } else {
+          window.location.href = res.url;
+        }
+      } else {
+        checkoutWindow?.close();
+        const message = res.ok ? "Couldn't start checkout." : res.error;
+        setBillingError(message);
+        toast.error(message);
+      }
+    } catch (error) {
+      checkoutWindow?.close();
+      const message = error instanceof Error ? error.message : "Couldn't start checkout.";
+      setBillingError(message);
+      toast.error(message);
+    }
   };
 
   return (
