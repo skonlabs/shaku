@@ -23,6 +23,7 @@ import {
   listPlans,
 } from "@/lib/credits/credits.functions";
 import { createCheckoutSession, createBillingPortalSession } from "@/lib/credits/billing.functions";
+import { EmbeddedCheckoutDialog } from "@/components/EmbeddedCheckoutDialog";
 
 const SearchSchema = z.object({
   checkout: z.enum(["success", "cancelled"]).optional(),
