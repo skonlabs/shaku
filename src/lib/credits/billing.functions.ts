@@ -271,21 +271,44 @@ export const resetMyPlanToFree = createServerFn({ method: "POST" })
     if (freePlan?.monthly_credits) freeCredits = Number(freePlan.monthly_credits);
 
     const nowIso = new Date().toISOString();
-    const { error: upErr } = await writeSupabase
-      .from("user_credits")
-      .update({
-        plan: "free",
-        balance: freeCredits,
-        monthly_quota: freeCredits,
-        stripe_subscription_id: null,
-        subscription_status: null,
-        current_period_end: null,
-        last_reset_at: nowIso,
-      })
-      .eq("user_id", userId);
+    const fullUpdate: Record<string, unknown> = {
+      plan: "free",
+      balance: freeCredits,
+      monthly_quota: freeCredits,
+      stripe_subscription_id: null,
+      subscription_status: null,
+      current_period_end: null,
+      last_reset_at: nowIso,
+    };
+
+    let upErr: { message?: string; code?: string } | null = null;
+    {
+      const { error } = await writeSupabase
+        .from("user_credits")
+        .update(fullUpdate)
+        .eq("user_id", userId);
+      upErr = error;
+    }
+
+    // If a column is missing from the schema cache, retry with only the
+    // essentials (plan + balance). This makes the downgrade resilient to
+    // partially-applied migrations.
+    if (upErr && /schema cache|column .* does not exist/i.test(upErr.message ?? "")) {
+      const { error: retryErr } = await writeSupabase
+        .from("user_credits")
+        .update({
+          plan: "free",
+          balance: freeCredits,
+          monthly_quota: freeCredits,
+          last_reset_at: nowIso,
+        })
+        .eq("user_id", userId);
+      upErr = retryErr;
+    }
+
     if (upErr) {
-      console.error("[resetMyPlanToFree] update failed:", upErr);
-      return { ok: false as const, error: upErr.message };
+      console.error("[resetMyPlanToFree] update failed:", JSON.stringify(upErr));
+      return { ok: false as const, error: upErr.message ?? "Couldn't switch to Free." };
     }
 
     try {
