@@ -279,7 +279,6 @@ export const resetMyPlanToFree = createServerFn({ method: "POST" })
         monthly_quota: freeCredits,
         stripe_subscription_id: null,
         subscription_status: null,
-        current_period_start: null,
         current_period_end: null,
         last_reset_at: nowIso,
       })
