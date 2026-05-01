@@ -99,7 +99,7 @@ function BillingPage() {
   const scheduleMut = useMutation({
     mutationFn: (targetPlan: "free" | "basic") =>
       schedulePlanChange({ data: { targetPlan } }),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       if (res.ok) {
         toast.success(
           res.appliedToPlan === "free"
