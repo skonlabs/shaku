@@ -1,20 +1,21 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import {
   EmbeddedCheckoutProvider,
   EmbeddedCheckout,
 } from "@stripe/react-stripe-js";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { getStripePublishableKey } from "@/lib/credits/billing.functions";
 
 let stripePromise: Promise<Stripe | null> | null = null;
-function getStripe() {
+async function getStripeClient() {
   if (!stripePromise) {
-    const pk = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined;
-    if (!pk) {
-      console.error("VITE_STRIPE_PUBLISHABLE_KEY is not set");
-      return Promise.resolve(null);
+    const { publishableKey } = await getStripePublishableKey();
+    if (!publishableKey) {
+      console.error("Stripe publishable key not configured");
+      return null;
     }
-    stripePromise = loadStripe(pk);
+    stripePromise = loadStripe(publishableKey);
   }
   return stripePromise;
 }
@@ -28,15 +29,13 @@ export function EmbeddedCheckoutDialog({
   onOpenChange: (open: boolean) => void;
   clientSecret: string | null;
 }) {
-  const keyRef = useRef(clientSecret);
-  // Force remount when clientSecret changes (Stripe requires it)
-  if (clientSecret && clientSecret !== keyRef.current) {
-    keyRef.current = clientSecret;
-  }
+  const [stripe, setStripe] = useState<Promise<Stripe | null> | null>(null);
 
   useEffect(() => {
-    if (open && !clientSecret) onOpenChange(false);
-  }, [open, clientSecret, onOpenChange]);
+    if (open && !stripe) {
+      void getStripeClient().then((s) => setStripe(Promise.resolve(s)));
+    }
+  }, [open, stripe]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -45,10 +44,10 @@ export function EmbeddedCheckoutDialog({
           <DialogTitle>Upgrade to Basic</DialogTitle>
         </DialogHeader>
         <div className="px-2 pb-2">
-          {clientSecret && (
+          {clientSecret && stripe && (
             <EmbeddedCheckoutProvider
               key={clientSecret}
-              stripe={getStripe()}
+              stripe={stripe}
               options={{ clientSecret }}
             >
               <EmbeddedCheckout />
