@@ -121,12 +121,17 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
       line_items: [{ price: priceId, quantity: 1 }],
       return_url: `${origin}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       redirect_on_completion: "if_required",
-      allow_promotion_codes: true,
+      // No "Add promotion code" field.
+      allow_promotion_codes: false,
       client_reference_id: userId,
-      // Card only — no Link, no Amazon Pay, no wallets. Keeps the form simple.
+      // Card only — no Link, no Amazon Pay, no wallets.
       payment_method_types: ["card"],
-      // Hide "Save my info" (Link sign-up) prompt.
+      // Hide "Save my info for 1-click checkout with Link" prompt.
       saved_payment_method_options: { payment_method_save: "disabled" },
+      // Suppress the Link express-checkout button + Link autofill banner.
+      payment_method_options: {
+        card: { setup_future_usage: "off_session" },
+      },
       // Don't ask for phone number.
       phone_number_collection: { enabled: false },
       subscription_data: {
