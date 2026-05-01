@@ -22,10 +22,7 @@ import {
   getCreditSummary,
   listPlans,
 } from "@/lib/credits/credits.functions";
-import {
-  createCheckoutSession,
-  createBillingPortalSession,
-} from "@/lib/credits/billing.functions";
+import { createCheckoutSession, createBillingPortalSession } from "@/lib/credits/billing.functions";
 
 const SearchSchema = z.object({
   checkout: z.enum(["success", "cancelled"]).optional(),
@@ -50,10 +47,25 @@ const REASON_LABELS: Record<string, string> = {
   admin_adjust: "Adjustment",
 };
 
+type BillingPlan = {
+  id: string;
+  display_name: string;
+  monthly_price_usd: number;
+  monthly_credits: number;
+  features?: {
+    models?: string[];
+    memory?: boolean;
+    documents?: boolean;
+    advanced_routing?: boolean;
+    max_context_tokens?: number;
+  };
+};
+
 function BillingPage() {
   const search = useSearch({ from: "/_app/billing" });
   const router = useRouter();
   const [billingError, setBillingError] = useState<string | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
 
   const stateQ = useQuery({
     queryKey: ["credit-state"],
@@ -122,31 +134,29 @@ function BillingPage() {
   const usedPct = quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
   const isFree = (state?.plan ?? "free") === "free";
   const setupRequired = Boolean(
-    state?.setupRequired || ledgerQ.data?.setupRequired || summaryQ.data?.setupRequired || plansQ.data?.setupRequired,
+    state?.setupRequired ||
+    ledgerQ.data?.setupRequired ||
+    summaryQ.data?.setupRequired ||
+    plansQ.data?.setupRequired,
   );
 
   const startCheckout = async () => {
     if (checkoutMut.isPending) return;
     setBillingError(null);
-    const checkoutWindow = window.open("about:blank", "_blank");
+    setCheckoutUrl(null);
 
     try {
       const res = await checkoutMut.mutateAsync();
       if (res.ok && res.url) {
-        if (checkoutWindow) {
-          checkoutWindow.opener = null;
-          checkoutWindow.location.href = res.url;
-        } else {
-          window.location.href = res.url;
-        }
+        setCheckoutUrl(res.url);
+        const checkoutWindow = window.open(res.url, "_blank", "noopener,noreferrer");
+        checkoutWindow?.focus();
       } else {
-        checkoutWindow?.close();
         const message = res.ok ? "Couldn't start checkout." : res.error;
         setBillingError(message);
         toast.error(message);
       }
     } catch (error) {
-      checkoutWindow?.close();
       const message = error instanceof Error ? error.message : "Couldn't start checkout.";
       setBillingError(message);
       toast.error(message);
@@ -167,10 +177,7 @@ function BillingPage() {
             Track your monthly credits, see where they go, and upgrade when you need more.
           </p>
         </div>
-        <Link
-          to="/"
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
+        <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">
           ← Back to chat
         </Link>
       </header>
@@ -182,7 +189,9 @@ function BillingPage() {
             <div>
               <p className="font-medium text-foreground">Billing database setup is not complete.</p>
               <p className="mt-1 text-muted-foreground">
-                Run `supabase/sql/0010_credits_billing.sql` and `supabase/sql/0011_billing_extensions.sql` in Supabase, then reload the schema cache.
+                Run `supabase/sql/0010_credits_billing.sql` and
+                `supabase/sql/0011_billing_extensions.sql` in Supabase, then reload the schema
+                cache.
               </p>
             </div>
           </div>
@@ -201,15 +210,30 @@ function BillingPage() {
         </Card>
       )}
 
+      {checkoutUrl && !billingError && !setupRequired && (
+        <Card className="mb-6 border-primary/20 bg-primary/5 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <div>
+              <p className="font-medium text-foreground">Checkout is ready.</p>
+              <p className="mt-1 text-muted-foreground">
+                If Stripe did not open automatically, use the button below.
+              </p>
+            </div>
+            <Button asChild className="rounded-full">
+              <a href={checkoutUrl} target="_blank" rel="noreferrer">
+                Open checkout <ArrowRight className="ml-1.5 h-4 w-4" />
+              </a>
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* Plan + balance card */}
       <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-card to-card/60 p-6 shadow-[0_10px_40px_-20px_oklch(0.50_0.07_150/0.35)]">
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div className="min-w-0">
             <div className="mb-1 flex items-center gap-2">
-              <Badge
-                variant="secondary"
-                className="rounded-full bg-primary/10 text-primary"
-              >
+              <Badge variant="secondary" className="rounded-full bg-primary/10 text-primary">
                 {(state?.plan ?? "—").toUpperCase()} plan
               </Badge>
               {state?.subscriptionStatus && state.subscriptionStatus !== "active" && (
@@ -290,10 +314,7 @@ function BillingPage() {
             </div>
           ) : (
             (summaryQ.data?.breakdown ?? []).map((row) => (
-              <div
-                key={row.reason}
-                className="flex items-center justify-between px-5 py-3 text-sm"
-              >
+              <div key={row.reason} className="flex items-center justify-between px-5 py-3 text-sm">
                 <div>
                   <div className="font-medium">{REASON_LABELS[row.reason] ?? row.reason}</div>
                   <div className="text-xs text-muted-foreground">
@@ -332,9 +353,7 @@ function BillingPage() {
                     className="flex items-center justify-between gap-4 px-5 py-3 text-sm"
                   >
                     <div className="min-w-0">
-                      <div className="font-medium">
-                        {REASON_LABELS[e.reason] ?? e.reason}
-                      </div>
+                      <div className="font-medium">{REASON_LABELS[e.reason] ?? e.reason}</div>
                       <div className="truncate text-xs text-muted-foreground">
                         {new Date(e.created_at).toLocaleString()}
                         {model ? ` · ${model}` : ""}
@@ -366,17 +385,11 @@ function BillingPage() {
       <section className="mt-10 mb-12">
         <h3 className="mb-3 text-sm font-medium text-muted-foreground">Available plans</h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {(plansQ.data?.plans ?? [])
-            .filter((p: any) => p.id === "free" || p.id === "basic")
-            .map((p: any) => {
+          {((plansQ.data?.plans ?? []) as BillingPlan[])
+            .filter((p) => p.id === "free" || p.id === "basic")
+            .map((p) => {
               const isCurrent = state?.plan === p.id;
-              const features = (p.features ?? {}) as {
-                models?: string[];
-                memory?: boolean;
-                documents?: boolean;
-                advanced_routing?: boolean;
-                max_context_tokens?: number;
-              };
+              const features = p.features ?? {};
               return (
                 <Card
                   key={p.id}
@@ -453,13 +466,12 @@ function Feat({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
     <li
       className={
-        "flex items-start gap-2 " + (ok ? "text-foreground" : "text-muted-foreground/60 line-through")
+        "flex items-start gap-2 " +
+        (ok ? "text-foreground" : "text-muted-foreground/60 line-through")
       }
     >
       <Check
-        className={
-          "mt-0.5 h-4 w-4 shrink-0 " + (ok ? "text-primary" : "text-muted-foreground/40")
-        }
+        className={"mt-0.5 h-4 w-4 shrink-0 " + (ok ? "text-primary" : "text-muted-foreground/40")}
       />
       <span>{children}</span>
     </li>
