@@ -23,6 +23,10 @@ begin
     raise exception 'user_id_required';
   end if;
 
+  if auth.role() <> 'service_role' and p_user_id is distinct from auth.uid() then
+    raise exception 'not_allowed';
+  end if;
+
   select monthly_credits into v_quota from public.plans where id = p_target_plan;
   if not found then
     raise exception 'unknown_plan';
@@ -75,6 +79,6 @@ begin
 end;
 $$;
 
-grant execute on function public.credits_change_plan_immediate(uuid, text) to service_role;
+grant execute on function public.credits_change_plan_immediate(uuid, text) to authenticated, service_role;
 
 notify pgrst, 'reload schema';
