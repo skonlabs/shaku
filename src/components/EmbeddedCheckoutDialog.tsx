@@ -4,7 +4,7 @@ import {
   EmbeddedCheckoutProvider,
   EmbeddedCheckout,
 } from "@stripe/react-stripe-js";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getStripePublishableKey } from "@/lib/credits/billing.functions";
 
 let stripePromise: Promise<Stripe | null> | null = null;
@@ -24,10 +24,12 @@ export function EmbeddedCheckoutDialog({
   open,
   onOpenChange,
   clientSecret,
+  onComplete,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   clientSecret: string | null;
+  onComplete: () => void;
 }) {
   const [stripe, setStripe] = useState<Promise<Stripe | null> | null>(null);
 
@@ -42,13 +44,16 @@ export function EmbeddedCheckoutDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
         <DialogHeader className="px-6 pt-6">
           <DialogTitle>Upgrade to Basic</DialogTitle>
+          <DialogDescription>
+            Complete your secure payment to activate your plan.
+          </DialogDescription>
         </DialogHeader>
         <div className="px-2 pb-2">
           {clientSecret && stripe && (
             <EmbeddedCheckoutProvider
               key={clientSecret}
               stripe={stripe}
-              options={{ clientSecret }}
+              options={{ clientSecret, onComplete }}
             >
               <EmbeddedCheckout />
             </EmbeddedCheckoutProvider>
