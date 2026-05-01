@@ -181,6 +181,42 @@ async function grantPeriod(
   if (error) console.error("[webhooks.stripe] credits_grant_for_period error:", error);
 }
 
+async function changePlanImmediate(
+  supabase: SupabaseClient,
+  userId: string,
+  targetPlan: "free" | "basic",
+): Promise<void> {
+  const { error } = await supabase.rpc("credits_change_plan_immediate", {
+    p_user_id: userId,
+    p_target_plan: targetPlan,
+  });
+  if (error) console.error("[webhooks.stripe] credits_change_plan_immediate error:", error);
+}
+
+async function syncSubscriptionOnly(
+  supabase: SupabaseClient,
+  userId: string,
+  sub: Stripe.Subscription,
+  customerId: string,
+  statusOverride?: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("user_credits")
+    .update({
+      stripe_customer_id: customerId,
+      stripe_subscription_id: sub.id,
+      subscription_status: statusOverride ?? sub.status,
+      current_period_end: secondsToIso(getPeriodEnd(sub)),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId);
+  if (error) console.error("[webhooks.stripe] subscription sync error:", error);
+}
+
+function isCancelAtPeriodEnd(sub: Stripe.Subscription): boolean {
+  return Boolean((sub as unknown as { cancel_at_period_end?: boolean }).cancel_at_period_end);
+}
+
 async function resolveUserId(
   supabase: SupabaseClient,
   sub: Stripe.Subscription,
