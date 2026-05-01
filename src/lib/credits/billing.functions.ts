@@ -9,6 +9,7 @@
  */
 
 import { createServerFn } from "@tanstack/react-start";
+import { getRequestHeader } from "@tanstack/react-start/server";
 import Stripe from "stripe";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -26,10 +27,21 @@ function getStripe(): Stripe {
 
 function getOrigin(): string {
   return (
+    getRequestHeader("origin") ??
+    safeOriginFromUrl(getRequestHeader("referer")) ??
     process.env.PUBLIC_APP_ORIGIN ??
     process.env.APP_ORIGIN ??
     "https://20cb2f0c-2f09-469c-bb65-aa855f85b760.lovable.app"
   );
+}
+
+function safeOriginFromUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
 }
 
 const CheckoutSchema = z.object({
@@ -103,6 +115,7 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
       return_url: `${origin}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      redirect_on_completion: "if_required",
       allow_promotion_codes: true,
       client_reference_id: userId,
       subscription_data: {
