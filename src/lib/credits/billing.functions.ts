@@ -231,10 +231,124 @@ export const syncCheckoutSession = createServerFn({ method: "POST" })
   });
 
 /**
- * Reset the current user back to the free plan.
- * Cancels any active Stripe subscription and resets the user_credits row.
+ * Schedule a plan change (upgrade or downgrade).
+ *
+ * Rules (no refunds, no balance wipes):
+ *   - The change is recorded as `pending_plan` with `pending_plan_effective_at`
+ *     set to the user's current billing period end (or last_reset + 30d for
+ *     free users with no Stripe period).
+ *   - The change applies automatically once the user's credit balance hits 0
+ *     OR the effective date passes — whichever comes first.
+ *   - For paid → free, we set Stripe's `cancel_at_period_end = true` so no
+ *     further charges happen, but the user keeps their balance and access
+ *     until the period ends.
+ *   - For free → basic, the user must complete checkout first (handled by
+ *     `createCheckoutSession`); we don't expose this function for that path.
  */
-export const resetMyPlanToFree = createServerFn({ method: "POST" })
+const SchedulePlanSchema = z.object({
+  targetPlan: z.enum(["free", "basic"]),
+});
+
+export const schedulePlanChange = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => SchedulePlanSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context as { supabase: any; userId: string };
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+    const writeSupabase = serviceRoleKey && supabaseUrl
+      ? createClient(supabaseUrl, serviceRoleKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
+      : supabase;
+
+    const { data: wallet, error: walletErr } = await writeSupabase
+      .from("user_credits")
+      .select("plan, stripe_subscription_id, current_period_end, last_reset_at, balance")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (walletErr) {
+      console.error("[schedulePlanChange] read failed:", JSON.stringify(walletErr));
+      return { ok: false as const, error: "Couldn't load your plan." };
+    }
+    if (!wallet) return { ok: false as const, error: "No wallet found." };
+
+    if (wallet.plan === data.targetPlan) {
+      return { ok: false as const, error: `You're already on the ${data.targetPlan} plan.` };
+    }
+
+    // Determine the effective date — when the change will actually apply.
+    let effectiveAt: string | null = wallet.current_period_end ?? null;
+    if (!effectiveAt && wallet.last_reset_at) {
+      const d = new Date(wallet.last_reset_at);
+      d.setDate(d.getDate() + 30);
+      effectiveAt = d.toISOString();
+    }
+
+    // Downgrade path (basic → free): tell Stripe to stop billing at period end,
+    // but DO NOT cancel immediately — we want the user to keep using their
+    // balance until then.
+    if (data.targetPlan === "free" && wallet.stripe_subscription_id) {
+      try {
+        const stripe = getStripe();
+        await stripe.subscriptions.update(wallet.stripe_subscription_id, {
+          cancel_at_period_end: true,
+        });
+      } catch (err) {
+        console.warn("[schedulePlanChange] cancel_at_period_end failed (continuing):", err);
+      }
+    }
+
+    const { error: upErr } = await writeSupabase
+      .from("user_credits")
+      .update({
+        pending_plan: data.targetPlan,
+        pending_plan_effective_at: effectiveAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
+    if (upErr) {
+      const msg = upErr.message ?? "";
+      if (/schema cache|column .* does not exist/i.test(msg) && /pending_plan/i.test(msg)) {
+        return {
+          ok: false as const,
+          error:
+            "Plan scheduling isn't set up yet. Run supabase/sql/0013_pending_plan.sql in your Supabase SQL Editor, then try again.",
+        };
+      }
+      console.error("[schedulePlanChange] update failed:", JSON.stringify(upErr));
+      return { ok: false as const, error: msg || "Couldn't schedule plan change." };
+    }
+
+    try {
+      await writeSupabase.from("credit_ledger").insert({
+        user_id: userId,
+        delta: 0,
+        balance_after: wallet.balance,
+        reason: "plan_change",
+        metadata: {
+          scheduled: true,
+          from_plan: wallet.plan,
+          to_plan: data.targetPlan,
+          effective_at: effectiveAt,
+        },
+      });
+    } catch (err) {
+      console.warn("[schedulePlanChange] ledger insert skipped:", err);
+    }
+
+    return {
+      ok: true as const,
+      pendingPlan: data.targetPlan,
+      effectiveAt,
+    };
+  });
+
+/**
+ * Cancel a previously scheduled plan change.
+ */
+export const cancelPendingPlanChange = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context as { supabase: any; userId: string };
@@ -248,81 +362,39 @@ export const resetMyPlanToFree = createServerFn({ method: "POST" })
 
     const { data: wallet } = await writeSupabase
       .from("user_credits")
-      .select("stripe_subscription_id")
+      .select("stripe_subscription_id, pending_plan")
       .eq("user_id", userId)
       .maybeSingle();
 
-    const subId = wallet?.stripe_subscription_id as string | null;
-    if (subId) {
+    if (!wallet?.pending_plan) {
+      return { ok: false as const, error: "No pending plan change." };
+    }
+
+    // If we previously scheduled a paid cancellation, undo it.
+    if (wallet.stripe_subscription_id) {
       try {
         const stripe = getStripe();
-        await stripe.subscriptions.cancel(subId);
+        await stripe.subscriptions.update(wallet.stripe_subscription_id, {
+          cancel_at_period_end: false,
+        });
       } catch (err) {
-        console.warn("[resetMyPlanToFree] cancel subscription failed (continuing):", err);
+        console.warn("[cancelPendingPlanChange] reactivate failed:", err);
       }
     }
 
-    let freeCredits = 100;
-    const { data: freePlan } = await writeSupabase
-      .from("billing_plans")
-      .select("monthly_credits")
-      .eq("id", "free")
-      .maybeSingle();
-    if (freePlan?.monthly_credits) freeCredits = Number(freePlan.monthly_credits);
-
-    const nowIso = new Date().toISOString();
-    const fullUpdate: Record<string, unknown> = {
-      plan: "free",
-      balance: freeCredits,
-      monthly_quota: freeCredits,
-      stripe_subscription_id: null,
-      subscription_status: null,
-      current_period_end: null,
-      last_reset_at: nowIso,
-    };
-
-    let upErr: { message?: string; code?: string } | null = null;
-    {
-      const { error } = await writeSupabase
-        .from("user_credits")
-        .update(fullUpdate)
-        .eq("user_id", userId);
-      upErr = error;
-    }
-
-    // If a column is missing from the schema cache, retry with only the
-    // essentials (plan + balance). This makes the downgrade resilient to
-    // partially-applied migrations.
-    if (upErr && /schema cache|column .* does not exist/i.test(upErr.message ?? "")) {
-      const { error: retryErr } = await writeSupabase
-        .from("user_credits")
-        .update({
-          plan: "free",
-          balance: freeCredits,
-          monthly_quota: freeCredits,
-          last_reset_at: nowIso,
-        })
-        .eq("user_id", userId);
-      upErr = retryErr;
-    }
+    const { error: upErr } = await writeSupabase
+      .from("user_credits")
+      .update({
+        pending_plan: null,
+        pending_plan_effective_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
 
     if (upErr) {
-      console.error("[resetMyPlanToFree] update failed:", JSON.stringify(upErr));
-      return { ok: false as const, error: upErr.message ?? "Couldn't switch to Free." };
+      console.error("[cancelPendingPlanChange] update failed:", JSON.stringify(upErr));
+      return { ok: false as const, error: upErr.message ?? "Couldn't cancel." };
     }
-
-    try {
-      await writeSupabase.from("credit_ledger").insert({
-        user_id: userId,
-        delta: 0,
-        balance_after: freeCredits,
-        reason: "plan_change",
-        metadata: { to_plan: "free", source: "user_self_service_reset" },
-      });
-    } catch (err) {
-      console.warn("[resetMyPlanToFree] ledger insert skipped:", err);
-    }
-
     return { ok: true as const };
   });
 
