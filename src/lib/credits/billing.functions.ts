@@ -32,6 +32,15 @@ const CheckoutSchema = z.object({
   plan: z.literal("basic"),
 });
 
+function isCreditsSchemaMissing(error: unknown): boolean {
+  const message =
+    typeof (error as { message?: unknown } | null)?.message === "string"
+      ? (error as { message: string }).message
+      : String(error ?? "");
+
+  return message.includes("schema cache") && ["user_credits", "plans", "credits_ledger"].some((name) => message.includes(name));
+}
+
 export const createCheckoutSession = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => CheckoutSchema.parse(data))
@@ -57,11 +66,18 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
     }
 
     // Reuse stripe_customer_id if we already have one, otherwise create.
-    const { data: walletRaw } = await supabase
+    const { data: walletRaw, error: walletErr } = await supabase
       .from("user_credits")
       .select("stripe_customer_id")
       .eq("user_id", userId)
       .maybeSingle();
+    if (isCreditsSchemaMissing(walletErr)) {
+      return {
+        ok: false as const,
+        error: "Billing is still being set up. Please apply the credits billing SQL migration, then try again.",
+      };
+    }
+    if (walletErr) throw walletErr;
     let customerId = (walletRaw?.stripe_customer_id as string | null) ?? null;
 
     if (!customerId) {
@@ -99,11 +115,18 @@ export const createBillingPortalSession = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context as { supabase: any; userId: string };
     const stripe = getStripe();
-    const { data: walletRaw } = await supabase
+    const { data: walletRaw, error: walletErr } = await supabase
       .from("user_credits")
       .select("stripe_customer_id")
       .eq("user_id", userId)
       .maybeSingle();
+    if (isCreditsSchemaMissing(walletErr)) {
+      return {
+        ok: false as const,
+        error: "Billing is still being set up. Please apply the credits billing SQL migration, then try again.",
+      };
+    }
+    if (walletErr) throw walletErr;
     const customerId = walletRaw?.stripe_customer_id as string | null;
     if (!customerId) {
       return {
