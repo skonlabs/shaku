@@ -46,12 +46,12 @@ export function EmbeddedCheckoutDialog({
       <DialogContent
         className="max-w-xl p-0 gap-0 overflow-hidden rounded-2xl border-border/60 bg-background shadow-2xl"
       >
-        <VisuallyHidden>
+        <VisuallyHiddenPrimitive.Root>
           <DialogTitle>Complete your upgrade</DialogTitle>
           <DialogDescription>
             Secure checkout powered by Stripe. Your card details are never seen or stored by us.
           </DialogDescription>
-        </VisuallyHidden>
+        </VisuallyHiddenPrimitive.Root>
 
         {/* Minimal header — just enough context, lets Stripe's polished UI breathe */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4">
