@@ -22,7 +22,7 @@ import {
   getCreditSummary,
   listPlans,
 } from "@/lib/credits/credits.functions";
-import { createCheckoutSession, createBillingPortalSession, syncCheckoutSession } from "@/lib/credits/billing.functions";
+import { createCheckoutSession, createBillingPortalSession, syncCheckoutSession, resetMyPlanToFree } from "@/lib/credits/billing.functions";
 import { EmbeddedCheckoutDialog } from "@/components/EmbeddedCheckoutDialog";
 
 const SearchSchema = z.object({
