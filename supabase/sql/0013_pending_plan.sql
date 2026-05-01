@@ -53,7 +53,7 @@ begin
 
   update public.users set plan = v_pending where id = p_user_id;
 
-  insert into public.credit_ledger (user_id, delta, balance_after, reason, metadata)
+  insert into public.credits_ledger (user_id, delta, balance_after, reason, metadata)
   values (p_user_id, v_quota - v_balance, v_quota, 'plan_change',
           jsonb_build_object('to_plan', v_pending, 'from_plan', v_current_plan, 'source', 'scheduled_apply'));
 
