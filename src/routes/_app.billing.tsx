@@ -319,6 +319,23 @@ function BillingPage() {
                 Manage subscription
               </Button>
             )}
+            {!isFree && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  if (confirm("Switch back to the Free plan? Your active subscription will be cancelled.")) {
+                    resetMut.mutate();
+                  }
+                }}
+                disabled={resetMut.isPending}
+                className="rounded-full text-muted-foreground hover:text-foreground"
+              >
+                {resetMut.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Switch to Free
+              </Button>
+            )}
           </div>
         </div>
 
