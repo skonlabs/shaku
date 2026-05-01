@@ -21,7 +21,12 @@ import {
   getCreditSummary,
   listPlans,
 } from "@/lib/credits/credits.functions";
-import { createCheckoutSession, syncCheckoutSession, resetMyPlanToFree } from "@/lib/credits/billing.functions";
+import {
+  createCheckoutSession,
+  syncCheckoutSession,
+  schedulePlanChange,
+  cancelPendingPlanChange,
+} from "@/lib/credits/billing.functions";
 import { EmbeddedCheckoutDialog } from "@/components/EmbeddedCheckoutDialog";
 
 const SearchSchema = z.object({
@@ -91,19 +96,37 @@ function BillingPage() {
   const checkoutMut = useMutation({
     mutationFn: () => createCheckoutSession({ data: { plan: "basic" } }),
   });
-  const resetMut = useMutation({
-    mutationFn: () => resetMyPlanToFree(),
+  const scheduleMut = useMutation({
+    mutationFn: (targetPlan: "free" | "basic") =>
+      schedulePlanChange({ data: { targetPlan } }),
     onSuccess: (res) => {
       if (res.ok) {
-        toast.success("Switched back to Free plan.");
+        const date = res.effectiveAt ? new Date(res.effectiveAt).toLocaleDateString() : "soon";
+        toast.success(
+          res.pendingPlan === "free"
+            ? `Downgrade scheduled. You'll switch to Free on ${date} (or when your credits run out).`
+            : `Upgrade scheduled. You'll move to Basic on ${date} (or when your credits run out).`,
+        );
         void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
         void queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
-        void queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
       } else {
-        toast.error(res.error ?? "Couldn't switch to Free.");
+        toast.error(res.error ?? "Couldn't schedule plan change.");
       }
     },
-    onError: (e: Error) => toast.error(e.message ?? "Couldn't switch to Free."),
+    onError: (e: Error) => toast.error(e.message ?? "Couldn't schedule plan change."),
+  });
+
+  const cancelPendingMut = useMutation({
+    mutationFn: () => cancelPendingPlanChange(),
+    onSuccess: (res) => {
+      if (res.ok) {
+        toast.success("Pending plan change cancelled.");
+        void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
+      } else {
+        toast.error(res.error ?? "Couldn't cancel pending change.");
+      }
+    },
+    onError: (e: Error) => toast.error(e.message ?? "Couldn't cancel pending change."),
   });
 
   // Toast on return from Stripe
@@ -249,6 +272,41 @@ function BillingPage() {
         clientSecret={checkoutClientSecret}
         onComplete={handleCheckoutComplete}
       />
+
+      {state?.pendingPlan && (
+        <Card className="mb-6 border-primary/30 bg-primary/5 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <div className="flex items-start gap-3">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <p className="font-medium text-foreground">
+                  {state.pendingPlan === "free" ? "Downgrade scheduled" : "Upgrade scheduled"}
+                </p>
+                <p className="mt-0.5 text-muted-foreground">
+                  You'll move to <strong className="text-foreground">{state.pendingPlan}</strong>
+                  {" "}when your current credits run out
+                  {state.pendingPlanEffectiveAt
+                    ? ` or on ${new Date(state.pendingPlanEffectiveAt).toLocaleDateString()}`
+                    : ""}
+                  , whichever comes first. No refund — you keep your balance until then.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => cancelPendingMut.mutate()}
+              disabled={cancelPendingMut.isPending}
+              className="rounded-full"
+            >
+              {cancelPendingMut.isPending ? (
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              ) : null}
+              Cancel change
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Plan + balance card */}
       <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-card to-card/60 p-6 shadow-[0_10px_40px_-20px_oklch(0.50_0.07_150/0.35)]">
@@ -433,42 +491,69 @@ function BillingPage() {
                       Long-context conversations
                     </Feat>
                   </ul>
-                  {isCurrent ? (
-                    <Button variant="outline" disabled className="w-full rounded-full">
-                      Current plan
-                    </Button>
-                  ) : p.id === "basic" ? (
-                    <Button
-                      onClick={startCheckout}
-                      disabled={checkoutMut.isPending || setupRequired}
-                      className="w-full rounded-full"
-                    >
-                      {checkoutMut.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-                      Upgrade <ArrowRight className="ml-1.5 h-4 w-4" />
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        if (
-                          confirm(
-                            "Downgrade to the Free plan? Your active subscription will be cancelled.",
-                          )
-                        ) {
-                          resetMut.mutate();
-                        }
-                      }}
-                      disabled={resetMut.isPending || setupRequired}
-                      className="w-full rounded-full"
-                    >
-                      {resetMut.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-                      Downgrade to Free
-                    </Button>
-                  )}
+                  {(() => {
+                    const isPending = state?.pendingPlan === p.id;
+                    const hasAnyPending = !!state?.pendingPlan;
+                    if (isCurrent) {
+                      return (
+                        <Button variant="outline" disabled className="w-full rounded-full">
+                          {hasAnyPending ? "Current plan (changing soon)" : "Current plan"}
+                        </Button>
+                      );
+                    }
+                    if (isPending) {
+                      return (
+                        <Button
+                          variant="outline"
+                          onClick={() => cancelPendingMut.mutate()}
+                          disabled={cancelPendingMut.isPending}
+                          className="w-full rounded-full"
+                        >
+                          {cancelPendingMut.isPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : null}
+                          Cancel scheduled change
+                        </Button>
+                      );
+                    }
+                    if (p.id === "basic") {
+                      // Free → Basic: requires payment, go through checkout immediately.
+                      return (
+                        <Button
+                          onClick={startCheckout}
+                          disabled={checkoutMut.isPending || setupRequired || hasAnyPending}
+                          className="w-full rounded-full"
+                        >
+                          {checkoutMut.isPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : null}
+                          Upgrade <ArrowRight className="ml-1.5 h-4 w-4" />
+                        </Button>
+                      );
+                    }
+                    // Basic → Free: schedule downgrade at period end / when credits run out.
+                    return (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          if (
+                            confirm(
+                              "Schedule a downgrade to Free? You'll keep your current credits and access until they run out or your billing period ends — no refund, no immediate change.",
+                            )
+                          ) {
+                            scheduleMut.mutate("free");
+                          }
+                        }}
+                        disabled={scheduleMut.isPending || setupRequired || hasAnyPending}
+                        className="w-full rounded-full"
+                      >
+                        {scheduleMut.isPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : null}
+                        Schedule downgrade to Free
+                      </Button>
+                    );
+                  })()}
                 </Card>
               );
             })}
