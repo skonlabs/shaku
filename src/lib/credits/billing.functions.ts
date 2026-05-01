@@ -230,6 +230,80 @@ export const syncCheckoutSession = createServerFn({ method: "POST" })
     return { ok: true as const, plan: "basic", pending: false };
   });
 
+/**
+ * Reset the current user back to the free plan.
+ * Cancels any active Stripe subscription and resets the user_credits row.
+ */
+export const resetMyPlanToFree = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context as { supabase: any; userId: string };
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+    const writeSupabase = serviceRoleKey && supabaseUrl
+      ? createClient(supabaseUrl, serviceRoleKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
+      : supabase;
+
+    const { data: wallet } = await writeSupabase
+      .from("user_credits")
+      .select("stripe_subscription_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const subId = wallet?.stripe_subscription_id as string | null;
+    if (subId) {
+      try {
+        const stripe = getStripe();
+        await stripe.subscriptions.cancel(subId);
+      } catch (err) {
+        console.warn("[resetMyPlanToFree] cancel subscription failed (continuing):", err);
+      }
+    }
+
+    let freeCredits = 100;
+    const { data: freePlan } = await writeSupabase
+      .from("billing_plans")
+      .select("monthly_credits")
+      .eq("id", "free")
+      .maybeSingle();
+    if (freePlan?.monthly_credits) freeCredits = Number(freePlan.monthly_credits);
+
+    const nowIso = new Date().toISOString();
+    const { error: upErr } = await writeSupabase
+      .from("user_credits")
+      .update({
+        plan: "free",
+        balance: freeCredits,
+        monthly_quota: freeCredits,
+        stripe_subscription_id: null,
+        subscription_status: null,
+        current_period_start: null,
+        current_period_end: null,
+        last_reset_at: nowIso,
+      })
+      .eq("user_id", userId);
+    if (upErr) {
+      console.error("[resetMyPlanToFree] update failed:", upErr);
+      return { ok: false as const, error: upErr.message };
+    }
+
+    try {
+      await writeSupabase.from("credit_ledger").insert({
+        user_id: userId,
+        delta: 0,
+        balance_after: freeCredits,
+        reason: "plan_change",
+        metadata: { to_plan: "free", source: "user_self_service_reset" },
+      });
+    } catch (err) {
+      console.warn("[resetMyPlanToFree] ledger insert skipped:", err);
+    }
+
+    return { ok: true as const };
+  });
+
 function secondsToIso(s: number | null | undefined): string | null {
   if (!s || !Number.isFinite(s)) return null;
   return new Date(s * 1000).toISOString();
