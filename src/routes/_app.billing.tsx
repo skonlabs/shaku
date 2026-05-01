@@ -290,7 +290,7 @@ function BillingPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {isFree ? (
+            {isFree && (
               <Button
                 size="lg"
                 onClick={startCheckout}
@@ -303,37 +303,6 @@ function BillingPage() {
                   <Sparkles className="mr-2 h-4 w-4" />
                 )}
                 Upgrade to Basic — $20/mo
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                onClick={() => portalMut.mutate()}
-                disabled={portalMut.isPending || setupRequired}
-                className="rounded-full"
-              >
-                {portalMut.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <CreditCard className="mr-2 h-4 w-4" />
-                )}
-                Manage subscription
-              </Button>
-            )}
-            {!isFree && (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  if (confirm("Switch back to the Free plan? Your active subscription will be cancelled.")) {
-                    resetMut.mutate();
-                  }
-                }}
-                disabled={resetMut.isPending}
-                className="rounded-full text-muted-foreground hover:text-foreground"
-              >
-                {resetMut.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                Switch to Free
               </Button>
             )}
           </div>
