@@ -22,10 +22,7 @@ import {
   getCreditSummary,
   listPlans,
 } from "@/lib/credits/credits.functions";
-import {
-  createCheckoutSession,
-  createBillingPortalSession,
-} from "@/lib/credits/billing.functions";
+import { createCheckoutSession, createBillingPortalSession } from "@/lib/credits/billing.functions";
 
 const SearchSchema = z.object({
   checkout: z.enum(["success", "cancelled"]).optional(),
@@ -123,7 +120,10 @@ function BillingPage() {
   const usedPct = quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
   const isFree = (state?.plan ?? "free") === "free";
   const setupRequired = Boolean(
-    state?.setupRequired || ledgerQ.data?.setupRequired || summaryQ.data?.setupRequired || plansQ.data?.setupRequired,
+    state?.setupRequired ||
+    ledgerQ.data?.setupRequired ||
+    summaryQ.data?.setupRequired ||
+    plansQ.data?.setupRequired,
   );
 
   const startCheckout = async () => {
@@ -163,10 +163,7 @@ function BillingPage() {
             Track your monthly credits, see where they go, and upgrade when you need more.
           </p>
         </div>
-        <Link
-          to="/"
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
+        <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">
           ← Back to chat
         </Link>
       </header>
@@ -178,7 +175,9 @@ function BillingPage() {
             <div>
               <p className="font-medium text-foreground">Billing database setup is not complete.</p>
               <p className="mt-1 text-muted-foreground">
-                Run `supabase/sql/0010_credits_billing.sql` and `supabase/sql/0011_billing_extensions.sql` in Supabase, then reload the schema cache.
+                Run `supabase/sql/0010_credits_billing.sql` and
+                `supabase/sql/0011_billing_extensions.sql` in Supabase, then reload the schema
+                cache.
               </p>
             </div>
           </div>
@@ -220,10 +219,7 @@ function BillingPage() {
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div className="min-w-0">
             <div className="mb-1 flex items-center gap-2">
-              <Badge
-                variant="secondary"
-                className="rounded-full bg-primary/10 text-primary"
-              >
+              <Badge variant="secondary" className="rounded-full bg-primary/10 text-primary">
                 {(state?.plan ?? "—").toUpperCase()} plan
               </Badge>
               {state?.subscriptionStatus && state.subscriptionStatus !== "active" && (
@@ -304,10 +300,7 @@ function BillingPage() {
             </div>
           ) : (
             (summaryQ.data?.breakdown ?? []).map((row) => (
-              <div
-                key={row.reason}
-                className="flex items-center justify-between px-5 py-3 text-sm"
-              >
+              <div key={row.reason} className="flex items-center justify-between px-5 py-3 text-sm">
                 <div>
                   <div className="font-medium">{REASON_LABELS[row.reason] ?? row.reason}</div>
                   <div className="text-xs text-muted-foreground">
@@ -346,9 +339,7 @@ function BillingPage() {
                     className="flex items-center justify-between gap-4 px-5 py-3 text-sm"
                   >
                     <div className="min-w-0">
-                      <div className="font-medium">
-                        {REASON_LABELS[e.reason] ?? e.reason}
-                      </div>
+                      <div className="font-medium">{REASON_LABELS[e.reason] ?? e.reason}</div>
                       <div className="truncate text-xs text-muted-foreground">
                         {new Date(e.created_at).toLocaleString()}
                         {model ? ` · ${model}` : ""}
@@ -467,13 +458,12 @@ function Feat({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
     <li
       className={
-        "flex items-start gap-2 " + (ok ? "text-foreground" : "text-muted-foreground/60 line-through")
+        "flex items-start gap-2 " +
+        (ok ? "text-foreground" : "text-muted-foreground/60 line-through")
       }
     >
       <Check
-        className={
-          "mt-0.5 h-4 w-4 shrink-0 " + (ok ? "text-primary" : "text-muted-foreground/40")
-        }
+        className={"mt-0.5 h-4 w-4 shrink-0 " + (ok ? "text-primary" : "text-muted-foreground/40")}
       />
       <span>{children}</span>
     </li>
