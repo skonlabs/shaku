@@ -338,10 +338,28 @@ export const schedulePlanChange = createServerFn({ method: "POST" })
       console.warn("[schedulePlanChange] ledger insert skipped:", err);
     }
 
+    // Try to apply immediately if conditions are already met (e.g. balance
+    // already 0, or effective date is in the past, or there's no active
+    // subscription to wait on). The function is a no-op otherwise.
+    let appliedNow = false;
+    let appliedToPlan: string | null = null;
+    try {
+      const { data: applyRes } = await writeSupabase.rpc("apply_pending_plan", {
+        p_user_id: userId,
+      });
+      const row = Array.isArray(applyRes) ? applyRes[0] : applyRes;
+      appliedNow = !!row?.applied;
+      appliedToPlan = (row?.plan as string | null) ?? null;
+    } catch (err) {
+      console.warn("[schedulePlanChange] apply_pending_plan failed:", err);
+    }
+
     return {
       ok: true as const,
-      pendingPlan: data.targetPlan,
-      effectiveAt,
+      pendingPlan: appliedNow ? null : data.targetPlan,
+      effectiveAt: appliedNow ? null : effectiveAt,
+      appliedNow,
+      appliedToPlan,
     };
   });
 
