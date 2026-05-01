@@ -278,19 +278,14 @@ export const schedulePlanChange = createServerFn({ method: "POST" })
     }
 
     // Determine the effective date — when the change will actually apply.
-    // If the user has an active Stripe subscription, wait until period end so
-    // they keep what they paid for. Otherwise (no active sub, e.g. cancelled
-    // or free user), apply immediately — there's nothing to wait for.
+    // Use current_period_end if it's a real future date (active paid period).
+    // Otherwise apply immediately — there's nothing to wait for.
+    const periodEnd = wallet.current_period_end ? new Date(wallet.current_period_end) : null;
+    const hasFuturePeriod = periodEnd !== null && periodEnd.getTime() > Date.now();
     let effectiveAt: string | null;
-    if (wallet.stripe_subscription_id) {
-      effectiveAt = wallet.current_period_end ?? null;
-      if (!effectiveAt && wallet.last_reset_at) {
-        const d = new Date(wallet.last_reset_at);
-        d.setDate(d.getDate() + 30);
-        effectiveAt = d.toISOString();
-      }
+    if (wallet.stripe_subscription_id && hasFuturePeriod) {
+      effectiveAt = periodEnd!.toISOString();
     } else {
-      // No active subscription — apply immediately.
       effectiveAt = new Date().toISOString();
     }
 
