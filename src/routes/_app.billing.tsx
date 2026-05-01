@@ -22,7 +22,7 @@ import {
   getCreditSummary,
   listPlans,
 } from "@/lib/credits/credits.functions";
-import { createCheckoutSession, createBillingPortalSession } from "@/lib/credits/billing.functions";
+import { createCheckoutSession, createBillingPortalSession, syncCheckoutSession } from "@/lib/credits/billing.functions";
 import { EmbeddedCheckoutDialog } from "@/components/EmbeddedCheckoutDialog";
 
 const SearchSchema = z.object({
@@ -68,6 +68,7 @@ function BillingPage() {
   const queryClient = useQueryClient();
   const [billingError, setBillingError] = useState<string | null>(null);
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
+  const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const stateQ = useQuery({
@@ -151,6 +152,7 @@ function BillingPage() {
       const res = await checkoutMut.mutateAsync();
       if (res.ok && res.clientSecret) {
         setCheckoutClientSecret(res.clientSecret);
+        setCheckoutSessionId(res.sessionId);
         setCheckoutOpen(true);
       } else {
         const message = res.ok ? "Couldn't start checkout." : res.error;
@@ -164,15 +166,24 @@ function BillingPage() {
     }
   };
 
-  const handleCheckoutComplete = useCallback(() => {
+  const handleCheckoutComplete = useCallback(async () => {
     setCheckoutOpen(false);
     setCheckoutClientSecret(null);
     toast.success("Payment received! Updating your plan…");
-    setPoll(true);
+    if (checkoutSessionId) {
+      try {
+        const sync = await syncCheckoutSession({ data: { sessionId: checkoutSessionId } });
+        if (!sync.ok || sync.pending) setPoll(true);
+      } catch {
+        setPoll(true);
+      }
+    } else {
+      setPoll(true);
+    }
     void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
     void queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
     void queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
-  }, [queryClient]);
+  }, [checkoutSessionId, queryClient]);
 
   return (
     <div className="mx-auto w-full max-w-5xl overflow-y-auto px-6 py-10">
@@ -225,7 +236,10 @@ function BillingPage() {
         open={checkoutOpen}
         onOpenChange={(o) => {
           setCheckoutOpen(o);
-          if (!o) setCheckoutClientSecret(null);
+          if (!o) {
+            setCheckoutClientSecret(null);
+            setCheckoutSessionId(null);
+          }
         }}
         clientSecret={checkoutClientSecret}
         onComplete={handleCheckoutComplete}
