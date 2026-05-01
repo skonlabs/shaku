@@ -210,23 +210,14 @@ function BillingPage() {
         </Card>
       )}
 
-      {checkoutUrl && !billingError && !setupRequired && (
-        <Card className="mb-6 border-primary/20 bg-primary/5 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <div>
-              <p className="font-medium text-foreground">Checkout is ready.</p>
-              <p className="mt-1 text-muted-foreground">
-                If Stripe did not open automatically, use the button below.
-              </p>
-            </div>
-            <Button asChild className="rounded-full">
-              <a href={checkoutUrl} target="_blank" rel="noreferrer">
-                Open checkout <ArrowRight className="ml-1.5 h-4 w-4" />
-              </a>
-            </Button>
-          </div>
-        </Card>
-      )}
+      <EmbeddedCheckoutDialog
+        open={checkoutOpen}
+        onOpenChange={(o) => {
+          setCheckoutOpen(o);
+          if (!o) setCheckoutClientSecret(null);
+        }}
+        clientSecret={checkoutClientSecret}
+      />
 
       {/* Plan + balance card */}
       <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-card to-card/60 p-6 shadow-[0_10px_40px_-20px_oklch(0.50_0.07_150/0.35)]">
