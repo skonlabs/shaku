@@ -23,7 +23,7 @@ begin
     raise exception 'user_id_required';
   end if;
 
-  if auth.role() <> 'service_role' and p_user_id is distinct from auth.uid() then
+  if auth.role() <> 'service_role' and (p_user_id is distinct from auth.uid() or p_target_plan <> 'free') then
     raise exception 'not_allowed';
   end if;
 
