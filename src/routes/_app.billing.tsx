@@ -113,6 +113,9 @@ function BillingPage() {
       }
     },
     onError: (e: Error) => toast.error(e.message ?? "Couldn't switch to Free."),
+  });
+
+  // Toast on return from Stripe
   const [poll, setPoll] = useState(false);
   useEffect(() => {
     if (search.checkout === "success") {
