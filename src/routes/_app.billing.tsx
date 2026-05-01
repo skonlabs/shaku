@@ -53,6 +53,7 @@ const REASON_LABELS: Record<string, string> = {
 function BillingPage() {
   const search = useSearch({ from: "/_app/billing" });
   const router = useRouter();
+  const [billingError, setBillingError] = useState<string | null>(null);
 
   const stateQ = useQuery({
     queryKey: ["credit-state"],
@@ -76,12 +77,18 @@ function BillingPage() {
     mutationFn: () => createCheckoutSession({ data: { plan: "basic" } }),
     onSuccess: (res) => {
       if (res.ok && res.url) {
-        window.location.href = res.url;
+        window.open(res.url, "_blank", "noopener,noreferrer");
       } else {
-        toast.error(res.ok ? "Couldn't start checkout." : res.error);
+        const message = res.ok ? "Couldn't start checkout." : res.error;
+        setBillingError(message);
+        toast.error(message);
       }
     },
-    onError: (e: Error) => toast.error(e.message ?? "Couldn't start checkout."),
+    onError: (e: Error) => {
+      const message = e.message ?? "Couldn't start checkout.";
+      setBillingError(message);
+      toast.error(message);
+    },
   });
   const portalMut = useMutation({
     mutationFn: () => createBillingPortalSession(),
@@ -131,6 +138,11 @@ function BillingPage() {
   const setupRequired = Boolean(
     state?.setupRequired || ledgerQ.data?.setupRequired || summaryQ.data?.setupRequired || plansQ.data?.setupRequired,
   );
+
+  const startCheckout = () => {
+    setBillingError(null);
+    checkoutMut.mutate();
+  };
 
   return (
     <div className="mx-auto w-full max-w-5xl overflow-y-auto px-6 py-10">
