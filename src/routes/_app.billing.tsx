@@ -100,8 +100,19 @@ function BillingPage() {
     },
     onError: (e: Error) => toast.error(e.message ?? "Couldn't open billing portal."),
   });
-
-  // Toast on return from Stripe
+  const resetMut = useMutation({
+    mutationFn: () => resetMyPlanToFree(),
+    onSuccess: (res) => {
+      if (res.ok) {
+        toast.success("Switched back to Free plan.");
+        void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
+        void queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
+        void queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
+      } else {
+        toast.error(res.error ?? "Couldn't switch to Free.");
+      }
+    },
+    onError: (e: Error) => toast.error(e.message ?? "Couldn't switch to Free."),
   const [poll, setPoll] = useState(false);
   useEffect(() => {
     if (search.checkout === "success") {
