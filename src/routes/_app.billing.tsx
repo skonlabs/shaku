@@ -101,14 +101,23 @@ function BillingPage() {
       schedulePlanChange({ data: { targetPlan } }),
     onSuccess: (res) => {
       if (res.ok) {
-        const date = res.effectiveAt ? new Date(res.effectiveAt).toLocaleDateString() : "soon";
-        toast.success(
-          res.pendingPlan === "free"
-            ? `Downgrade scheduled. You'll switch to Free on ${date} (or when your credits run out).`
-            : `Upgrade scheduled. You'll move to Basic on ${date} (or when your credits run out).`,
-        );
+        if (res.appliedNow) {
+          toast.success(
+            res.appliedToPlan === "free"
+              ? "You're now on the Free plan."
+              : "You're now on the Basic plan.",
+          );
+        } else {
+          const date = res.effectiveAt ? new Date(res.effectiveAt).toLocaleDateString() : "soon";
+          toast.success(
+            res.pendingPlan === "free"
+              ? `Downgrade scheduled. You'll switch to Free on ${date} (or when your credits run out).`
+              : `Upgrade scheduled. You'll move to Basic on ${date} (or when your credits run out).`,
+          );
+        }
         void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
         void queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
+        void queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
       } else {
         toast.error(res.error ?? "Couldn't schedule plan change.");
       }
