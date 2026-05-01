@@ -54,6 +54,7 @@ function BillingPage() {
   const search = useSearch({ from: "/_app/billing" });
   const router = useRouter();
   const [billingError, setBillingError] = useState<string | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
 
   const stateQ = useQuery({
     queryKey: ["credit-state"],
@@ -128,25 +129,20 @@ function BillingPage() {
   const startCheckout = async () => {
     if (checkoutMut.isPending) return;
     setBillingError(null);
-    const checkoutWindow = window.open("about:blank", "_blank");
+    setCheckoutUrl(null);
 
     try {
       const res = await checkoutMut.mutateAsync();
       if (res.ok && res.url) {
-        if (checkoutWindow) {
-          checkoutWindow.opener = null;
-          checkoutWindow.location.href = res.url;
-        } else {
-          window.location.href = res.url;
-        }
+        setCheckoutUrl(res.url);
+        const checkoutWindow = window.open(res.url, "_blank", "noopener,noreferrer");
+        checkoutWindow?.focus();
       } else {
-        checkoutWindow?.close();
         const message = res.ok ? "Couldn't start checkout." : res.error;
         setBillingError(message);
         toast.error(message);
       }
     } catch (error) {
-      checkoutWindow?.close();
       const message = error instanceof Error ? error.message : "Couldn't start checkout.";
       setBillingError(message);
       toast.error(message);
@@ -197,6 +193,24 @@ function BillingPage() {
               <p className="font-medium text-foreground">Checkout couldn't open.</p>
               <p className="mt-1 text-muted-foreground">{billingError}</p>
             </div>
+          </div>
+        </Card>
+      )}
+
+      {checkoutUrl && !billingError && !setupRequired && (
+        <Card className="mb-6 border-primary/20 bg-primary/5 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <div>
+              <p className="font-medium text-foreground">Checkout is ready.</p>
+              <p className="mt-1 text-muted-foreground">
+                If Stripe did not open automatically, use the button below.
+              </p>
+            </div>
+            <Button asChild className="rounded-full">
+              <a href={checkoutUrl} target="_blank" rel="noreferrer">
+                Open checkout <ArrowRight className="ml-1.5 h-4 w-4" />
+              </a>
+            </Button>
           </div>
         </Card>
       )}
