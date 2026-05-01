@@ -92,9 +92,6 @@ function BillingPage() {
   const checkoutMut = useMutation({
     mutationFn: () => createCheckoutSession({ data: { plan: "basic" } }),
   });
-  const syncCheckoutMut = useMutation({
-    mutationFn: (sessionId: string) => syncCheckoutSession({ data: { sessionId } }),
-  });
   const portalMut = useMutation({
     mutationFn: () => createBillingPortalSession(),
     onSuccess: (res) => {
@@ -175,7 +172,7 @@ function BillingPage() {
     toast.success("Payment received! Updating your plan…");
     if (checkoutSessionId) {
       try {
-        const sync = await syncCheckoutMut.mutateAsync(checkoutSessionId);
+        const sync = await syncCheckoutSession({ data: { sessionId: checkoutSessionId } });
         if (!sync.ok || sync.pending) setPoll(true);
       } catch {
         setPoll(true);
@@ -186,7 +183,7 @@ function BillingPage() {
     void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
     void queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
     void queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
-  }, [checkoutSessionId, queryClient, syncCheckoutMut]);
+  }, [checkoutSessionId, queryClient]);
 
   return (
     <div className="mx-auto w-full max-w-5xl overflow-y-auto px-6 py-10">
