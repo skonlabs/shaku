@@ -7,7 +7,6 @@ import {
   Check,
   Receipt,
   ArrowRight,
-  CreditCard,
   Loader2,
   AlertCircle,
 } from "lucide-react";
@@ -22,7 +21,7 @@ import {
   getCreditSummary,
   listPlans,
 } from "@/lib/credits/credits.functions";
-import { createCheckoutSession, createBillingPortalSession, syncCheckoutSession, resetMyPlanToFree } from "@/lib/credits/billing.functions";
+import { createCheckoutSession, syncCheckoutSession, resetMyPlanToFree } from "@/lib/credits/billing.functions";
 import { EmbeddedCheckoutDialog } from "@/components/EmbeddedCheckoutDialog";
 
 const SearchSchema = z.object({
@@ -91,14 +90,6 @@ function BillingPage() {
 
   const checkoutMut = useMutation({
     mutationFn: () => createCheckoutSession({ data: { plan: "basic" } }),
-  });
-  const portalMut = useMutation({
-    mutationFn: () => createBillingPortalSession(),
-    onSuccess: (res) => {
-      if (res.ok) window.location.href = res.url;
-      else toast.error(res.error);
-    },
-    onError: (e: Error) => toast.error(e.message ?? "Couldn't open billing portal."),
   });
   const resetMut = useMutation({
     mutationFn: () => resetMyPlanToFree(),
@@ -290,7 +281,7 @@ function BillingPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {isFree ? (
+            {isFree && (
               <Button
                 size="lg"
                 onClick={startCheckout}
@@ -303,37 +294,6 @@ function BillingPage() {
                   <Sparkles className="mr-2 h-4 w-4" />
                 )}
                 Upgrade to Basic — $20/mo
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                onClick={() => portalMut.mutate()}
-                disabled={portalMut.isPending || setupRequired}
-                className="rounded-full"
-              >
-                {portalMut.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <CreditCard className="mr-2 h-4 w-4" />
-                )}
-                Manage subscription
-              </Button>
-            )}
-            {!isFree && (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  if (confirm("Switch back to the Free plan? Your active subscription will be cancelled.")) {
-                    resetMut.mutate();
-                  }
-                }}
-                disabled={resetMut.isPending}
-                className="rounded-full text-muted-foreground hover:text-foreground"
-              >
-                {resetMut.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                Switch to Free
               </Button>
             )}
           </div>
@@ -489,8 +449,24 @@ function BillingPage() {
                       Upgrade <ArrowRight className="ml-1.5 h-4 w-4" />
                     </Button>
                   ) : (
-                    <Button variant="outline" disabled className="w-full rounded-full">
-                      Free
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        if (
+                          confirm(
+                            "Downgrade to the Free plan? Your active subscription will be cancelled.",
+                          )
+                        ) {
+                          resetMut.mutate();
+                        }
+                      }}
+                      disabled={resetMut.isPending || setupRequired}
+                      className="w-full rounded-full"
+                    >
+                      {resetMut.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : null}
+                      Downgrade to Free
                     </Button>
                   )}
                 </Card>
