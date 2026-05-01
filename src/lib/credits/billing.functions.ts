@@ -123,6 +123,12 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
       redirect_on_completion: "if_required",
       allow_promotion_codes: true,
       client_reference_id: userId,
+      // Card only — no Link, no Amazon Pay, no wallets. Keeps the form simple.
+      payment_method_types: ["card"],
+      // Hide "Save my info" (Link sign-up) prompt.
+      saved_payment_method_options: { payment_method_save: "disabled" },
+      // Don't ask for phone number.
+      phone_number_collection: { enabled: false },
       subscription_data: {
         metadata: { supabase_user_id: userId, plan: data.plan },
       },

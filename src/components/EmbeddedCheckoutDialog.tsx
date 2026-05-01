@@ -50,19 +50,23 @@ export function EmbeddedCheckoutDialog({
           Secure checkout powered by Stripe. Your card details are never seen or stored by us.
         </DialogDescription>
 
-        {/* Minimal header — just enough context, lets Stripe's polished UI breathe */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <div className="space-y-0.5">
-            <h2 className="font-display text-lg font-semibold tracking-tight text-foreground">
-              Complete your upgrade
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              You can cancel anytime from your billing page.
-            </p>
-          </div>
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-            <Lock className="h-3 w-3" />
-            Secure
+        {/* Trust-forward header — leads with Stripe + security */}
+        <div className="border-b border-border/50 bg-gradient-to-b from-muted/40 to-background px-6 pt-6 pb-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <h2 className="font-display text-lg font-semibold tracking-tight text-foreground">
+                Secure checkout by Stripe
+              </h2>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Payments are processed by Stripe, a PCI-DSS Level 1 certified
+                provider. Your card details are encrypted end-to-end — we never
+                see or store them.
+              </p>
+            </div>
+            <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+              <Lock className="h-3 w-3 text-primary" />
+              Encrypted
+            </div>
           </div>
         </div>
 
