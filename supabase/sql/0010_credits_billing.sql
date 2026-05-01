@@ -199,6 +199,11 @@ begin
 
   if not found then raise exception 'insufficient_credits' using errcode = 'P0001'; end if;
 
+  if v_new_balance <= 0 then
+    perform public.apply_pending_plan(p_user_id);
+    select balance into v_new_balance from public.user_credits where user_id = p_user_id;
+  end if;
+
   insert into public.credits_ledger (user_id, delta, reason, balance_after, request_id, metadata)
   values (p_user_id, -p_amount, p_reason, v_new_balance, p_request_id, coalesce(p_metadata,'{}'::jsonb))
   returning id into v_ledger_id;
