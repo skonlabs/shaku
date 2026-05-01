@@ -44,11 +44,14 @@ begin
          pending_plan = null,
          pending_plan_effective_at = null,
          monthly_quota = v_quota,
-         -- Reset balance to new plan's quota when the change actually applies.
+         -- Grant the target plan only when the scheduled change actually applies.
          balance = v_quota,
-         last_reset_at = now(),
+         -- If credits ran out before the period expiry, keep the same expiry/reset date.
+         last_reset_at = case when v_balance <= 0 then last_reset_at else now() end,
          updated_at = now()
    where user_id = p_user_id;
+
+  update public.users set plan = v_pending where id = p_user_id;
 
   insert into public.credit_ledger (user_id, delta, balance_after, reason, metadata)
   values (p_user_id, v_quota - v_balance, v_quota, 'plan_change',
