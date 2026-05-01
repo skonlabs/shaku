@@ -172,12 +172,9 @@ export const syncCheckoutSession = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => SyncCheckoutSchema.parse(data))
   .handler(async ({ data, context }) => {
-    const { userId } = context as { userId: string };
+    const { supabase, userId } = context as { supabase: any; userId: string };
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-    if (!serviceRoleKey || !supabaseUrl) {
-      return { ok: false as const, plan: null, pending: true, error: "Billing sync is still pending." };
-    }
 
     const stripe = getStripe();
     const session = await stripe.checkout.sessions.retrieve(data.sessionId);
@@ -198,11 +195,13 @@ export const syncCheckoutSession = createServerFn({ method: "POST" })
       return { ok: true as const, plan: null, pending: true };
     }
 
-    const adminSupabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    const writeSupabase = serviceRoleKey && supabaseUrl
+      ? createClient(supabaseUrl, serviceRoleKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
+      : supabase;
     const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
-    const { error } = await adminSupabase.rpc("credits_grant_for_period", {
+    const { error } = await writeSupabase.rpc("credits_grant_for_period", {
       p_user_id: userId,
       p_plan: "basic",
       p_period_start: periodStart,
