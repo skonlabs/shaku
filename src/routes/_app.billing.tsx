@@ -458,8 +458,24 @@ function BillingPage() {
                       Upgrade <ArrowRight className="ml-1.5 h-4 w-4" />
                     </Button>
                   ) : (
-                    <Button variant="outline" disabled className="w-full rounded-full">
-                      Free
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        if (
+                          confirm(
+                            "Downgrade to the Free plan? Your active subscription will be cancelled.",
+                          )
+                        ) {
+                          resetMut.mutate();
+                        }
+                      }}
+                      disabled={resetMut.isPending || setupRequired}
+                      className="w-full rounded-full"
+                    >
+                      {resetMut.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : null}
+                      Downgrade to Free
                     </Button>
                   )}
                 </Card>
