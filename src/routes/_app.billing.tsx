@@ -106,9 +106,10 @@ function BillingPage() {
             ? "You're now on the Free plan. Your remaining credits stay until they run out."
             : "You're now on the Basic plan. Your existing credits are preserved.",
         );
-        void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
-        void queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
-        void queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
+        await queryClient.invalidateQueries({ queryKey: ["credit-state"] });
+        await queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
+        await queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
+        await stateQ.refetch();
       } else {
         toast.error(res.error ?? "Couldn't change plan.");
       }
