@@ -50,23 +50,21 @@ export function EmbeddedCheckoutDialog({
           Secure checkout powered by Stripe. Your card details are never seen or stored by us.
         </DialogDescription>
 
-        {/* Trust-forward header — leads with Stripe logo + security */}
+        {/* Brand-forward header — Cortex first, Stripe attribution in footer */}
         <div className="border-b border-border/50 bg-gradient-to-b from-muted/40 to-background px-6 pt-6 pb-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 text-foreground">
-                <span className="text-xs font-medium text-muted-foreground">Secure checkout by</span>
-                <StripeWordmark className="h-5 w-auto text-foreground" />
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Leaf className="h-5 w-5" />
               </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Payments are processed by Stripe, a PCI-DSS Level 1 certified
-                provider. Your card details are encrypted end-to-end — we never
-                see or store them.
-              </p>
+              <div className="leading-tight">
+                <div className="font-display text-base font-semibold text-foreground">Cortex</div>
+                <div className="text-xs text-muted-foreground">Complete your upgrade</div>
+              </div>
             </div>
             <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-              <Lock className="h-3 w-3 text-primary" />
-              Encrypted
+              <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+              Secure checkout
             </div>
           </div>
         </div>
