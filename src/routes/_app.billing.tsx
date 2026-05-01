@@ -66,7 +66,8 @@ function BillingPage() {
   const search = useSearch({ from: "/_app/billing" });
   const router = useRouter();
   const [billingError, setBillingError] = useState<string | null>(null);
-  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const stateQ = useQuery({
     queryKey: ["credit-state"],
@@ -144,14 +145,12 @@ function BillingPage() {
   const startCheckout = async () => {
     if (checkoutMut.isPending) return;
     setBillingError(null);
-    setCheckoutUrl(null);
 
     try {
       const res = await checkoutMut.mutateAsync();
-      if (res.ok && res.url) {
-        setCheckoutUrl(res.url);
-        const checkoutWindow = window.open(res.url, "_blank", "noopener,noreferrer");
-        checkoutWindow?.focus();
+      if (res.ok && res.clientSecret) {
+        setCheckoutClientSecret(res.clientSecret);
+        setCheckoutOpen(true);
       } else {
         const message = res.ok ? "Couldn't start checkout." : res.error;
         setBillingError(message);
