@@ -231,19 +231,9 @@ export const syncCheckoutSession = createServerFn({ method: "POST" })
   });
 
 /**
- * Schedule a plan change (upgrade or downgrade).
- *
- * Rules (no refunds, no balance wipes):
- *   - The change is recorded as `pending_plan` with `pending_plan_effective_at`
- *     set to the user's current billing period end (or last_reset + 30d for
- *     free users with no Stripe period).
- *   - The change applies automatically once the user's credit balance hits 0
- *     OR the effective date passes — whichever comes first.
- *   - For paid → free, we set Stripe's `cancel_at_period_end = true` so no
- *     further charges happen, but the user keeps their balance and access
- *     until the period ends.
- *   - For free → basic, the user must complete checkout first (handled by
- *     `createCheckoutSession`); we don't expose this function for that path.
+ * Change the user's displayed plan immediately while preserving their current
+ * credit balance and expiry. Paid upgrades still go through Checkout first;
+ * this mutation is for Basic → Free downgrade / paid cancellation intent.
  */
 const SchedulePlanSchema = z.object({
   targetPlan: z.enum(["free", "basic"]),
@@ -264,7 +254,7 @@ export const schedulePlanChange = createServerFn({ method: "POST" })
 
     const { data: wallet, error: walletErr } = await writeSupabase
       .from("user_credits")
-      .select("plan, stripe_subscription_id, current_period_end, last_reset_at, balance")
+      .select("plan, stripe_subscription_id, current_period_end, last_reset_at, balance, subscription_status")
       .eq("user_id", userId)
       .maybeSingle();
     if (walletErr) {
@@ -277,80 +267,52 @@ export const schedulePlanChange = createServerFn({ method: "POST" })
       return { ok: false as const, error: `You're already on the ${data.targetPlan} plan.` };
     }
 
-    // IMMEDIATE plan change — no scheduling, no waiting.
-    // Rules:
-    //   * Plan flips right now (both user_credits.plan and users.plan).
-    //   * Balance is preserved (no refund on downgrade, no top-up on upgrade).
-    //   * current_period_end (expiry) is preserved.
-    //   * On basic → free, set Stripe cancel_at_period_end so no further
-    //     charges happen, but the user keeps access for the period they paid.
+    if (data.targetPlan === "basic") {
+      return { ok: false as const, error: "Please upgrade through checkout so payment is confirmed first." };
+    }
 
-    if (data.targetPlan === "free" && wallet.stripe_subscription_id) {
+    // One authoritative DB operation: flips user_credits.plan and users.plan,
+    // clears stale pending changes, preserves balance/expiry, and records the ledger.
+    const { data: changedRaw, error: changeErr } = await writeSupabase
+      .rpc("credits_change_plan_immediate", {
+        p_user_id: userId,
+        p_target_plan: data.targetPlan,
+      })
+      .maybeSingle();
+
+    if (changeErr) {
+      console.error("[schedulePlanChange] credits_change_plan_immediate failed:", JSON.stringify(changeErr));
+      const missingRpc = changeErr.message?.includes("credits_change_plan_immediate") || changeErr.code === "PGRST202";
+      return {
+        ok: false as const,
+        error: missingRpc
+          ? "Billing needs the latest plan-change database migration before this can work."
+          : changeErr.message || "Couldn't change plan.",
+      };
+    }
+
+    let stripeCancellationUpdated = false;
+    if (wallet.stripe_subscription_id) {
       try {
         const stripe = getStripe();
         await stripe.subscriptions.update(wallet.stripe_subscription_id, {
           cancel_at_period_end: true,
         });
+        stripeCancellationUpdated = true;
       } catch (err) {
-        console.warn("[schedulePlanChange] cancel_at_period_end failed (continuing):", err);
+        console.warn("[schedulePlanChange] cancel_at_period_end failed after plan change:", err);
       }
     }
 
-    // Look up the target plan's quota for monthly_quota tracking, but DO NOT
-    // overwrite the current balance — the user keeps what they already have.
-    const { data: planRow } = await writeSupabase
-      .from("plans")
-      .select("monthly_credits")
-      .eq("id", data.targetPlan)
-      .maybeSingle();
-    const targetQuota = (planRow?.monthly_credits as number | null) ?? (data.targetPlan === "basic" ? 500 : 30);
-
-    const { error: upErr } = await writeSupabase
-      .from("user_credits")
-      .update({
-        plan: data.targetPlan,
-        monthly_quota: targetQuota,
-        pending_plan: null,
-        pending_plan_effective_at: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId);
-
-    if (upErr) {
-      console.error("[schedulePlanChange] update failed:", JSON.stringify(upErr));
-      return { ok: false as const, error: upErr.message || "Couldn't change plan." };
-    }
-
-    // Mirror to public.users so chat/rate-limits see the new plan.
-    try {
-      await writeSupabase.from("users").update({ plan: data.targetPlan }).eq("id", userId);
-    } catch (err) {
-      console.warn("[schedulePlanChange] users.plan update skipped:", err);
-    }
-
-    try {
-      await writeSupabase.from("credits_ledger").insert({
-        user_id: userId,
-        delta: 0,
-        balance_after: wallet.balance,
-        reason: "plan_change",
-        metadata: {
-          immediate: true,
-          from_plan: wallet.plan,
-          to_plan: data.targetPlan,
-          balance_preserved: wallet.balance,
-        },
-      });
-    } catch (err) {
-      console.warn("[schedulePlanChange] ledger insert skipped:", err);
-    }
+    const changed = changedRaw as { plan?: string } | null;
 
     return {
       ok: true as const,
       pendingPlan: null,
       effectiveAt: null,
       appliedNow: true,
-      appliedToPlan: data.targetPlan,
+      appliedToPlan: changed?.plan ?? data.targetPlan,
+      stripeCancellationUpdated,
     };
   });
 

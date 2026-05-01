@@ -110,17 +110,10 @@ async function handleStripeEvent(
       if (!userId) return;
       const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
       const isActive = sub.status === "active" || sub.status === "trialing";
-      if (isActive) {
+      if (isActive && !isCancelAtPeriodEnd(sub)) {
         await grantPeriod(supabase, userId, "basic", sub, customerId);
       } else {
-        await supabase.rpc("credits_set_plan", {
-          p_user_id: userId,
-          p_plan: "basic",
-          p_stripe_customer_id: customerId,
-          p_stripe_subscription_id: sub.id,
-          p_subscription_status: sub.status,
-          p_current_period_end: secondsToIso(getPeriodEnd(sub)),
-        });
+        await syncSubscriptionOnly(supabase, userId, sub, customerId);
       }
       return;
     }
@@ -141,11 +134,9 @@ async function handleStripeEvent(
       const sub = event.data.object as Stripe.Subscription;
       const userId = await resolveUserId(supabase, sub);
       if (!userId) return;
-      await supabase.rpc("credits_set_plan", {
-        p_user_id: userId,
-        p_plan: "free",
-        p_subscription_status: "canceled",
-      });
+      const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
+      await changePlanImmediate(supabase, userId, "free");
+      await syncSubscriptionOnly(supabase, userId, sub, customerId, "canceled");
       return;
     }
 
@@ -188,6 +179,42 @@ async function grantPeriod(
     p_subscription_status: sub.status,
   });
   if (error) console.error("[webhooks.stripe] credits_grant_for_period error:", error);
+}
+
+async function changePlanImmediate(
+  supabase: SupabaseClient,
+  userId: string,
+  targetPlan: "free" | "basic",
+): Promise<void> {
+  const { error } = await supabase.rpc("credits_change_plan_immediate", {
+    p_user_id: userId,
+    p_target_plan: targetPlan,
+  });
+  if (error) console.error("[webhooks.stripe] credits_change_plan_immediate error:", error);
+}
+
+async function syncSubscriptionOnly(
+  supabase: SupabaseClient,
+  userId: string,
+  sub: Stripe.Subscription,
+  customerId: string,
+  statusOverride?: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("user_credits")
+    .update({
+      stripe_customer_id: customerId,
+      stripe_subscription_id: sub.id,
+      subscription_status: statusOverride ?? sub.status,
+      current_period_end: secondsToIso(getPeriodEnd(sub)),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId);
+  if (error) console.error("[webhooks.stripe] subscription sync error:", error);
+}
+
+function isCancelAtPeriodEnd(sub: Stripe.Subscription): boolean {
+  return Boolean((sub as unknown as { cancel_at_period_end?: boolean }).cancel_at_period_end);
 }
 
 async function resolveUserId(

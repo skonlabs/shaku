@@ -25,7 +25,6 @@ import {
   createCheckoutSession,
   syncCheckoutSession,
   schedulePlanChange,
-  cancelPendingPlanChange,
 } from "@/lib/credits/billing.functions";
 import { EmbeddedCheckoutDialog } from "@/components/EmbeddedCheckoutDialog";
 
@@ -115,19 +114,6 @@ function BillingPage() {
       }
     },
     onError: (e: Error) => toast.error(e.message ?? "Couldn't schedule plan change."),
-  });
-
-  const cancelPendingMut = useMutation({
-    mutationFn: () => cancelPendingPlanChange(),
-    onSuccess: (res) => {
-      if (res.ok) {
-        toast.success("Pending plan change cancelled.");
-        void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
-      } else {
-        toast.error(res.error ?? "Couldn't cancel pending change.");
-      }
-    },
-    onError: (e: Error) => toast.error(e.message ?? "Couldn't cancel pending change."),
   });
 
   // Toast on return from Stripe
@@ -273,41 +259,6 @@ function BillingPage() {
         clientSecret={checkoutClientSecret}
         onComplete={handleCheckoutComplete}
       />
-
-      {state?.pendingPlan && (
-        <Card className="mb-6 border-primary/30 bg-primary/5 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <div className="flex items-start gap-3">
-              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <div>
-                <p className="font-medium text-foreground">
-                  {state.pendingPlan === "free" ? "Downgrade scheduled" : "Upgrade scheduled"}
-                </p>
-                <p className="mt-0.5 text-muted-foreground">
-                  You'll move to <strong className="text-foreground">{state.pendingPlan}</strong>
-                  {" "}when your current credits run out
-                  {state.pendingPlanEffectiveAt
-                    ? ` or on ${new Date(state.pendingPlanEffectiveAt).toLocaleDateString()}`
-                    : ""}
-                  , whichever comes first. No refund — you keep your balance until then.
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => cancelPendingMut.mutate()}
-              disabled={cancelPendingMut.isPending}
-              className="rounded-full"
-            >
-              {cancelPendingMut.isPending ? (
-                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-              ) : null}
-              Cancel change
-            </Button>
-          </div>
-        </Card>
-      )}
 
       {/* Plan + balance card */}
       <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-card to-card/60 p-6 shadow-[0_10px_40px_-20px_oklch(0.50_0.07_150/0.35)]">
@@ -493,27 +444,10 @@ function BillingPage() {
                     </Feat>
                   </ul>
                   {(() => {
-                    const isPending = state?.pendingPlan === p.id;
-                    const hasAnyPending = !!state?.pendingPlan;
                     if (isCurrent) {
                       return (
                         <Button variant="outline" disabled className="w-full rounded-full">
-                          {hasAnyPending ? "Current plan (changing soon)" : "Current plan"}
-                        </Button>
-                      );
-                    }
-                    if (isPending) {
-                      return (
-                        <Button
-                          variant="outline"
-                          onClick={() => cancelPendingMut.mutate()}
-                          disabled={cancelPendingMut.isPending}
-                          className="w-full rounded-full"
-                        >
-                          {cancelPendingMut.isPending ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : null}
-                          Cancel scheduled change
+                          Current plan
                         </Button>
                       );
                     }
@@ -522,7 +456,7 @@ function BillingPage() {
                       return (
                         <Button
                           onClick={startCheckout}
-                          disabled={checkoutMut.isPending || setupRequired || hasAnyPending}
+                          disabled={checkoutMut.isPending || setupRequired}
                           className="w-full rounded-full"
                         >
                           {checkoutMut.isPending ? (
