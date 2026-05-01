@@ -81,6 +81,15 @@ export function EmbeddedCheckoutDialog({
             </EmbeddedCheckoutProvider>
           )}
         </div>
+
+        {/* Footer — Stripe attribution, industry-standard placement */}
+        <div className="border-t border-border/50 bg-muted/20 px-6 py-3">
+          <p className="text-center text-[11px] text-muted-foreground">
+            Payments securely processed by{" "}
+            <span className="font-semibold text-foreground">Stripe</span>
+            {" "}· PCI-DSS Level 1 · 256-bit encryption
+          </p>
+        </div>
       </DialogContent>
     </Dialog>
   );
