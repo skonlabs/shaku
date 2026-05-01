@@ -91,14 +91,6 @@ function BillingPage() {
   const checkoutMut = useMutation({
     mutationFn: () => createCheckoutSession({ data: { plan: "basic" } }),
   });
-  const portalMut = useMutation({
-    mutationFn: () => createBillingPortalSession(),
-    onSuccess: (res) => {
-      if (res.ok) window.location.href = res.url;
-      else toast.error(res.error);
-    },
-    onError: (e: Error) => toast.error(e.message ?? "Couldn't open billing portal."),
-  });
   const resetMut = useMutation({
     mutationFn: () => resetMyPlanToFree(),
     onSuccess: (res) => {
