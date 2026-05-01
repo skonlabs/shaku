@@ -161,11 +161,26 @@ export const createBillingPortalSession = createServerFn({ method: "POST" })
         error: "No Stripe customer on file yet — upgrade first.",
       };
     }
-    const portal = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: `${getOrigin()}/billing`,
-    });
-    return { ok: true as const, url: portal.url };
+    try {
+      const portal = await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: `${getOrigin()}/billing`,
+      });
+      return { ok: true as const, url: portal.url };
+    } catch (err: unknown) {
+      const e = err as { message?: string; code?: string; raw?: { message?: string } };
+      const message = e?.raw?.message || e?.message || "Couldn't open billing portal.";
+      console.error("[billingPortal] Stripe error:", message);
+      // Common case: test-mode default configuration not yet created in Stripe Dashboard.
+      if (/configuration/i.test(message)) {
+        return {
+          ok: false as const,
+          error:
+            "Stripe Customer Portal isn't configured yet. Open your Stripe Dashboard → Settings → Billing → Customer portal, save the default configuration, then try again.",
+        };
+      }
+      return { ok: false as const, error: message };
+    }
   });
 
 export const syncCheckoutSession = createServerFn({ method: "POST" })
