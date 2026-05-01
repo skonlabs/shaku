@@ -82,10 +82,19 @@ export const getCreditState = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
 
     // Apply any pending plan change if eligible (balance == 0 OR effective
-    // date passed). Best-effort; ignore if the function isn't deployed yet.
+    // date passed). Best-effort; log the result so we can debug.
     try {
-      await supabase.rpc("apply_pending_plan", { p_user_id: userId });
-    } catch { /* ignore */ }
+      const { data: applied, error: applyErr } = await supabase.rpc("apply_pending_plan", {
+        p_user_id: userId,
+      });
+      if (applyErr) {
+        console.warn("[getCreditState] apply_pending_plan rpc error:", applyErr.message);
+      } else if (applied) {
+        console.log("[getCreditState] apply_pending_plan result:", JSON.stringify(applied));
+      }
+    } catch (err) {
+      console.warn("[getCreditState] apply_pending_plan threw:", err);
+    }
 
     const { data: raw, error } = await supabase
       .rpc("credits_get_state", { p_user_id: userId })
@@ -105,14 +114,19 @@ export const getCreditState = createServerFn({ method: "GET" })
     let pendingPlan: string | null = null;
     let pendingPlanEffectiveAt: string | null = null;
     try {
-      const { data: pend } = await supabase
+      const { data: pend, error: pendErr } = await supabase
         .from("user_credits")
         .select("pending_plan, pending_plan_effective_at")
         .eq("user_id", userId)
         .maybeSingle();
+      if (pendErr) {
+        console.warn("[getCreditState] pending_plan read error:", pendErr.message);
+      }
       pendingPlan = (pend?.pending_plan as string | null) ?? null;
       pendingPlanEffectiveAt = (pend?.pending_plan_effective_at as string | null) ?? null;
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn("[getCreditState] pending_plan read threw:", err);
+    }
 
     if (error || !data) {
       return {

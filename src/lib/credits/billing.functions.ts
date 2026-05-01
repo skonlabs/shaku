@@ -278,11 +278,15 @@ export const schedulePlanChange = createServerFn({ method: "POST" })
     }
 
     // Determine the effective date — when the change will actually apply.
-    let effectiveAt: string | null = wallet.current_period_end ?? null;
-    if (!effectiveAt && wallet.last_reset_at) {
-      const d = new Date(wallet.last_reset_at);
-      d.setDate(d.getDate() + 30);
-      effectiveAt = d.toISOString();
+    // Use current_period_end if it's a real future date (active paid period).
+    // Otherwise apply immediately — there's nothing to wait for.
+    const periodEnd = wallet.current_period_end ? new Date(wallet.current_period_end) : null;
+    const hasFuturePeriod = periodEnd !== null && periodEnd.getTime() > Date.now();
+    let effectiveAt: string | null;
+    if (wallet.stripe_subscription_id && hasFuturePeriod) {
+      effectiveAt = periodEnd!.toISOString();
+    } else {
+      effectiveAt = new Date().toISOString();
     }
 
     // Downgrade path (basic → free): tell Stripe to stop billing at period end,
@@ -338,10 +342,28 @@ export const schedulePlanChange = createServerFn({ method: "POST" })
       console.warn("[schedulePlanChange] ledger insert skipped:", err);
     }
 
+    // Try to apply immediately if conditions are already met (e.g. balance
+    // already 0, or effective date is in the past, or there's no active
+    // subscription to wait on). The function is a no-op otherwise.
+    let appliedNow = false;
+    let appliedToPlan: string | null = null;
+    try {
+      const { data: applyRes } = await writeSupabase.rpc("apply_pending_plan", {
+        p_user_id: userId,
+      });
+      const row = Array.isArray(applyRes) ? applyRes[0] : applyRes;
+      appliedNow = !!row?.applied;
+      appliedToPlan = (row?.plan as string | null) ?? null;
+    } catch (err) {
+      console.warn("[schedulePlanChange] apply_pending_plan failed:", err);
+    }
+
     return {
       ok: true as const,
-      pendingPlan: data.targetPlan,
-      effectiveAt,
+      pendingPlan: appliedNow ? null : data.targetPlan,
+      effectiveAt: appliedNow ? null : effectiveAt,
+      appliedNow,
+      appliedToPlan,
     };
   });
 
