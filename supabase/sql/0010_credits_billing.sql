@@ -203,6 +203,11 @@ begin
   values (p_user_id, -p_amount, p_reason, v_new_balance, p_request_id, coalesce(p_metadata,'{}'::jsonb))
   returning id into v_ledger_id;
 
+  if v_new_balance <= 0 then
+    perform public.apply_pending_plan(p_user_id);
+    select balance into v_new_balance from public.user_credits where user_id = p_user_id;
+  end if;
+
   return query select v_ledger_id, v_new_balance, p_amount;
 end;
 $$;
