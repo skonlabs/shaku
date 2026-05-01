@@ -13,6 +13,10 @@ import Stripe from "stripe";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
+export const getStripePublishableKey = createServerFn({ method: "GET" }).handler(async () => {
+  return { publishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? "" };
+});
+
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
