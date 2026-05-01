@@ -124,11 +124,12 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
       // No "Add promotion code" field.
       allow_promotion_codes: false,
       client_reference_id: userId,
-      // Use dashboard-managed payment methods, but explicitly exclude Link
-      // so the "Pay with Link" button + "Save my info" banner + Link terms
-      // don't render. (excluded_payment_method_types only works when
-      // payment_method_types is omitted.)
-      excluded_payment_method_types: ["link", "amazon_pay"],
+      // Card only — also excludes Amazon Pay and other wallets.
+      // Note: "link" cannot be passed to excluded_payment_method_types and
+      // Link's "Save my info" banner can only be fully removed by disabling
+      // Link in Stripe Dashboard → Settings → Payment methods → Link.
+      payment_method_types: ["card"],
+      excluded_payment_method_types: ["amazon_pay"],
       saved_payment_method_options: { payment_method_save: "disabled" },
       // Don't ask for phone number.
       phone_number_collection: { enabled: false },
