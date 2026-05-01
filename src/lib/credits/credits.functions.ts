@@ -81,6 +81,12 @@ export const getCreditState = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
+    // Apply any pending plan change if eligible (balance == 0 OR effective
+    // date passed). Best-effort; ignore if the function isn't deployed yet.
+    try {
+      await supabase.rpc("apply_pending_plan", { p_user_id: userId });
+    } catch { /* ignore */ }
+
     const { data: raw, error } = await supabase
       .rpc("credits_get_state", { p_user_id: userId })
       .maybeSingle();
@@ -96,8 +102,19 @@ export const getCreditState = createServerFn({ method: "GET" })
         }
       | null;
 
+    let pendingPlan: string | null = null;
+    let pendingPlanEffectiveAt: string | null = null;
+    try {
+      const { data: pend } = await supabase
+        .from("user_credits")
+        .select("pending_plan, pending_plan_effective_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+      pendingPlan = (pend?.pending_plan as string | null) ?? null;
+      pendingPlanEffectiveAt = (pend?.pending_plan_effective_at as string | null) ?? null;
+    } catch { /* ignore */ }
+
     if (error || !data) {
-      // Wallet not provisioned yet — fall back to free defaults rather than crash.
       return {
         setupRequired: isCreditsSchemaMissing(error),
         plan: "free",
@@ -107,6 +124,8 @@ export const getCreditState = createServerFn({ method: "GET" })
         currentPeriodEnd: null as string | null,
         subscriptionStatus: null as string | null,
         features: fallbackFeatures,
+        pendingPlan,
+        pendingPlanEffectiveAt,
       };
     }
 
@@ -119,6 +138,8 @@ export const getCreditState = createServerFn({ method: "GET" })
       currentPeriodEnd: (data.current_period_end as string | null) ?? null,
       subscriptionStatus: (data.subscription_status as string | null) ?? null,
       features: data.features as PlanFeatures,
+      pendingPlan,
+      pendingPlanEffectiveAt,
     };
   });
 
