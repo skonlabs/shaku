@@ -6,7 +6,6 @@ import {
 } from "@stripe/react-stripe-js";
 import { Lock } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import * as VisuallyHiddenPrimitive from "@radix-ui/react-visually-hidden";
 import { getStripePublishableKey } from "@/lib/credits/billing.functions";
 
 let stripePromise: Promise<Stripe | null> | null = null;
@@ -46,12 +45,10 @@ export function EmbeddedCheckoutDialog({
       <DialogContent
         className="max-w-xl p-0 gap-0 overflow-hidden rounded-2xl border-border/60 bg-background shadow-2xl"
       >
-        <VisuallyHiddenPrimitive.Root>
-          <DialogTitle>Complete your upgrade</DialogTitle>
-          <DialogDescription>
-            Secure checkout powered by Stripe. Your card details are never seen or stored by us.
-          </DialogDescription>
-        </VisuallyHiddenPrimitive.Root>
+        <DialogTitle className="sr-only">Complete your upgrade</DialogTitle>
+        <DialogDescription className="sr-only">
+          Secure checkout powered by Stripe. Your card details are never seen or stored by us.
+        </DialogDescription>
 
         {/* Minimal header — just enough context, lets Stripe's polished UI breathe */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4">
