@@ -67,6 +67,27 @@ begin
     return;
   end if;
 
+  -- If the user scheduled a move away from this paid plan, do not let Stripe
+  -- renewal/update webhooks silently undo the scheduled change after it is due.
+  update public.user_credits
+     set current_period_end = p_period_end,
+         subscription_status = coalesce(p_subscription_status, subscription_status),
+         stripe_customer_id = coalesce(p_stripe_customer_id, stripe_customer_id),
+         stripe_subscription_id = coalesce(p_stripe_subscription_id, stripe_subscription_id),
+         updated_at = now()
+   where user_id = p_user_id
+     and pending_plan is not null
+     and pending_plan <> p_plan
+     and pending_plan_effective_at is not null
+     and pending_plan_effective_at <= now();
+
+  if found then
+    perform public.apply_pending_plan(p_user_id);
+    select balance into v_balance from public.user_credits where user_id = p_user_id;
+    return query select 0, coalesce(v_balance, 0), false;
+    return;
+  end if;
+
   -- Lock the wallet row (or create it).
   select plan, balance into v_old_plan, v_balance
   from public.user_credits where user_id = p_user_id for update;
