@@ -6,7 +6,7 @@ import {
 } from "@stripe/react-stripe-js";
 import { Lock } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { VisuallyHidden } from "@/components/ui/visually-hidden";
+import * as VisuallyHiddenPrimitive from "@radix-ui/react-visually-hidden";
 import { getStripePublishableKey } from "@/lib/credits/billing.functions";
 
 let stripePromise: Promise<Stripe | null> | null = null;
