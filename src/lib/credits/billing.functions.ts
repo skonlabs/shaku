@@ -124,9 +124,11 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
       // No "Add promotion code" field.
       allow_promotion_codes: false,
       client_reference_id: userId,
-      // Card only — no Link, no Amazon Pay, no wallets.
-      payment_method_types: ["card"],
-      // Hide "Save my info for 1-click checkout with Link" prompt.
+      // Use dashboard-managed payment methods, but explicitly exclude Link
+      // so the "Pay with Link" button + "Save my info" banner + Link terms
+      // don't render. (excluded_payment_method_types only works when
+      // payment_method_types is omitted.)
+      excluded_payment_method_types: ["link", "amazon_pay"],
       saved_payment_method_options: { payment_method_save: "disabled" },
       // Don't ask for phone number.
       phone_number_collection: { enabled: false },
