@@ -10,6 +10,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeader } from "@tanstack/react-start/server";
+import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -46,6 +47,10 @@ function safeOriginFromUrl(value: string | undefined): string | null {
 
 const CheckoutSchema = z.object({
   plan: z.literal("basic"),
+});
+
+const SyncCheckoutSchema = z.object({
+  sessionId: z.string().min(8).max(255),
 });
 
 function isCreditsSchemaMissing(error: unknown): boolean {
@@ -162,3 +167,70 @@ export const createBillingPortalSession = createServerFn({ method: "POST" })
     });
     return { ok: true as const, url: portal.url };
   });
+
+export const syncCheckoutSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => SyncCheckoutSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { userId } = context as { userId: string };
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+    if (!serviceRoleKey || !supabaseUrl) {
+      return { ok: false as const, plan: null, pending: true, error: "Billing sync is still pending." };
+    }
+
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.retrieve(data.sessionId);
+    const sessionUserId = session.metadata?.supabase_user_id ?? session.client_reference_id;
+    if (sessionUserId !== userId) {
+      return { ok: false as const, plan: null, pending: true, error: "Billing sync is still pending." };
+    }
+
+    const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+    if (!subscriptionId || session.status !== "complete") {
+      return { ok: true as const, plan: null, pending: true };
+    }
+
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const periodStart = secondsToIso(getSubscriptionPeriodStart(subscription));
+    const periodEnd = secondsToIso(getSubscriptionPeriodEnd(subscription));
+    if (!periodStart || !periodEnd) {
+      return { ok: true as const, plan: null, pending: true };
+    }
+
+    const adminSupabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+    const { error } = await adminSupabase.rpc("credits_grant_for_period", {
+      p_user_id: userId,
+      p_plan: "basic",
+      p_period_start: periodStart,
+      p_period_end: periodEnd,
+      p_stripe_customer_id: customerId,
+      p_stripe_subscription_id: subscription.id,
+      p_subscription_status: subscription.status,
+    });
+    if (error) throw error;
+
+    return { ok: true as const, plan: "basic", pending: false };
+  });
+
+function secondsToIso(s: number | null | undefined): string | null {
+  if (!s || !Number.isFinite(s)) return null;
+  return new Date(s * 1000).toISOString();
+}
+
+function getSubscriptionPeriodStart(sub: Stripe.Subscription): number | null {
+  const top = (sub as unknown as { current_period_start?: number }).current_period_start;
+  if (typeof top === "number") return top;
+  const item = sub.items?.data?.[0] as unknown as { current_period_start?: number } | undefined;
+  return typeof item?.current_period_start === "number" ? item.current_period_start : null;
+}
+
+function getSubscriptionPeriodEnd(sub: Stripe.Subscription): number | null {
+  const top = (sub as unknown as { current_period_end?: number }).current_period_end;
+  if (typeof top === "number") return top;
+  const item = sub.items?.data?.[0] as unknown as { current_period_end?: number } | undefined;
+  return typeof item?.current_period_end === "number" ? item.current_period_end : null;
+}
