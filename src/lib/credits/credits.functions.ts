@@ -24,6 +24,55 @@ import {
   type ReasonCode,
 } from "./engine";
 
+function isCreditsSchemaMissing(error: unknown): boolean {
+  const message =
+    typeof (error as { message?: unknown } | null)?.message === "string"
+      ? ((error as { message: string }).message)
+      : String(error ?? "");
+
+  return (
+    message.includes("schema cache") &&
+    ["credits_ledger", "credits_summary", "credits_get_state", "plans", "user_credits"].some((name) =>
+      message.includes(name),
+    )
+  );
+}
+
+const fallbackFeatures: PlanFeatures = {
+  models: ["gpt-4o-mini", "claude-haiku-4-5-20251001"],
+  memory: false,
+  documents: false,
+  max_context_tokens: 10_000,
+  advanced_routing: false,
+};
+
+const fallbackPlans = [
+  {
+    id: "free",
+    display_name: "Free",
+    monthly_price_usd: 0,
+    monthly_credits: 500,
+    features: fallbackFeatures,
+    is_purchasable: false,
+    sort_order: 10,
+  },
+  {
+    id: "basic",
+    display_name: "Basic",
+    monthly_price_usd: 20,
+    monthly_credits: 5000,
+    features: {
+      models: ["gpt-4o-mini", "claude-haiku-4-5-20251001", "gpt-4o", "claude-sonnet-4-6", "gemini-2.0-flash"],
+      memory: true,
+      documents: true,
+      max_context_tokens: 50_000,
+      advanced_routing: true,
+    } satisfies PlanFeatures,
+    is_purchasable: true,
+    sort_order: 20,
+  },
+];
+
 // ---------------------------------------------------------------------------
 // /credits/check
 // ---------------------------------------------------------------------------
@@ -50,23 +99,19 @@ export const getCreditState = createServerFn({ method: "GET" })
     if (error || !data) {
       // Wallet not provisioned yet — fall back to free defaults rather than crash.
       return {
+        setupRequired: isCreditsSchemaMissing(error),
         plan: "free",
         balance: 500,
         monthlyQuota: 500,
         lastResetAt: new Date().toISOString(),
         currentPeriodEnd: null as string | null,
         subscriptionStatus: null as string | null,
-        features: {
-          models: ["gpt-4o-mini", "claude-haiku-4-5-20251001"],
-          memory: false,
-          documents: false,
-          max_context_tokens: 10_000,
-          advanced_routing: false,
-        } as PlanFeatures,
+        features: fallbackFeatures,
       };
     }
 
     return {
+      setupRequired: false,
       plan: data.plan as string,
       balance: data.balance as number,
       monthlyQuota: data.monthly_quota as number,
@@ -194,6 +239,9 @@ export const getCreditLedger = createServerFn({ method: "POST" })
     if (data.cursor) q = q.lt("created_at", data.cursor);
 
     const { data: rows, error } = await q;
+    if (isCreditsSchemaMissing(error)) {
+      return { entries: [], nextCursor: null, setupRequired: true };
+    }
     if (error) throw error;
 
     type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
@@ -210,6 +258,7 @@ export const getCreditLedger = createServerFn({ method: "POST" })
     return {
       entries: list,
       nextCursor: list.length === data.limit ? list[list.length - 1].created_at : null,
+      setupRequired: false,
     };
   });
 
@@ -221,9 +270,13 @@ export const getCreditSummary = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const { data, error } = await supabase.rpc("credits_summary", { p_user_id: userId });
+    if (isCreditsSchemaMissing(error)) {
+      return { breakdown: [], setupRequired: true };
+    }
     if (error) throw error;
     return {
       breakdown: (data ?? []) as Array<{ reason: string; total_spent: number; request_count: number }>,
+      setupRequired: false,
     };
   });
 
@@ -238,8 +291,11 @@ export const listPlans = createServerFn({ method: "GET" })
       .from("plans")
       .select("id, display_name, monthly_price_usd, monthly_credits, features, is_purchasable, sort_order")
       .order("sort_order", { ascending: true });
+    if (isCreditsSchemaMissing(error)) {
+      return { plans: fallbackPlans, setupRequired: true };
+    }
     if (error) throw error;
-    return { plans: data ?? [] };
+    return { plans: data ?? [], setupRequired: false };
   });
 
 // ---------------------------------------------------------------------------
