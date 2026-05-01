@@ -110,17 +110,10 @@ async function handleStripeEvent(
       if (!userId) return;
       const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
       const isActive = sub.status === "active" || sub.status === "trialing";
-      if (isActive) {
+      if (isActive && !isCancelAtPeriodEnd(sub)) {
         await grantPeriod(supabase, userId, "basic", sub, customerId);
       } else {
-        await supabase.rpc("credits_set_plan", {
-          p_user_id: userId,
-          p_plan: "basic",
-          p_stripe_customer_id: customerId,
-          p_stripe_subscription_id: sub.id,
-          p_subscription_status: sub.status,
-          p_current_period_end: secondsToIso(getPeriodEnd(sub)),
-        });
+        await syncSubscriptionOnly(supabase, userId, sub, customerId);
       }
       return;
     }
@@ -141,11 +134,9 @@ async function handleStripeEvent(
       const sub = event.data.object as Stripe.Subscription;
       const userId = await resolveUserId(supabase, sub);
       if (!userId) return;
-      await supabase.rpc("credits_set_plan", {
-        p_user_id: userId,
-        p_plan: "free",
-        p_subscription_status: "canceled",
-      });
+      const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
+      await changePlanImmediate(supabase, userId, "free");
+      await syncSubscriptionOnly(supabase, userId, sub, customerId, "canceled");
       return;
     }
 
