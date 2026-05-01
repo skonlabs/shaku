@@ -128,10 +128,6 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
       payment_method_types: ["card"],
       // Hide "Save my info for 1-click checkout with Link" prompt.
       saved_payment_method_options: { payment_method_save: "disabled" },
-      // Suppress the Link express-checkout button + Link autofill banner.
-      payment_method_options: {
-        card: { setup_future_usage: "off_session" },
-      },
       // Don't ask for phone number.
       phone_number_collection: { enabled: false },
       subscription_data: {
