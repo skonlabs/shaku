@@ -99,16 +99,17 @@ function BillingPage() {
   const scheduleMut = useMutation({
     mutationFn: (targetPlan: "free" | "basic") =>
       schedulePlanChange({ data: { targetPlan } }),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       if (res.ok) {
         toast.success(
           res.appliedToPlan === "free"
             ? "You're now on the Free plan. Your remaining credits stay until they run out."
             : "You're now on the Basic plan. Your existing credits are preserved.",
         );
-        void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
-        void queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
-        void queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
+        await queryClient.invalidateQueries({ queryKey: ["credit-state"] });
+        await queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
+        await queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
+        await stateQ.refetch();
       } else {
         toast.error(res.error ?? "Couldn't change plan.");
       }
@@ -531,26 +532,26 @@ function BillingPage() {
                         </Button>
                       );
                     }
-                    // Basic → Free: schedule downgrade at period end / when credits run out.
+                    // Basic → Free: immediate downgrade. Existing credits and expiry are preserved.
                     return (
                       <Button
                         variant="outline"
                         onClick={() => {
                           if (
                             confirm(
-                              "Schedule a downgrade to Free? You'll keep your current credits and access until they run out or your billing period ends — no refund, no immediate change.",
+                              "Downgrade to Free? You'll keep your current credits and expiry — no refund, but billing stops at the end of your current period.",
                             )
                           ) {
                             scheduleMut.mutate("free");
                           }
                         }}
-                        disabled={scheduleMut.isPending || setupRequired || hasAnyPending}
+                        disabled={scheduleMut.isPending || setupRequired}
                         className="w-full rounded-full"
                       >
                         {scheduleMut.isPending ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : null}
-                        Schedule downgrade to Free
+                        Downgrade to Free
                       </Button>
                     );
                   })()}
