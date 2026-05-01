@@ -1,6 +1,6 @@
--- Migration 0012 — Add current_period_start to user_credits
--- Idempotent. The billing code writes both current_period_start and
--- current_period_end when syncing Stripe subscriptions.
+-- Migration 0012 — Optional legacy period-start column
+-- Idempotent. The app no longer requires this column; keep this only for
+-- environments where older deployed code already referenced it.
 set search_path = public;
 
 alter table public.user_credits
