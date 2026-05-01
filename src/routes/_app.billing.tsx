@@ -444,27 +444,10 @@ function BillingPage() {
                     </Feat>
                   </ul>
                   {(() => {
-                    const isPending = state?.pendingPlan === p.id;
-                    const hasAnyPending = !!state?.pendingPlan;
                     if (isCurrent) {
                       return (
                         <Button variant="outline" disabled className="w-full rounded-full">
-                          {hasAnyPending ? "Current plan (changing soon)" : "Current plan"}
-                        </Button>
-                      );
-                    }
-                    if (isPending) {
-                      return (
-                        <Button
-                          variant="outline"
-                          onClick={() => cancelPendingMut.mutate()}
-                          disabled={cancelPendingMut.isPending}
-                          className="w-full rounded-full"
-                        >
-                          {cancelPendingMut.isPending ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : null}
-                          Cancel scheduled change
+                          Current plan
                         </Button>
                       );
                     }
@@ -473,7 +456,7 @@ function BillingPage() {
                       return (
                         <Button
                           onClick={startCheckout}
-                          disabled={checkoutMut.isPending || setupRequired || hasAnyPending}
+                          disabled={checkoutMut.isPending || setupRequired}
                           className="w-full rounded-full"
                         >
                           {checkoutMut.isPending ? (
