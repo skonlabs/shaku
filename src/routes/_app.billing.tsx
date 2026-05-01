@@ -96,19 +96,37 @@ function BillingPage() {
   const checkoutMut = useMutation({
     mutationFn: () => createCheckoutSession({ data: { plan: "basic" } }),
   });
-  const resetMut = useMutation({
-    mutationFn: () => resetMyPlanToFree(),
+  const scheduleMut = useMutation({
+    mutationFn: (targetPlan: "free" | "basic") =>
+      schedulePlanChange({ data: { targetPlan } }),
     onSuccess: (res) => {
       if (res.ok) {
-        toast.success("Switched back to Free plan.");
+        const date = res.effectiveAt ? new Date(res.effectiveAt).toLocaleDateString() : "soon";
+        toast.success(
+          res.pendingPlan === "free"
+            ? `Downgrade scheduled. You'll switch to Free on ${date} (or when your credits run out).`
+            : `Upgrade scheduled. You'll move to Basic on ${date} (or when your credits run out).`,
+        );
         void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
         void queryClient.invalidateQueries({ queryKey: ["credit-ledger"] });
-        void queryClient.invalidateQueries({ queryKey: ["credit-summary"] });
       } else {
-        toast.error(res.error ?? "Couldn't switch to Free.");
+        toast.error(res.error ?? "Couldn't schedule plan change.");
       }
     },
-    onError: (e: Error) => toast.error(e.message ?? "Couldn't switch to Free."),
+    onError: (e: Error) => toast.error(e.message ?? "Couldn't schedule plan change."),
+  });
+
+  const cancelPendingMut = useMutation({
+    mutationFn: () => cancelPendingPlanChange(),
+    onSuccess: (res) => {
+      if (res.ok) {
+        toast.success("Pending plan change cancelled.");
+        void queryClient.invalidateQueries({ queryKey: ["credit-state"] });
+      } else {
+        toast.error(res.error ?? "Couldn't cancel pending change.");
+      }
+    },
+    onError: (e: Error) => toast.error(e.message ?? "Couldn't cancel pending change."),
   });
 
   // Toast on return from Stripe
