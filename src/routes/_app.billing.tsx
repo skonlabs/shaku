@@ -456,42 +456,69 @@ function BillingPage() {
                       Long-context conversations
                     </Feat>
                   </ul>
-                  {isCurrent ? (
-                    <Button variant="outline" disabled className="w-full rounded-full">
-                      Current plan
-                    </Button>
-                  ) : p.id === "basic" ? (
-                    <Button
-                      onClick={startCheckout}
-                      disabled={checkoutMut.isPending || setupRequired}
-                      className="w-full rounded-full"
-                    >
-                      {checkoutMut.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-                      Upgrade <ArrowRight className="ml-1.5 h-4 w-4" />
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        if (
-                          confirm(
-                            "Downgrade to the Free plan? Your active subscription will be cancelled.",
-                          )
-                        ) {
-                          resetMut.mutate();
-                        }
-                      }}
-                      disabled={resetMut.isPending || setupRequired}
-                      className="w-full rounded-full"
-                    >
-                      {resetMut.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-                      Downgrade to Free
-                    </Button>
-                  )}
+                  {(() => {
+                    const isPending = state?.pendingPlan === p.id;
+                    const hasAnyPending = !!state?.pendingPlan;
+                    if (isCurrent) {
+                      return (
+                        <Button variant="outline" disabled className="w-full rounded-full">
+                          {hasAnyPending ? "Current plan (changing soon)" : "Current plan"}
+                        </Button>
+                      );
+                    }
+                    if (isPending) {
+                      return (
+                        <Button
+                          variant="outline"
+                          onClick={() => cancelPendingMut.mutate()}
+                          disabled={cancelPendingMut.isPending}
+                          className="w-full rounded-full"
+                        >
+                          {cancelPendingMut.isPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : null}
+                          Cancel scheduled change
+                        </Button>
+                      );
+                    }
+                    if (p.id === "basic") {
+                      // Free → Basic: requires payment, go through checkout immediately.
+                      return (
+                        <Button
+                          onClick={startCheckout}
+                          disabled={checkoutMut.isPending || setupRequired || hasAnyPending}
+                          className="w-full rounded-full"
+                        >
+                          {checkoutMut.isPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : null}
+                          Upgrade <ArrowRight className="ml-1.5 h-4 w-4" />
+                        </Button>
+                      );
+                    }
+                    // Basic → Free: schedule downgrade at period end / when credits run out.
+                    return (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          if (
+                            confirm(
+                              "Schedule a downgrade to Free? You'll keep your current credits and access until they run out or your billing period ends — no refund, no immediate change.",
+                            )
+                          ) {
+                            scheduleMut.mutate("free");
+                          }
+                        }}
+                        disabled={scheduleMut.isPending || setupRequired || hasAnyPending}
+                        className="w-full rounded-full"
+                      >
+                        {scheduleMut.isPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : null}
+                        Schedule downgrade to Free
+                      </Button>
+                    );
+                  })()}
                 </Card>
               );
             })}
