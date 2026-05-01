@@ -180,6 +180,18 @@ function BillingPage() {
         </Card>
       )}
 
+      {billingError && !setupRequired && (
+        <Card className="mb-6 border-destructive/20 bg-destructive/5 p-4">
+          <div className="flex gap-3 text-sm">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div>
+              <p className="font-medium text-foreground">Checkout couldn't open.</p>
+              <p className="mt-1 text-muted-foreground">{billingError}</p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Plan + balance card */}
       <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-card to-card/60 p-6 shadow-[0_10px_40px_-20px_oklch(0.50_0.07_150/0.35)]">
         <div className="flex flex-wrap items-start justify-between gap-6">
@@ -217,7 +229,7 @@ function BillingPage() {
             {isFree ? (
               <Button
                 size="lg"
-                onClick={() => checkoutMut.mutate()}
+                onClick={startCheckout}
                 disabled={checkoutMut.isPending || setupRequired}
                 className="rounded-full"
               >
@@ -397,7 +409,7 @@ function BillingPage() {
                     </Button>
                   ) : p.id === "basic" ? (
                     <Button
-                      onClick={() => checkoutMut.mutate()}
+                      onClick={startCheckout}
                       disabled={checkoutMut.isPending || setupRequired}
                       className="w-full rounded-full"
                     >
