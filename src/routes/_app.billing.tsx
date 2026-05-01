@@ -53,6 +53,7 @@ const REASON_LABELS: Record<string, string> = {
 function BillingPage() {
   const search = useSearch({ from: "/_app/billing" });
   const router = useRouter();
+  const [billingError, setBillingError] = useState<string | null>(null);
 
   const stateQ = useQuery({
     queryKey: ["credit-state"],
@@ -74,14 +75,6 @@ function BillingPage() {
 
   const checkoutMut = useMutation({
     mutationFn: () => createCheckoutSession({ data: { plan: "basic" } }),
-    onSuccess: (res) => {
-      if (res.ok && res.url) {
-        window.location.href = res.url;
-      } else {
-        toast.error(res.ok ? "Couldn't start checkout." : res.error);
-      }
-    },
-    onError: (e: Error) => toast.error(e.message ?? "Couldn't start checkout."),
   });
   const portalMut = useMutation({
     mutationFn: () => createBillingPortalSession(),
@@ -132,6 +125,34 @@ function BillingPage() {
     state?.setupRequired || ledgerQ.data?.setupRequired || summaryQ.data?.setupRequired || plansQ.data?.setupRequired,
   );
 
+  const startCheckout = async () => {
+    if (checkoutMut.isPending) return;
+    setBillingError(null);
+    const checkoutWindow = window.open("about:blank", "_blank");
+
+    try {
+      const res = await checkoutMut.mutateAsync();
+      if (res.ok && res.url) {
+        if (checkoutWindow) {
+          checkoutWindow.opener = null;
+          checkoutWindow.location.href = res.url;
+        } else {
+          window.location.href = res.url;
+        }
+      } else {
+        checkoutWindow?.close();
+        const message = res.ok ? "Couldn't start checkout." : res.error;
+        setBillingError(message);
+        toast.error(message);
+      }
+    } catch (error) {
+      checkoutWindow?.close();
+      const message = error instanceof Error ? error.message : "Couldn't start checkout.";
+      setBillingError(message);
+      toast.error(message);
+    }
+  };
+
   return (
     <div className="mx-auto w-full max-w-5xl overflow-y-auto px-6 py-10">
       <header className="mb-8 flex items-start justify-between gap-4">
@@ -163,6 +184,18 @@ function BillingPage() {
               <p className="mt-1 text-muted-foreground">
                 Run `supabase/sql/0010_credits_billing.sql` and `supabase/sql/0011_billing_extensions.sql` in Supabase, then reload the schema cache.
               </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {billingError && !setupRequired && (
+        <Card className="mb-6 border-destructive/20 bg-destructive/5 p-4">
+          <div className="flex gap-3 text-sm">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div>
+              <p className="font-medium text-foreground">Checkout couldn't open.</p>
+              <p className="mt-1 text-muted-foreground">{billingError}</p>
             </div>
           </div>
         </Card>
@@ -205,7 +238,7 @@ function BillingPage() {
             {isFree ? (
               <Button
                 size="lg"
-                onClick={() => checkoutMut.mutate()}
+                onClick={startCheckout}
                 disabled={checkoutMut.isPending || setupRequired}
                 className="rounded-full"
               >
@@ -385,7 +418,7 @@ function BillingPage() {
                     </Button>
                   ) : p.id === "basic" ? (
                     <Button
-                      onClick={() => checkoutMut.mutate()}
+                      onClick={startCheckout}
                       disabled={checkoutMut.isPending || setupRequired}
                       className="w-full rounded-full"
                     >
