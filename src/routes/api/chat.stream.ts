@@ -75,8 +75,8 @@ const SYSTEM_PROMPT = `You are Cortex, a highly capable personal AI assistant. Y
 - You are simply Cortex.`;
 
 const TITLE_PROMPT = `Generate a concise 3-6 word title for this conversation. Return ONLY the title text, no quotes, no punctuation at the end.`;
-const MAX_ATTACHMENT_CONTEXT_CHARS = 80_000;
-const MAX_ATTACHMENT_CHARS_PER_FILE = 24_000;
+const MAX_ATTACHMENT_CONTEXT_CHARS = 400_000;
+const MAX_ATTACHMENT_CHARS_PER_FILE = 150_000;
 
 const ACK_RESPONSES = [
   "You're welcome! Let me know if you need anything else.",
