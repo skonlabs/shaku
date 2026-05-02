@@ -584,11 +584,27 @@ function BillingPage() {
           ) : (ledgerQ.data?.entries ?? []).length === 0 ? (
             <div className="px-5 py-6 text-sm text-muted-foreground">No activity yet.</div>
           ) : (
-            <ul className="divide-y divide-border/60">
-              {ledgerQ.data!.entries.slice(0, 5).map((e) => (
-                <LedgerRow key={e.id} entry={e} />
-              ))}
-            </ul>
+            <>
+              <ul className="divide-y divide-border/60">
+                {ledgerQ.data!.entries.slice(0, 5).map((e) => (
+                  <LedgerRow key={e.id} entry={e} />
+                ))}
+              </ul>
+              <div className="border-t border-border/60 px-5 py-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAllActivityOpen(true);
+                    if (allActivityEntries.length === 0) {
+                      void loadAllActivity(null);
+                    }
+                  }}
+                  className="flex w-full items-center justify-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                >
+                  See full credit history <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </>
           )}
         </Card>
       </section>
