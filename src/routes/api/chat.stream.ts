@@ -759,78 +759,48 @@ export const Route = createFileRoute("/api/chat/stream")({
               "I can’t connect to the AI service right now. Please try again in a moment.";
             send("delta", { text: assistantText });
           } else {
+            let modelAttemptIdx = 0;
             for (const candidateModel of runnableModels) {
               activeModel = candidateModel;
-              assistantText = "";
               hitFinalCap = false;
+              // In deferred (long-output) mode, KEEP assistantText/deferredBuffer
+              // across fallback attempts so partial work isn't lost when one
+              // provider fails mid-generation. In normal streaming mode, reset
+              // because the next provider produces a fresh visible response.
+              if (!needsLongOutput) {
+                assistantText = "";
+              }
 
               try {
                 // Dynamic output tokens: use task-appropriate cap from BudgetManager spec.
                 // Auto-continue handles longer responses so we don't waste context budget.
                 const taskType = intentToTaskType(intent, intentResult.domain);
                 const taskCap = TASK_OUTPUT_TOKENS[taskType] ?? 800;
-                // When the user attaches substantial document text, they typically
-                // expect comprehensive output (e.g. "process every row/sheet/page").
-                // Lift the per-turn cap to the model's full output capacity so we
-                // don't truncate at ~800 tokens mid-list.
-                const needsLongOutput = attachmentTextTokens > 5_000;
+                // When comprehensive processing is needed, lift the per-turn cap
+                // to the model's full output capacity so we don't truncate at
+                // ~800 tokens mid-list, and enable auto-continue for all providers.
                 const PER_TURN_MAX_TOKENS = needsLongOutput
                   ? candidateModel.maxOutputTokens
                   : Math.min(candidateModel.maxOutputTokens, taskCap);
-                // Allow auto-continue for all providers when long output is needed,
-                // so Gemini/OpenAI can also keep generating past their first cap.
                 const MAX_AUTO_CONTINUES = needsLongOutput
                   ? 24
                   : candidateModel.provider === "anthropic"
                   ? 3
                   : 0;
 
-                // Deferred-output mode: when comprehensive processing is needed
-                // (large attachments → many auto-continues), don't stream
-                // intermediate chunks to the user. Buffer the full response
-                // and emit human-friendly progress events instead, then send
-                // the complete consolidated answer in one shot at the end.
-                let deferredBuffer = "";
-                let lastProgressAt = 0;
-                let currentPass = 1;
-                const attachedDocCount = (body.attachments ?? []).filter(
-                  (a) => a.extracted_text?.trim(),
-                ).length;
-                const docNoun = attachedDocCount > 1 ? "documents" : "document";
-                const emitProgress = (label: string, stage = "processing") => {
-                  send("progress", {
-                    stage,
-                    label,
-                    pass: currentPass,
-                    chars: deferredBuffer.length,
-                  });
-                };
-                const sendDelta = (text: string) => {
-                  if (!text) return;
-                  if (needsLongOutput) {
-                    deferredBuffer += text;
-                    // Heartbeat ~every 1.5s with a varied, non-repetitive label
-                    // so the user can see we're still working through their file.
-                    const now = Date.now();
-                    if (now - lastProgressAt > 1500) {
-                      lastProgressAt = now;
-                      const kchars = Math.floor(deferredBuffer.length / 1000);
-                      emitProgress(
-                        `Working through your ${docNoun}… (pass ${currentPass}, ~${kchars}k chars analyzed)`,
-                      );
-                    }
-                  } else {
-                    send("delta", { text });
-                  }
-                };
-                if (needsLongOutput) {
+                if (needsLongOutput && modelAttemptIdx === 0) {
                   emitProgress(
                     attachedDocCount > 0
                       ? `Reading your ${docNoun} end-to-end…`
                       : "Preparing a thorough answer…",
                     "started",
                   );
+                } else if (needsLongOutput && modelAttemptIdx > 0) {
+                  emitProgress(
+                    `Switched to a backup model — picking up where we left off…`,
+                  );
                 }
+                modelAttemptIdx += 1;
 
                 if (candidateModel.provider === "anthropic") {
                   const apiKey = runtimeKeys.anthropic;
