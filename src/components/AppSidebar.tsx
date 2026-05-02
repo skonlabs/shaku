@@ -23,12 +23,19 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 // retired because per-message context belongs inline with each message
 // (see BehindAnswerChip in MessageList) and the active task now appears
 // as an ambient banner above the chat (see ActiveTaskBanner).
-const items: { id: PanelId; icon: typeof MessageSquare; label: string }[] = [
-  { id: "chats", icon: MessageSquare, label: "My chats" },
-  { id: "projects", icon: FolderHeart, label: "Spaces" },
-  { id: "datasources", icon: BookOpen, label: "My library (data sources)" },
-  { id: "connectors", icon: Plug, label: "Connections" },
-  { id: "memory", icon: Sparkles, label: "What I remember (Memory & Persona)" },
+// Each item is either a panel (toggles the slide-out drawer) or a route link.
+// "AI Profile" used to be a panel called "What I remember" — it's now a route
+// so memories, persona, and identity all live on one canonical page.
+type SidebarItem =
+  | { kind: "panel"; id: PanelId; icon: typeof MessageSquare; label: string }
+  | { kind: "link"; to: "/my-profile"; icon: typeof MessageSquare; label: string; matchPath: string };
+
+const items: SidebarItem[] = [
+  { kind: "panel", id: "chats", icon: MessageSquare, label: "My chats" },
+  { kind: "panel", id: "projects", icon: FolderHeart, label: "Spaces" },
+  { kind: "panel", id: "datasources", icon: BookOpen, label: "My library (data sources)" },
+  { kind: "panel", id: "connectors", icon: Plug, label: "Connections" },
+  { kind: "link", to: "/my-profile", icon: Sparkles, label: "AI Profile (memories & persona)", matchPath: "/my-profile" },
 ];
 
 export function AppSidebar() {
@@ -77,25 +84,46 @@ export function AppSidebar() {
 
           {items.map((it) => {
             const Icon = it.icon;
-            const isActive = active === it.id;
+            const isActive =
+              it.kind === "panel"
+                ? active === it.id
+                : location.pathname === it.matchPath;
+            const className = cn(
+              "group/btn relative flex h-11 w-11 items-center justify-center rounded-2xl text-sidebar-foreground/65 transition-all duration-200",
+              "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              isActive && "bg-sidebar-accent text-primary",
+            );
+            const indicator = isActive ? (
+              <span className="absolute -left-[14px] top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
+            ) : null;
+            const iconEl = (
+              <Icon className="h-[19px] w-[19px] transition-transform duration-200 group-hover/btn:scale-110" />
+            );
             return (
-              <Tooltip key={it.id}>
+              <Tooltip key={it.kind === "panel" ? it.id : it.to}>
                 <TooltipTrigger asChild>
-                  <button
-                    onClick={() => toggle(it.id)}
-                    aria-label={it.label}
-                    aria-pressed={isActive}
-                    className={cn(
-                      "group/btn relative flex h-11 w-11 items-center justify-center rounded-2xl text-sidebar-foreground/65 transition-all duration-200",
-                      "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                      isActive && "bg-sidebar-accent text-primary",
-                    )}
-                  >
-                    {isActive && (
-                      <span className="absolute -left-[14px] top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
-                    )}
-                    <Icon className="h-[19px] w-[19px] transition-transform duration-200 group-hover/btn:scale-110" />
-                  </button>
+                  {it.kind === "panel" ? (
+                    <button
+                      onClick={() => toggle(it.id)}
+                      aria-label={it.label}
+                      aria-pressed={isActive}
+                      className={className}
+                    >
+                      {indicator}
+                      {iconEl}
+                    </button>
+                  ) : (
+                    <Link
+                      to={it.to}
+                      onClick={() => setActive(null)}
+                      aria-label={it.label}
+                      aria-current={isActive ? "page" : undefined}
+                      className={className}
+                    >
+                      {indicator}
+                      {iconEl}
+                    </Link>
+                  )}
                 </TooltipTrigger>
                 <TooltipContent side="right">{it.label}</TooltipContent>
               </Tooltip>
