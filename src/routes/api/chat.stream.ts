@@ -991,14 +991,35 @@ export const Route = createFileRoute("/api/chat/stream")({
 
                     let turnText = "";
                     let finishReason: string | null = null;
+                    const isContinuation = turn > 0;
+                    const priorTail = isContinuation ? assistantText.slice(-OVERLAP_CHARS) : "";
+                    let dedupResolved = !isContinuation;
+                    let dedupBuffer = "";
+                    const DEDUP_SCAN_BUDGET = OVERLAP_CHARS * 3;
                     for await (const chunk of stream) {
                       const text = chunk.choices[0]?.delta?.content ?? "";
                       if (text) {
-                        const { text: safeChunk } = redactOutputPii(text, allowedPiiValues);
-                        assistantText += safeChunk;
-                        turnText += safeChunk;
-                        const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                        if (visible) sendDelta(visible);
+                        turnText += text;
+                        let emit = text;
+                        if (!dedupResolved) {
+                          dedupBuffer += text;
+                          const stripped = stripOverlapPrefix(dedupBuffer, priorTail);
+                          if (stripped !== null) {
+                            emit = stripped;
+                            dedupResolved = true;
+                          } else if (dedupBuffer.length >= DEDUP_SCAN_BUDGET) {
+                            emit = dedupBuffer;
+                            dedupResolved = true;
+                          } else {
+                            emit = "";
+                          }
+                        }
+                        if (emit) {
+                          const { text: safeChunk } = redactOutputPii(emit, allowedPiiValues);
+                          assistantText += safeChunk;
+                          const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                          if (visible) sendDelta(visible);
+                        }
                       }
                       const fr = chunk.choices[0]?.finish_reason;
                       if (fr) finishReason = fr;
@@ -1021,6 +1042,12 @@ export const Route = createFileRoute("/api/chat/stream")({
                         totalInputTokens += chunk.usage.prompt_tokens ?? 0;
                         totalOutputTokens += chunk.usage.completion_tokens ?? 0;
                       }
+                    }
+                    if (!dedupResolved && dedupBuffer.length > 0) {
+                      const { text: safeChunk } = redactOutputPii(dedupBuffer, allowedPiiValues);
+                      assistantText += safeChunk;
+                      const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                      if (visible) sendDelta(visible);
                     }
 
                     if (finishReason !== "length") break;
