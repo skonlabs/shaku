@@ -25,7 +25,7 @@ export function chunkByFileType(content: string, fileType: string): string[] {
     case "ods":
     case "csv":
     case "tsv":
-      return chunkByRows(content, 80);
+      return chunkByRows(content, 250);
 
     case "pptx":
     case "ppt":
@@ -139,6 +139,8 @@ function chunkByRows(content: string, rowsPerChunk: number): string[] {
   const chunks: string[] = [];
 
   for (const { header, body } of blocks) {
+    if (header.startsWith("--- Workbook:")) continue;
+
     const rows = body.split("\n").filter((l) => l.trim().length > 0);
     if (!rows.length) continue;
 
