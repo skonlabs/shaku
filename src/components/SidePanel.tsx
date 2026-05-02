@@ -1733,6 +1733,8 @@ function DatasourcesPanel() {
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(
     null,
   );
+  const uploadCancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
+  const [currentPath, setCurrentPath] = useState<string>("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["ds-files"],
