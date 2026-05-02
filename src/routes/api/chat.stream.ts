@@ -864,8 +864,8 @@ export const Route = createFileRoute("/api/chat/stream")({
                   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
                   const openai = new OpenAI({ apiKey });
 
-                  const oaiMessages = [
-                    { role: "system" as const, content: optimizedSystemPrompt },
+                  const oaiMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+                    { role: "system", content: optimizedSystemPrompt },
                     ...optimizedMessages.map((m) => ({
                       role: m.role as "user" | "assistant",
                       content: messageContentToText(m.content),
@@ -884,44 +884,61 @@ export const Route = createFileRoute("/api/chat/stream")({
                       ? "gpt-4o-mini-search-preview"
                       : candidateModel.id;
 
-                  const stream = await openai.chat.completions.create({
-                    model: oaiModelId,
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    messages: oaiMessages as any,
-                    stream: true,
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    stream_options: { include_usage: true } as any,
-                    max_tokens: PER_TURN_MAX_TOKENS,
-                  });
+                  for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
+                    const stream = await openai.chat.completions.create({
+                      model: oaiModelId,
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      messages: oaiMessages as any,
+                      stream: true,
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      stream_options: { include_usage: true } as any,
+                      max_tokens: PER_TURN_MAX_TOKENS,
+                    });
 
-                  for await (const chunk of stream) {
-                    const text = chunk.choices[0]?.delta?.content ?? "";
-                    if (text) {
-                      const { text: safeChunk } = redactOutputPii(text, allowedPiiValues);
-                      assistantText += safeChunk;
-                      const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                      if (visible) send("delta", { text: visible });
-                    }
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const annotations: any[] | undefined = (chunk.choices[0]?.delta as any)
-                      ?.annotations;
-                    if (Array.isArray(annotations)) {
-                      let added = false;
-                      for (const a of annotations) {
-                        const url = a?.url_citation?.url ?? a?.url;
-                        const title = a?.url_citation?.title ?? a?.title ?? url;
-                        if (url && !webCitations.some((c) => c.url === url)) {
-                          webCitations.push({ title, url });
-                          added = true;
-                        }
+                    let turnText = "";
+                    let finishReason: string | null = null;
+                    for await (const chunk of stream) {
+                      const text = chunk.choices[0]?.delta?.content ?? "";
+                      if (text) {
+                        const { text: safeChunk } = redactOutputPii(text, allowedPiiValues);
+                        assistantText += safeChunk;
+                        turnText += safeChunk;
+                        const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                        if (visible) send("delta", { text: visible });
                       }
-                      if (added) send("citations", { sources: webCitations });
+                      const fr = chunk.choices[0]?.finish_reason;
+                      if (fr) finishReason = fr;
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const annotations: any[] | undefined = (chunk.choices[0]?.delta as any)
+                        ?.annotations;
+                      if (Array.isArray(annotations)) {
+                        let added = false;
+                        for (const a of annotations) {
+                          const url = a?.url_citation?.url ?? a?.url;
+                          const title = a?.url_citation?.title ?? a?.title ?? url;
+                          if (url && !webCitations.some((c) => c.url === url)) {
+                            webCitations.push({ title, url });
+                            added = true;
+                          }
+                        }
+                        if (added) send("citations", { sources: webCitations });
+                      }
+                      if (chunk.usage) {
+                        totalInputTokens += chunk.usage.prompt_tokens ?? 0;
+                        totalOutputTokens += chunk.usage.completion_tokens ?? 0;
+                      }
                     }
-                    if (chunk.usage) {
-                      // Accumulate (not overwrite) so prior fallback attempts are preserved.
-                      totalInputTokens += chunk.usage.prompt_tokens ?? 0;
-                      totalOutputTokens += chunk.usage.completion_tokens ?? 0;
+
+                    if (finishReason !== "length") break;
+                    if (turn === MAX_AUTO_CONTINUES) {
+                      hitFinalCap = true;
+                      break;
                     }
+                    oaiMessages.push({ role: "assistant", content: turnText });
+                    oaiMessages.push({
+                      role: "user",
+                      content: "Continue from exactly where you stopped. Do not repeat prior content.",
+                    });
                   }
                 }
 
