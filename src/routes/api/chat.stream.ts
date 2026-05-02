@@ -829,16 +829,35 @@ export const Route = createFileRoute("/api/chat/stream")({
                   const { GeminiProvider } = await import("@/lib/llm/gemini");
                   const gemini = new GeminiProvider(apiKey);
 
-                  for await (const chunk of gemini.generate({
-                    model: candidateModel,
-                    messages: optimizedMessages,
-                    systemPrompt: optimizedSystemPrompt,
-                    maxTokens: PER_TURN_MAX_TOKENS,
-                  })) {
-                    const { text: safeChunk } = redactOutputPii(chunk.text, allowedPiiValues);
-                    assistantText += safeChunk;
-                    const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                    if (visible) send("delta", { text: visible });
+                  const turnMessages = [...optimizedMessages];
+                  for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
+                    let turnText = "";
+                    let finishedFull = true;
+                    for await (const chunk of gemini.generate({
+                      model: candidateModel,
+                      messages: turnMessages,
+                      systemPrompt: optimizedSystemPrompt,
+                      maxTokens: PER_TURN_MAX_TOKENS,
+                    })) {
+                      const { text: safeChunk } = redactOutputPii(chunk.text, allowedPiiValues);
+                      assistantText += safeChunk;
+                      turnText += safeChunk;
+                      const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                      if (visible) send("delta", { text: visible });
+                      if (chunk.finishReason === "MAX_TOKENS" || chunk.finishReason === "length") {
+                        finishedFull = false;
+                      }
+                    }
+                    if (finishedFull) break;
+                    if (turn === MAX_AUTO_CONTINUES) {
+                      hitFinalCap = true;
+                      break;
+                    }
+                    turnMessages.push({ role: "assistant", content: turnText });
+                    turnMessages.push({
+                      role: "user",
+                      content: "Continue from exactly where you stopped. Do not repeat prior content.",
+                    });
                   }
                 } else {
                   const apiKey = runtimeKeys.openai;
