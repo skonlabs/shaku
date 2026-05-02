@@ -117,11 +117,17 @@ export const listProjectConversations = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: rows, error } = await supabase
       .from("conversations")
-      .select("id, title, status, pinned, updated_at")
+      .select("id, title, status, pinned, updated_at, messages(count)")
       .eq("user_id", userId)
       .eq("project_id", data.project_id)
       .neq("status", "deleted")
       .order("updated_at", { ascending: false });
     if (error) return { conversations: [], error: "Couldn't load conversations." };
-    return { conversations: rows ?? [], error: null };
+    const filtered = (rows ?? []).filter((c) => {
+      const msgCount = Array.isArray((c as { messages?: { count: number }[] }).messages)
+        ? ((c as { messages?: { count: number }[] }).messages?.[0]?.count ?? 0)
+        : 0;
+      return !!c.title || msgCount > 0 || c.pinned;
+    }).map(({ messages: _messages, ...rest }) => rest);
+    return { conversations: filtered, error: null };
   });

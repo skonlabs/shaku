@@ -9,17 +9,25 @@ export const listConversations = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data, error } = await supabase
       .from("conversations")
-      .select("id, title, status, pinned, project_id, updated_at, created_at")
+      .select("id, title, status, pinned, project_id, updated_at, created_at, messages(count)")
       .eq("user_id", userId)
       .neq("status", "deleted")
       .order("pinned", { ascending: false })
       .order("updated_at", { ascending: false })
-      .limit(100);
+      .limit(200);
     if (error) {
       console.error("[listConversations]", error);
       return { conversations: [], error: "Couldn't load your chats." };
     }
-    return { conversations: data ?? [], error: null };
+    // Hide empty drafts (no title and no messages). These are pre-created on
+    // /app to support file uploads and are harmless but clutter the history.
+    const filtered = (data ?? []).filter((c) => {
+      const msgCount = Array.isArray((c as { messages?: { count: number }[] }).messages)
+        ? ((c as { messages?: { count: number }[] }).messages?.[0]?.count ?? 0)
+        : 0;
+      return !!c.title || msgCount > 0 || c.pinned;
+    }).map(({ messages: _messages, ...rest }) => rest);
+    return { conversations: filtered, error: null };
   });
 
 export const createConversation = createServerFn({ method: "POST" })
