@@ -512,8 +512,18 @@ export const getCreditEntriesForConversation = createServerFn({ method: "POST" }
       .order("created_at", { ascending: false })
       .limit(500);
 
+    type JsonV = string | number | boolean | null | JsonV[] | { [k: string]: JsonV };
+    type EntryShape = {
+      id: string;
+      delta: number;
+      reason: string;
+      balance_after: number;
+      request_id: string | null;
+      metadata: JsonV;
+      created_at: string;
+    };
     if (isCreditsSchemaMissing(error)) {
-      return { entries: [] as Array<{ id: string; delta: number; reason: string; balance_after: number; request_id: string | null; metadata: unknown; created_at: string; }>, setupRequired: true };
+      return { entries: [] as EntryShape[], setupRequired: true };
     }
     if (error) throw error;
 
