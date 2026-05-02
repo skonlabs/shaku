@@ -105,16 +105,18 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <AuthProvider>
-          <PanelProvider>
-            <KbHelpProvider>
-              <KeyboardShortcuts />
-              <KeyboardShortcutsDialog />
-              <Outlet />
-              <Toaster richColors closeButton position="top-right" />
-            </KbHelpProvider>
-          </PanelProvider>
-        </AuthProvider>
+        <SiteGate>
+          <AuthProvider>
+            <PanelProvider>
+              <KbHelpProvider>
+                <KeyboardShortcuts />
+                <KeyboardShortcutsDialog />
+                <Outlet />
+                <Toaster richColors closeButton position="top-right" />
+              </KbHelpProvider>
+            </PanelProvider>
+          </AuthProvider>
+        </SiteGate>
       </ThemeProvider>
     </QueryClientProvider>
   );
