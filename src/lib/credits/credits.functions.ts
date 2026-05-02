@@ -370,7 +370,7 @@ export const getCreditByConversation = createServerFn({ method: "POST" })
 
     const { data: rows, error } = await supabase
       .from("credits_ledger")
-      .select("id, delta, metadata, created_at")
+      .select("id, delta, request_id, metadata, created_at")
       .eq("user_id", userId)
       .eq("reason", "chat")
       .lt("delta", 0)
@@ -390,17 +390,65 @@ export const getCreditByConversation = createServerFn({ method: "POST" })
       last_at: string;
       first_at: string;
     };
+
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    type LedgerRow = {
+      id: string;
+      delta: number;
+      request_id: string | null;
+      metadata: unknown;
+      created_at: string;
+    };
+    const ledgerRows = (rows ?? []) as unknown as LedgerRow[];
+
+    // Resolve conversation_id from metadata, or fall back to messages.id lookup via request_id.
+    const orphanRequestIds = new Set<string>();
+    for (const r of ledgerRows) {
+      const meta = r.metadata;
+      const hasConv =
+        typeof meta === "object" &&
+        meta !== null &&
+        typeof (meta as Record<string, unknown>).conversation_id === "string";
+      if (!hasConv && r.request_id && UUID_RE.test(r.request_id)) {
+        orphanRequestIds.add(r.request_id);
+      }
+    }
+
+    let messageIdToConvo = new Map<string, string>();
+    if (orphanRequestIds.size > 0) {
+      const ids = Array.from(orphanRequestIds);
+      // Chunk to avoid URL-length / IN-list limits
+      const CHUNK = 200;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const slice = ids.slice(i, i + CHUNK);
+        const { data: msgs } = await supabase
+          .from("messages")
+          .select("id, conversation_id")
+          .in("id", slice);
+        for (const m of (msgs ?? []) as Array<{ id: string; conversation_id: string }>) {
+          messageIdToConvo.set(m.id, m.conversation_id);
+        }
+      }
+    }
+
     const map = new Map<string, Agg>();
-    for (const r of rows ?? []) {
-      const meta = (r as { metadata: unknown }).metadata;
-      const convId =
-        typeof meta === "object" && meta !== null && typeof (meta as Record<string, unknown>).conversation_id === "string"
-          ? ((meta as Record<string, string>).conversation_id)
-          : null;
+    for (const r of ledgerRows) {
+      const meta = r.metadata;
+      let convId: string | null = null;
+      if (
+        typeof meta === "object" &&
+        meta !== null &&
+        typeof (meta as Record<string, unknown>).conversation_id === "string"
+      ) {
+        convId = (meta as Record<string, string>).conversation_id;
+      } else if (r.request_id && messageIdToConvo.has(r.request_id)) {
+        convId = messageIdToConvo.get(r.request_id) ?? null;
+      }
       if (!convId) continue;
+
       const entry = map.get(convId);
-      const spent = Math.abs((r as { delta: number }).delta);
-      const created = (r as { created_at: string }).created_at;
+      const spent = Math.abs(r.delta);
+      const created = r.created_at;
       if (entry) {
         entry.total_spent += spent;
         entry.message_count += 1;
@@ -456,24 +504,69 @@ export const getCreditEntriesForConversation = createServerFn({ method: "POST" }
 
     const { data: rows, error } = await supabase
       .from("credits_ledger")
-      .select("id, delta, reason, balance_after, metadata, created_at")
+      .select("id, delta, reason, balance_after, request_id, metadata, created_at")
       .eq("user_id", userId)
+      .eq("reason", "chat")
+      .lt("delta", 0)
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(500);
 
+    type JsonV = string | number | boolean | null | JsonV[] | { [k: string]: JsonV };
+    type EntryShape = {
+      id: string;
+      delta: number;
+      reason: string;
+      balance_after: number;
+      request_id: string | null;
+      metadata: JsonV;
+      created_at: string;
+    };
     if (isCreditsSchemaMissing(error)) {
-      return { entries: [], setupRequired: true };
+      return { entries: [] as EntryShape[], setupRequired: true };
     }
     if (error) throw error;
 
-    const filtered = (rows ?? []).filter((r) => {
-      const meta = (r as { metadata: unknown }).metadata;
-      return (
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    type Row = EntryShape;
+    const list = (rows ?? []) as unknown as Row[];
+
+    // Look up message → conversation for entries that don't have conversation_id in metadata
+    const orphanReqIds = list
+      .filter((r) => {
+        const m = r.metadata;
+        const has =
+          typeof m === "object" &&
+          m !== null &&
+          typeof (m as Record<string, unknown>).conversation_id === "string";
+        return !has && r.request_id && UUID_RE.test(r.request_id);
+      })
+      .map((r) => r.request_id as string);
+
+    const messageIdToConvo = new Map<string, string>();
+    if (orphanReqIds.length > 0) {
+      const CHUNK = 200;
+      for (let i = 0; i < orphanReqIds.length; i += CHUNK) {
+        const slice = orphanReqIds.slice(i, i + CHUNK);
+        const { data: msgs } = await supabase
+          .from("messages")
+          .select("id, conversation_id")
+          .in("id", slice);
+        for (const m of (msgs ?? []) as Array<{ id: string; conversation_id: string }>) {
+          messageIdToConvo.set(m.id, m.conversation_id);
+        }
+      }
+    }
+
+    const filtered = list.filter((r) => {
+      const meta = r.metadata;
+      const fromMeta =
         typeof meta === "object" &&
         meta !== null &&
-        (meta as Record<string, unknown>).conversation_id === data.conversation_id
-      );
+        (meta as Record<string, unknown>).conversation_id === data.conversation_id;
+      if (fromMeta) return true;
+      if (r.request_id && messageIdToConvo.get(r.request_id) === data.conversation_id) return true;
+      return false;
     });
 
     return { entries: filtered, setupRequired: false };
