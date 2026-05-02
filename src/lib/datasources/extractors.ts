@@ -115,6 +115,7 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
 type SpreadsheetCell = { v?: unknown; w?: string; f?: string; c?: { t?: string; a?: string }[] };
 type SpreadsheetRange = { s: { r: number; c: number }; e: { r: number; c: number } };
 type XLSXModule = typeof import("xlsx");
+type SpreadsheetSheet = Record<string, unknown> & { "!ref"?: string; "!merges"?: SpreadsheetRange[] };
 
 async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<string> {
   const XLSX = await import("xlsx");
@@ -164,7 +165,7 @@ async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<stri
   return parts.length > 1 ? parts.join("\n\n") : `(empty spreadsheet: ${name})`;
 }
 
-function findActualUsedRange(XLSX: XLSXModule, sheet: XLSXModule.WorkSheet | undefined): SpreadsheetRange | null {
+function findActualUsedRange(XLSX: XLSXModule, sheet: SpreadsheetSheet | undefined): SpreadsheetRange | null {
   if (!sheet?.["!ref"]) return null;
   const declared = XLSX.utils.decode_range(sheet["!ref"]);
   let minR = Number.POSITIVE_INFINITY;
@@ -186,7 +187,7 @@ function findActualUsedRange(XLSX: XLSXModule, sheet: XLSXModule.WorkSheet | und
   return maxR >= 0 ? { s: { r: minR, c: minC }, e: { r: maxR, c: maxC } } : null;
 }
 
-function buildVerticalMergeValueMap(XLSX: XLSXModule, sheet: XLSXModule.WorkSheet): Map<string, string> {
+function buildVerticalMergeValueMap(XLSX: XLSXModule, sheet: SpreadsheetSheet): Map<string, string> {
   const values = new Map<string, string>();
   for (const merge of sheet["!merges"] ?? []) {
     if (merge.e.r <= merge.s.r) continue;
@@ -199,6 +200,25 @@ function buildVerticalMergeValueMap(XLSX: XLSXModule, sheet: XLSXModule.WorkShee
     }
   }
   return values;
+}
+
+function cellHasContent(cell: SpreadsheetCell | undefined): boolean {
+  return !!cellToText(cell) || !!cell?.f || !!cell?.c?.some((comment) => normalizeCellText(comment.t).length > 0);
+}
+
+function cellToText(cell: SpreadsheetCell | undefined): string {
+  if (!cell) return "";
+  const value = cell.w ?? cell.v;
+  const text = value instanceof Date ? value.toISOString().slice(0, 10) : normalizeCellText(value);
+  const formula = cell.f ? ` [formula: =${normalizeCellText(cell.f)}]` : "";
+  const comments = cell.c?.map((comment) => normalizeCellText(comment.t)).filter(Boolean) ?? [];
+  const commentText = comments.length ? ` [comment: ${comments.join(" | ")}]` : "";
+  return `${text}${formula}${commentText}`.trim();
+}
+
+function normalizeCellText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/[\t\r\n]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function extractDelimited(bytes: Uint8Array, type: string): string {
