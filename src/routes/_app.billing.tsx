@@ -272,22 +272,33 @@ function BillingPage() {
   }, [checkoutSessionId, queryClient]);
 
   return (
-    <div className="mx-auto w-full max-w-5xl overflow-y-auto px-6 py-10">
-      <header className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-card/80 px-3 py-1 text-xs text-muted-foreground">
-            <Receipt className="h-3.5 w-3.5" /> Billing &amp; usage
-          </div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">
-            Your plan &amp; credits
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Track your monthly credits, see where they go, and upgrade when you need more.
-          </p>
-        </div>
-        <Link to="/app" className="text-sm text-muted-foreground hover:text-foreground">
+    <div className="mx-auto w-full max-w-5xl overflow-y-auto px-4 py-6 sm:px-6 sm:py-10">
+      <header className="mb-6 sm:mb-8">
+        <Link
+          to="/app"
+          className="mb-3 inline-flex text-sm text-muted-foreground hover:text-foreground sm:hidden"
+        >
           ← Back to chat
         </Link>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-card/80 px-3 py-1 text-xs text-muted-foreground">
+              <Receipt className="h-3.5 w-3.5" /> Billing &amp; usage
+            </div>
+            <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+              Your plan &amp; credits
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Track your monthly credits, see where they go, and upgrade when you need more.
+            </p>
+          </div>
+          <Link
+            to="/app"
+            className="hidden shrink-0 text-sm text-muted-foreground hover:text-foreground sm:inline"
+          >
+            ← Back to chat
+          </Link>
+        </div>
       </header>
 
       {setupRequired && (
