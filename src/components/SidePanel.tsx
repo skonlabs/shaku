@@ -213,7 +213,7 @@ function ChatsPanel() {
     mutationFn: (id: string) => deleteConversation({ data: { id } }),
     onSuccess: (_result, id) => {
       qc.invalidateQueries({ queryKey: ["conversations"] });
-      if (location.pathname === `/c/${id}`) navigate({ to: "/" });
+      if (location.pathname === `/c/${id}`) navigate({ to: "/app" });
     },
     onError: () => toast.error("Couldn't delete chat."),
   });

@@ -42,11 +42,11 @@ export function AppSidebar() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Link
-                to="/"
+                to="/app"
                 onClick={() => setActive(null)}
                 className={cn(
                   "group/brand flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[oklch(0.62_0.08_145)] to-[oklch(0.50_0.07_150)] text-primary-foreground shadow-[0_6px_18px_-6px_oklch(0.50_0.07_150/0.55)] transition-all duration-300 hover:scale-[1.04] hover:shadow-[0_8px_22px_-6px_oklch(0.50_0.07_150/0.65)]",
-                  location.pathname === "/" &&
+                   location.pathname === "/app" &&
                     "ring-2 ring-primary/30 ring-offset-2 ring-offset-sidebar",
                 )}
                 aria-label="Start a new chat"
@@ -61,7 +61,7 @@ export function AppSidebar() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Link
-                to="/"
+                to="/app"
                 onClick={() => setActive(null)}
                 aria-label="Start a new chat"
                 className="mt-1 flex h-11 w-11 items-center justify-center rounded-2xl border border-dashed border-sidebar-border/80 text-sidebar-foreground/60 transition-all duration-200 hover:border-primary/50 hover:bg-sidebar-accent hover:text-primary"

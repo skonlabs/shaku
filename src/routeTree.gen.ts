@@ -12,10 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
-import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShareShareIdRouteImport } from './routes/share.$shareId'
 import { Route as ApiFeedbackRouteImport } from './routes/api/feedback'
 import { Route as AppBillingRouteImport } from './routes/_app.billing'
+import { Route as AppAppRouteImport } from './routes/_app.app'
 import { Route as ApiWebhooksStripeRouteImport } from './routes/api/webhooks.stripe'
 import { Route as ApiWebhooksSlackRouteImport } from './routes/api/webhooks.slack'
 import { Route as ApiPublicAdminRunMigrationRouteImport } from './routes/api/public/admin-run-migration'
@@ -38,10 +39,10 @@ const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppIndexRoute = AppIndexRouteImport.update({
+const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ShareShareIdRoute = ShareShareIdRouteImport.update({
   id: '/share/$shareId',
@@ -56,6 +57,11 @@ const ApiFeedbackRoute = ApiFeedbackRouteImport.update({
 const AppBillingRoute = AppBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAppRoute = AppAppRouteImport.update({
+  id: '/app',
+  path: '/app',
   getParentRoute: () => AppRoute,
 } as any)
 const ApiWebhooksStripeRoute = ApiWebhooksStripeRouteImport.update({
@@ -96,9 +102,10 @@ const AppCIdRoute = AppCIdRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AppIndexRoute
+  '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/app': typeof AppAppRoute
   '/billing': typeof AppBillingRoute
   '/api/feedback': typeof ApiFeedbackRoute
   '/share/$shareId': typeof ShareShareIdRoute
@@ -111,12 +118,13 @@ export interface FileRoutesByFullPath {
   '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/app': typeof AppAppRoute
   '/billing': typeof AppBillingRoute
   '/api/feedback': typeof ApiFeedbackRoute
   '/share/$shareId': typeof ShareShareIdRoute
-  '/': typeof AppIndexRoute
   '/c/$id': typeof AppCIdRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
@@ -127,13 +135,14 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/_app/app': typeof AppAppRoute
   '/_app/billing': typeof AppBillingRoute
   '/api/feedback': typeof ApiFeedbackRoute
   '/share/$shareId': typeof ShareShareIdRoute
-  '/_app/': typeof AppIndexRoute
   '/_app/c/$id': typeof AppCIdRoute
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
@@ -148,6 +157,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/onboarding'
+    | '/app'
     | '/billing'
     | '/api/feedback'
     | '/share/$shareId'
@@ -160,12 +170,13 @@ export interface FileRouteTypes {
     | '/api/webhooks/stripe'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/login'
     | '/onboarding'
+    | '/app'
     | '/billing'
     | '/api/feedback'
     | '/share/$shareId'
-    | '/'
     | '/c/$id'
     | '/api/chat/stream'
     | '/api/connectors/callback'
@@ -175,13 +186,14 @@ export interface FileRouteTypes {
     | '/api/webhooks/stripe'
   id:
     | '__root__'
+    | '/'
     | '/_app'
     | '/login'
     | '/onboarding'
+    | '/_app/app'
     | '/_app/billing'
     | '/api/feedback'
     | '/share/$shareId'
-    | '/_app/'
     | '/_app/c/$id'
     | '/api/chat/stream'
     | '/api/connectors/callback'
@@ -192,6 +204,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -228,12 +241,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/': {
-      id: '/_app/'
+    '/': {
+      id: '/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof AppIndexRouteImport
-      parentRoute: typeof AppRoute
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/share/$shareId': {
       id: '/share/$shareId'
@@ -254,6 +267,13 @@ declare module '@tanstack/react-router' {
       path: '/billing'
       fullPath: '/billing'
       preLoaderRoute: typeof AppBillingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/app': {
+      id: '/_app/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppAppRouteImport
       parentRoute: typeof AppRoute
     }
     '/api/webhooks/stripe': {
@@ -309,20 +329,21 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppAppRoute: typeof AppAppRoute
   AppBillingRoute: typeof AppBillingRoute
-  AppIndexRoute: typeof AppIndexRoute
   AppCIdRoute: typeof AppCIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAppRoute: AppAppRoute,
   AppBillingRoute: AppBillingRoute,
-  AppIndexRoute: AppIndexRoute,
   AppCIdRoute: AppCIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
