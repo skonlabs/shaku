@@ -2290,7 +2290,7 @@ function DatasourcesPanel() {
                 }
                 const f = node.file;
                 const isActive = f.status === "processing" || f.status === "uploading";
-                const canOpen = f.status === "ready" && !!f.storage_path;
+                const canOpen = f.status === "ready";
                 return (
                   <div
                     key={f.id}
