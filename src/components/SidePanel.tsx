@@ -1657,6 +1657,72 @@ const CLOUD_STORAGE_SERVICES = [
   },
 ];
 
+function getFileIcon(name: string, status?: string) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const baseClass = cn(
+    "h-4 w-4 shrink-0",
+    status === "processing" || status === "uploading" ? "text-blue-500" : "",
+  );
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext))
+    return <FileImage className={cn(baseClass, "text-purple-500")} />;
+  if (["xlsx", "xls", "csv", "tsv"].includes(ext))
+    return <FileSpreadsheet className={cn(baseClass, "text-green-600")} />;
+  if (
+    [
+      "py", "js", "ts", "tsx", "jsx", "java", "cpp", "c", "h", "hpp", "cs", "go",
+      "rs", "rb", "php", "swift", "kt", "html", "htm", "css", "scss", "sh", "sql",
+      "json", "xml", "yaml", "yml", "toml",
+    ].includes(ext)
+  )
+    return <FileCode className={cn(baseClass, "text-amber-600")} />;
+  if (["pdf", "doc", "docx", "txt", "md", "rtf", "ppt", "pptx"].includes(ext))
+    return <FileText className={cn(baseClass, "text-blue-600")} />;
+  return <File className={cn(baseClass, "text-muted-foreground")} />;
+}
+
+type FsNode =
+  | { type: "folder"; name: string; path: string; children: FsNode[] }
+  | { type: "file"; name: string; path: string; file: DatasourceFile };
+
+function buildFileTree(files: DatasourceFile[]): FsNode {
+  const root: FsNode = { type: "folder", name: "", path: "", children: [] };
+  for (const f of files) {
+    const parts = (f.name || "file").split("/").filter(Boolean);
+    if (parts.length === 0) continue;
+    let cur = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const segment = parts[i];
+      const path = parts.slice(0, i + 1).join("/");
+      let next = (cur.children as FsNode[]).find(
+        (c): c is Extract<FsNode, { type: "folder" }> => c.type === "folder" && c.name === segment,
+      );
+      if (!next) {
+        next = { type: "folder", name: segment, path, children: [] };
+        (cur.children as FsNode[]).push(next);
+      }
+      cur = next;
+    }
+    const fileName = parts[parts.length - 1];
+    (cur.children as FsNode[]).push({
+      type: "file",
+      name: fileName,
+      path: parts.join("/"),
+      file: f,
+    });
+  }
+  // sort folders first, then files alphabetically
+  const sortNode = (n: FsNode) => {
+    if (n.type !== "folder") return;
+    n.children.sort((a, b) => {
+      if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    n.children.forEach(sortNode);
+  };
+  sortNode(root);
+  return root;
+}
+
 function DatasourcesPanel() {
   const qc = useQueryClient();
   const { user } = useAuth();
