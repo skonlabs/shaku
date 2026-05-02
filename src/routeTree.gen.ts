@@ -19,7 +19,6 @@ import { Route as AppBillingRouteImport } from './routes/_app.billing'
 import { Route as AppAppRouteImport } from './routes/_app.app'
 import { Route as ApiWebhooksStripeRouteImport } from './routes/api/webhooks.stripe'
 import { Route as ApiWebhooksSlackRouteImport } from './routes/api/webhooks.slack'
-import { Route as ApiPublicAdminRunMigrationRouteImport } from './routes/api/public/admin-run-migration'
 import { Route as ApiDatasourcesProcessRouteImport } from './routes/api/datasources.process'
 import { Route as ApiConnectorsCallbackRouteImport } from './routes/api/connectors.callback'
 import { Route as ApiChatStreamRouteImport } from './routes/api/chat.stream'
@@ -74,12 +73,6 @@ const ApiWebhooksSlackRoute = ApiWebhooksSlackRouteImport.update({
   path: '/api/webhooks/slack',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicAdminRunMigrationRoute =
-  ApiPublicAdminRunMigrationRouteImport.update({
-    id: '/api/public/admin-run-migration',
-    path: '/api/public/admin-run-migration',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiDatasourcesProcessRoute = ApiDatasourcesProcessRouteImport.update({
   id: '/api/datasources/process',
   path: '/api/datasources/process',
@@ -113,7 +106,6 @@ export interface FileRoutesByFullPath {
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
-  '/api/public/admin-run-migration': typeof ApiPublicAdminRunMigrationRoute
   '/api/webhooks/slack': typeof ApiWebhooksSlackRoute
   '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
@@ -129,7 +121,6 @@ export interface FileRoutesByTo {
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
-  '/api/public/admin-run-migration': typeof ApiPublicAdminRunMigrationRoute
   '/api/webhooks/slack': typeof ApiWebhooksSlackRoute
   '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
@@ -147,7 +138,6 @@ export interface FileRoutesById {
   '/api/chat/stream': typeof ApiChatStreamRoute
   '/api/connectors/callback': typeof ApiConnectorsCallbackRoute
   '/api/datasources/process': typeof ApiDatasourcesProcessRoute
-  '/api/public/admin-run-migration': typeof ApiPublicAdminRunMigrationRoute
   '/api/webhooks/slack': typeof ApiWebhooksSlackRoute
   '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
@@ -165,7 +155,6 @@ export interface FileRouteTypes {
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
-    | '/api/public/admin-run-migration'
     | '/api/webhooks/slack'
     | '/api/webhooks/stripe'
   fileRoutesByTo: FileRoutesByTo
@@ -181,7 +170,6 @@ export interface FileRouteTypes {
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
-    | '/api/public/admin-run-migration'
     | '/api/webhooks/slack'
     | '/api/webhooks/stripe'
   id:
@@ -198,7 +186,6 @@ export interface FileRouteTypes {
     | '/api/chat/stream'
     | '/api/connectors/callback'
     | '/api/datasources/process'
-    | '/api/public/admin-run-migration'
     | '/api/webhooks/slack'
     | '/api/webhooks/stripe'
   fileRoutesById: FileRoutesById
@@ -213,7 +200,6 @@ export interface RootRouteChildren {
   ApiChatStreamRoute: typeof ApiChatStreamRoute
   ApiConnectorsCallbackRoute: typeof ApiConnectorsCallbackRoute
   ApiDatasourcesProcessRoute: typeof ApiDatasourcesProcessRoute
-  ApiPublicAdminRunMigrationRoute: typeof ApiPublicAdminRunMigrationRoute
   ApiWebhooksSlackRoute: typeof ApiWebhooksSlackRoute
   ApiWebhooksStripeRoute: typeof ApiWebhooksStripeRoute
 }
@@ -290,13 +276,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhooksSlackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/admin-run-migration': {
-      id: '/api/public/admin-run-migration'
-      path: '/api/public/admin-run-migration'
-      fullPath: '/api/public/admin-run-migration'
-      preLoaderRoute: typeof ApiPublicAdminRunMigrationRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/datasources/process': {
       id: '/api/datasources/process'
       path: '/api/datasources/process'
@@ -352,7 +331,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiChatStreamRoute: ApiChatStreamRoute,
   ApiConnectorsCallbackRoute: ApiConnectorsCallbackRoute,
   ApiDatasourcesProcessRoute: ApiDatasourcesProcessRoute,
-  ApiPublicAdminRunMigrationRoute: ApiPublicAdminRunMigrationRoute,
   ApiWebhooksSlackRoute: ApiWebhooksSlackRoute,
   ApiWebhooksStripeRoute: ApiWebhooksStripeRoute,
 }
