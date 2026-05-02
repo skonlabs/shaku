@@ -26,6 +26,13 @@ export async function enqueueMemoryJob(
 
   if (error || !data) {
     console.error("[memory-jobs] enqueue failed", error);
+    if (error?.code === "PGRST205" || /memory_jobs/i.test(error?.message ?? "")) {
+      try {
+        await promoteConversationMemories(userId, conversationId, projectId, supabase);
+      } catch (fallbackError) {
+        console.error("[memory-jobs] inline fallback failed", fallbackError);
+      }
+    }
     return null;
   }
   return data.id as string;

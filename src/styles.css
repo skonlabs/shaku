@@ -61,11 +61,11 @@
   --duration-base: 220ms;
   --duration-slow: 420ms;
 
-  /* Shadows — soft, warm, like sunlight on linen */
-  --shadow-elegant: 0 1px 2px oklch(0.35 0.04 95 / 0.05),
-                    0 10px 30px -14px oklch(0.35 0.04 95 / 0.10);
-  --shadow-float:   0 2px 4px oklch(0.35 0.04 95 / 0.06),
-                    0 20px 48px -18px oklch(0.35 0.04 95 / 0.16);
+  /* Shadows — refined, less diffuse, more like Linear/Notion */
+  --shadow-elegant: 0 1px 2px oklch(0.30 0.03 145 / 0.06),
+                    0 4px 12px -4px oklch(0.30 0.03 145 / 0.08);
+  --shadow-float:   0 2px 4px oklch(0.30 0.03 145 / 0.06),
+                    0 12px 32px -12px oklch(0.30 0.03 145 / 0.14);
 
   --font-sans: "Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-display: "Outfit", "Figtree", ui-sans-serif, system-ui, sans-serif;
@@ -76,51 +76,51 @@
   /* Larger, friendlier corners — feels approachable, less corporate */
   --radius: 1rem;
 
-  /* Sage & Cream — warm cream background, deep sage primary */
+  /* Refined Sage — warm cream surfaces, deeper forest primary, gold accent */
   --background: oklch(0.965 0.018 95);          /* #f5f0e8 cream */
-  --foreground: oklch(0.28 0.022 145);          /* deep forest text */
-  --card: oklch(0.985 0.012 95);                /* lifted cream */
-  --card-foreground: oklch(0.28 0.022 145);
+  --foreground: oklch(0.22 0.025 145);          /* deeper forest text — crisper */
+  --card: oklch(0.985 0.012 95);
+  --card-foreground: oklch(0.22 0.025 145);
   --popover: oklch(0.985 0.012 95);
-  --popover-foreground: oklch(0.28 0.022 145);
+  --popover-foreground: oklch(0.22 0.025 145);
 
-  /* Sage primary — warm, calming, human */
-  --primary: oklch(0.56 0.06 145);              /* #7d9b76 sage */
+  /* Primary — deeper, more confident forest sage */
+  --primary: oklch(0.46 0.075 150);             /* richer forest, not pastel */
   --primary-foreground: oklch(0.985 0.01 95);
 
-  --secondary: oklch(0.92 0.025 130);           /* #dce5d4 pale sage */
-  --secondary-foreground: oklch(0.32 0.025 145);
-  --muted: oklch(0.93 0.015 95);                /* warm muted cream */
-  --muted-foreground: oklch(0.48 0.02 130);
-  --accent: oklch(0.88 0.04 130);               /* light sage accent */
-  --accent-foreground: oklch(0.30 0.04 145);
+  --secondary: oklch(0.92 0.025 130);
+  --secondary-foreground: oklch(0.28 0.03 145);
+  --muted: oklch(0.93 0.015 95);
+  --muted-foreground: oklch(0.45 0.02 130);
+  /* Accent — warm gold for highlights, links, premium signal */
+  --accent: oklch(0.78 0.105 80);               /* warm honey gold */
+  --accent-foreground: oklch(0.25 0.04 80);
 
-  --destructive: oklch(0.62 0.16 30);           /* warm terracotta, not harsh red */
+  --destructive: oklch(0.58 0.17 28);
   --destructive-foreground: oklch(0.985 0.01 95);
 
-  --border: oklch(0.88 0.018 95);               /* soft warm border */
-  --input: oklch(0.92 0.018 95);
-  --ring: oklch(0.56 0.06 145);
+  --border: oklch(0.86 0.018 95);               /* slightly crisper border */
+  --input: oklch(0.91 0.018 95);
+  --ring: oklch(0.46 0.075 150);
 
-  /* User bubble — soft sage tint, not jarring */
+  /* User bubble — soft sage tint */
   --bubble: oklch(0.91 0.035 130);
-  --bubble-foreground: oklch(0.30 0.04 145);
+  --bubble-foreground: oklch(0.26 0.04 145);
 
-  --chart-1: oklch(0.56 0.06 145);
-  --chart-2: oklch(0.68 0.10 75);               /* warm wheat */
+  --chart-1: oklch(0.46 0.075 150);
+  --chart-2: oklch(0.78 0.105 80);              /* gold */
   --chart-3: oklch(0.62 0.12 50);               /* terracotta */
   --chart-4: oklch(0.55 0.08 200);              /* dusty teal */
   --chart-5: oklch(0.65 0.10 25);               /* clay */
 
-  /* Sidebar — slightly creamier than background to feel like a warm shelf */
   --sidebar: oklch(0.945 0.022 95);
-  --sidebar-foreground: oklch(0.32 0.022 145);
-  --sidebar-primary: oklch(0.56 0.06 145);
+  --sidebar-foreground: oklch(0.28 0.025 145);
+  --sidebar-primary: oklch(0.46 0.075 150);
   --sidebar-primary-foreground: oklch(0.985 0.01 95);
   --sidebar-accent: oklch(0.90 0.035 130);
-  --sidebar-accent-foreground: oklch(0.30 0.04 145);
-  --sidebar-border: oklch(0.88 0.020 95);
-  --sidebar-ring: oklch(0.56 0.06 145);
+  --sidebar-accent-foreground: oklch(0.26 0.04 145);
+  --sidebar-border: oklch(0.86 0.020 95);
+  --sidebar-ring: oklch(0.46 0.075 150);
 }
 
 .dark {
@@ -139,8 +139,8 @@
   --secondary-foreground: oklch(0.95 0.012 95);
   --muted: oklch(0.275 0.015 145);
   --muted-foreground: oklch(0.74 0.018 110);
-  --accent: oklch(0.34 0.04 145);
-  --accent-foreground: oklch(0.95 0.012 95);
+  --accent: oklch(0.74 0.10 80);                /* warm gold accent in dark too */
+  --accent-foreground: oklch(0.20 0.03 80);
 
   --destructive: oklch(0.65 0.16 30);
   --destructive-foreground: oklch(0.985 0.01 95);

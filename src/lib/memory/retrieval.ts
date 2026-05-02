@@ -48,9 +48,12 @@ export async function retrieveMemories(
     // when the response stream closes. Caller passes runAfterResponse for that.
     const ids = data.map((m: { id: string }) => m.id);
     if (ids.length) {
-      const incrementPromise = Promise.resolve(
-        supabase.rpc("increment_memory_access", { memory_ids: ids }).then(() => {}),
-      );
+      const incrementPromise = (async () => {
+        const { error: incErr } = await supabase.rpc("increment_memory_access", {
+          memory_ids: ids,
+        });
+        if (incErr) console.error("[increment_memory_access] failed:", incErr);
+      })();
       if (runAfterResponse) runAfterResponse(incrementPromise);
       else void incrementPromise;
     }

@@ -24,6 +24,29 @@ export const getMemories = createServerFn({ method: "POST" })
     return { memories, error: null };
   });
 
+export const getMemoriesByIds = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ ids: z.array(z.string().uuid()).max(50) }))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    if (data.ids.length === 0) return { memories: [] };
+    const { data: rows, error } = await supabase
+      .from("memories")
+      .select("id, content, type, confidence, source")
+      .eq("user_id", userId)
+      .in("id", data.ids);
+    if (error) return { memories: [] };
+    return {
+      memories: (rows ?? []).map((r) => ({
+        id: r.id as string,
+        content: (r.content as string) ?? "",
+        type: (r.type as string) ?? "fact",
+        confidence: (r.confidence as number) ?? 0,
+        source: (r.source as string) ?? "",
+      })),
+    };
+  });
+
 export const updateMemory = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(

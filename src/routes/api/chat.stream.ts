@@ -25,6 +25,7 @@ import {
   scoreAmbiguity,
 } from "@/lib/pipeline/output-validation";
 import { route, estimatePreRetrievalTokens } from "@/lib/llm/router";
+import { shouldGroundWithWeb } from "@/lib/pipeline/web-grounding";
 import { recordModelResult, HAIKU_MODEL_ID } from "@/lib/llm/registry";
 import type { ContextType, RoutingTaskType } from "@/lib/llm/types";
 import { enqueueMemoryJob, processPendingMemoryJobs } from "@/lib/memory/jobs";
@@ -41,6 +42,7 @@ import { InputCleaner } from "@/lib/token-optimization/input-cleaner";
 import { TASK_OUTPUT_TOKENS } from "@/lib/token-optimization/budget-manager";
 import type { TaskType } from "@/lib/token-optimization/types";
 import type { ModelConfig } from "@/lib/llm/types";
+import { calculateCredits, planAllowsModel, planAllowsFeature, type PlanFeatures } from "@/lib/credits/engine";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
 const SUPABASE_PUBLISHABLE_KEY =
@@ -152,6 +154,17 @@ export const Route = createFileRoute("/api/chat/stream")({
 
         // ---- Rate limit ----
         let memoryEnabled = true;
+        // Credit / plan state — populated below for both new turns and regenerate.
+        let userPlan = "free";
+        let planFeatures: PlanFeatures = {
+          models: ["gpt-4o-mini", "claude-haiku-4-5-20251001"],
+          memory: false,
+          documents: false,
+          max_context_tokens: 10_000,
+          advanced_routing: false,
+        };
+        let creditBalance = 0;
+
         if (!body.regenerate) {
           const { data: userRow } = await supabase
             .from("users")
@@ -171,6 +184,34 @@ export const Route = createFileRoute("/api/chat/stream")({
                 remaining: 0,
               }),
               { status: 429, headers: { "Content-Type": "application/json" } },
+            );
+          }
+        }
+
+        // Load credit state (plan + balance + features) — used for plan enforcement
+        // before routing, and for the upfront balance gate.
+        {
+          const { data: stateRaw } = await supabase
+            .rpc("credits_get_state", { p_user_id: userId })
+            .maybeSingle();
+          const state = stateRaw as
+            | { plan: string; balance: number; features: PlanFeatures }
+            | null;
+          if (state) {
+            userPlan = state.plan;
+            creditBalance = state.balance;
+            planFeatures = state.features;
+          }
+          if (creditBalance <= 0) {
+            return new Response(
+              JSON.stringify({
+                error: "out_of_credits",
+                message:
+                  "You're out of credits this month. Upgrade to Basic for 5,000 credits, or wait for your monthly reset.",
+                plan: userPlan,
+                upgrade_url: "/billing",
+              }),
+              { status: 402, headers: { "Content-Type": "application/json" } },
             );
           }
         }
@@ -433,6 +474,61 @@ export const Route = createFileRoute("/api/chat/stream")({
         });
         const selectedModel = routingDecision.selected;
 
+        // ---- Plan enforcement: model + feature access -----------------------
+        // Spec: "Reject with upgrade prompt" when a Free user routes to a
+        // Basic-only model or hits a Basic-only feature (memory/documents).
+        if (!planAllowsModel(planFeatures, selectedModel.id)) {
+          return new Response(
+            JSON.stringify({
+              error: "plan_required",
+              message:
+                "This question is best answered by our higher-quality model, which is available on the Basic plan.",
+              plan: userPlan,
+              required_plan: "basic",
+              upgrade_url: "/billing",
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        const usingMemory = assembled.memoriesUsed.length > 0;
+        const usingDocuments = finalChunks.length > 0;
+        if (usingMemory && !planAllowsFeature(planFeatures, "memory")) {
+          return new Response(
+            JSON.stringify({
+              error: "plan_required",
+              message:
+                "Memory is a Basic-plan feature. Upgrade to let Cortex remember context across conversations.",
+              plan: userPlan,
+              required_plan: "basic",
+              upgrade_url: "/billing",
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (usingDocuments && !planAllowsFeature(planFeatures, "documents")) {
+          return new Response(
+            JSON.stringify({
+              error: "plan_required",
+              message:
+                "Document Q&A is a Basic-plan feature. Upgrade to chat with your uploaded documents.",
+              plan: userPlan,
+              required_plan: "basic",
+              upgrade_url: "/billing",
+            }),
+            { status: 402, headers: { "Content-Type": "application/json" } },
+          );
+        }
+
+        // ---- Web grounding decision ----
+        // Detect entity / recency / proper-noun questions and enable the
+        // provider's native web-search tool for the turn. The model itself
+        // decides whether to actually invoke the tool — our heuristic just
+        // makes it AVAILABLE. This brings Cortex to ChatGPT/Claude parity for
+        // questions about non-famous people, niche companies, recent events.
+        const groundingDecision = shouldGroundWithWeb(currentUserMessage, intent);
+        const webGroundingEnabled = groundingDecision.enabled;
+        const webCitations: { title: string; url: string }[] = [];
+
         // ---- Final messages for the provider ----
         // assembleContext is the single budget owner: it has already trimmed history,
         // capped retrieval, and capped memory blocks. We do not re-process here.
@@ -507,25 +603,9 @@ export const Route = createFileRoute("/api/chat/stream")({
 
           if (userMsg) send("user_message", userMsg);
 
-          // Pre-insert the assistant message as 'streaming' before the LLM call (issue #2).
-          // If streaming fails or the Worker dies mid-response, the message row still exists
-          // with status='streaming' so the client can detect and recover the partial state.
-          // The row is updated to 'completed' or 'failed' after the stream finishes.
-          let streamingMsgId: string | null = null;
-          {
-            const pre = await supabase
-              .from("messages")
-              .insert({
-                conversation_id: convo.id,
-                role: "assistant",
-                content: "",
-                status: "streaming",
-                metadata: { model: selectedModel.id },
-              })
-              .select("id")
-              .single();
-            if (!pre.error && pre.data) streamingMsgId = pre.data.id as string;
-          }
+          // Persist the assistant message after the response is complete so the
+          // current production schema can save the final content + metadata reliably.
+          const streamingMsgId: string | null = null;
 
           let activeModel = selectedModel;
           let assistantText = "";
@@ -587,12 +667,22 @@ export const Route = createFileRoute("/api/chat/stream")({
                   ];
 
                   for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
-                    const claudeStream = anthropic.messages.stream({
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const streamArgs: any = {
                       model: candidateModel.id,
                       max_tokens: PER_TURN_MAX_TOKENS,
                       system: systemBlocks,
                       messages: turnMessages,
-                    });
+                    };
+                    if (webGroundingEnabled) {
+                      // Anthropic's server-side web search tool. The model
+                      // calls it on its own when it needs current/external
+                      // info; we never have to round-trip the tool call.
+                      streamArgs.tools = [
+                        { type: "web_search_20250305", name: "web_search", max_uses: 3 },
+                      ];
+                    }
+                    const claudeStream = anthropic.messages.stream(streamArgs);
 
                     let turnText = "";
                     const isContinuation = turn > 0;
@@ -634,6 +724,22 @@ export const Route = createFileRoute("/api/chat/stream")({
                       } else if (event.type === "message_delta") {
                         stopReason = event.delta.stop_reason ?? stopReason;
                         totalOutputTokens += event.usage?.output_tokens ?? 0;
+                      } else if (event.type === "content_block_start") {
+                        // Capture web_search citations as they stream in.
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const block: any = event.content_block;
+                        if (block?.type === "web_search_tool_result" && Array.isArray(block.content)) {
+                          for (const r of block.content) {
+                            if (r?.type === "web_search_result" && r.url) {
+                              if (!webCitations.some((c) => c.url === r.url)) {
+                                webCitations.push({ title: r.title || r.url, url: r.url });
+                              }
+                            }
+                          }
+                          if (webCitations.length) {
+                            send("citations", { sources: webCitations });
+                          }
+                        }
                       }
                     }
 
@@ -690,8 +796,20 @@ export const Route = createFileRoute("/api/chat/stream")({
                     })),
                   ];
 
+                  // OpenAI native web search: gpt-4o family supports a
+                  // `-search-preview` variant on Chat Completions that runs
+                  // the search tool server-side. We swap to it transparently
+                  // when grounding is enabled — the user never sees a model
+                  // name change.
+                  const oaiModelId =
+                    webGroundingEnabled && candidateModel.id === "gpt-4o"
+                      ? "gpt-4o-search-preview"
+                      : webGroundingEnabled && candidateModel.id === "gpt-4o-mini"
+                      ? "gpt-4o-mini-search-preview"
+                      : candidateModel.id;
+
                   const stream = await openai.chat.completions.create({
-                    model: candidateModel.id,
+                    model: oaiModelId,
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     messages: oaiMessages as any,
                     stream: true,
@@ -707,6 +825,21 @@ export const Route = createFileRoute("/api/chat/stream")({
                       assistantText += safeChunk;
                       const visible = stripFollowupsTagPartial(safeChunk, assistantText);
                       if (visible) send("delta", { text: visible });
+                    }
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const annotations: any[] | undefined = (chunk.choices[0]?.delta as any)
+                      ?.annotations;
+                    if (Array.isArray(annotations)) {
+                      let added = false;
+                      for (const a of annotations) {
+                        const url = a?.url_citation?.url ?? a?.url;
+                        const title = a?.url_citation?.title ?? a?.title ?? url;
+                        if (url && !webCitations.some((c) => c.url === url)) {
+                          webCitations.push({ title, url });
+                          added = true;
+                        }
+                      }
+                      if (added) send("citations", { sources: webCitations });
                     }
                     if (chunk.usage) {
                       // Accumulate (not overwrite) so prior fallback attempts are preserved.
@@ -750,13 +883,6 @@ export const Route = createFileRoute("/api/chat/stream")({
           }
           if (contentBlocked) {
             send("error", { message: "I can't send that response. Please try again." });
-            // Mark the streaming placeholder as failed so it doesn't stay stuck.
-            if (streamingMsgId) {
-              await supabase
-                .from("messages")
-                .update({ status: "failed", updated_at: new Date().toISOString() })
-                .eq("id", streamingMsgId);
-            }
             await supabase
               .from("conversations")
               .update({ updated_at: new Date().toISOString() })
@@ -817,16 +943,6 @@ export const Route = createFileRoute("/api/chat/stream")({
           let assistantId: string | null = streamingMsgId;
           let assistantCreatedAt: string | null = null;
 
-          // Mark the streaming placeholder as failed and inactive if we got no
-          // content. Setting is_active=false prevents it from appearing as a
-          // permanently-spinning loading bubble in the conversation history.
-          if (visibleFinal.trim().length === 0 && streamingMsgId) {
-            await supabase
-              .from("messages")
-              .update({ status: "failed", is_active: false, updated_at: new Date().toISOString() })
-              .eq("id", streamingMsgId);
-          }
-
           if (visibleFinal.trim().length > 0) {
             const savingsPct =
               totalInputTokens + inputSavingsTokens > 0
@@ -848,38 +964,26 @@ export const Route = createFileRoute("/api/chat/stream")({
                 content: m.content.slice(0, 150),
               }));
             }
+            if (finalChunks.length > 0) metadata.chunks_used = finalChunks.length;
+            if (assembled.activeTask?.id) metadata.task_id = assembled.activeTask.id;
+            if (assembled.convState?.summary) metadata.has_summary = true;
             if (followups.length) metadata.follow_ups = followups;
             if (priorVersion) metadata.versions = [priorVersion];
             if (streamError) metadata.partial = true;
             if (hitFinalCap) metadata.truncated = true;
+            if (webCitations.length) metadata.web_citations = webCitations;
+            if (webGroundingEnabled) metadata.web_grounded = true;
 
-            // Update the pre-inserted streaming row with the final content (issue #2).
-            let asst;
-            if (streamingMsgId) {
-              asst = await supabase
-                .from("messages")
-                .update({
-                  content: visibleFinal,
-                  status: streamError ? "failed" : "completed",
-                  metadata,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", streamingMsgId)
-                .select("id, created_at")
-                .single();
-            } else {
-              asst = await supabase
-                .from("messages")
-                .insert({
-                  conversation_id: convo.id,
-                  role: "assistant",
-                  content: visibleFinal,
-                  status: streamError ? "failed" : "completed",
-                  metadata,
-                })
-                .select("id, created_at")
-                .single();
-            }
+            const asst = await supabase
+              .from("messages")
+              .insert({
+                conversation_id: convo.id,
+                role: "assistant",
+                content: visibleFinal,
+                metadata,
+              })
+              .select("id, created_at")
+              .single();
             if (asst.error) {
               console.error("[chat.stream] persist assistant message", asst.error);
             } else {
@@ -895,58 +999,109 @@ export const Route = createFileRoute("/api/chat/stream")({
             // Record usage event (fire-and-forget; non-blocking)
             if (totalInputTokens > 0 || totalOutputTokens > 0) {
               runAfterResponse(
-                Promise.resolve(
-                  supabase
+                (async () => {
+                  const { error: usageErr } = await supabase
                     .from("usage_events")
                     .insert({
                       user_id: userId,
                       event_type: "chat",
                       model_used: activeModel.id,
-                      tokens_in: totalInputTokens,
-                      tokens_out: totalOutputTokens,
+                      tokens_in: Math.round(totalInputTokens) || 0,
+                      tokens_out: Math.round(totalOutputTokens) || 0,
                       cost_usd: costUsd,
-                      latency_ms: latencyMs,
+                      latency_ms: Math.round(latencyMs) || 0,
                       conversation_id: convo.id,
-                    })
-                    .then(() => {}),
-                ),
+                    });
+                  if (usageErr) console.error("[usage_events] insert failed:", usageErr);
+                })(),
+              );
+            }
+
+            // ---- Charge credits (atomic, idempotent on assistant message id) ----
+            // Uses observed token counts → calculateCredits → credits_deduct RPC.
+            // If the stream errored before any output, we skip the charge entirely.
+            // The DB function is idempotent on (user_id, request_id) so retries
+            // never double-charge.
+            if (assistantId && (totalInputTokens > 0 || totalOutputTokens > 0) && !streamError) {
+              const breakdown = calculateCredits({
+                modelId: activeModel.id,
+                inputTokens: totalInputTokens,
+                outputTokens: totalOutputTokens,
+                memoryRead: assembled.memoriesUsed.length > 0,
+                documentRead: finalChunks.length > 0,
+              });
+              runAfterResponse(
+                (async () => {
+                  const { error: creditErr } = await supabase.rpc("credits_deduct", {
+                    p_user_id: userId,
+                    p_amount: breakdown.total,
+                    p_reason: "chat",
+                    p_request_id: assistantId,
+                    p_metadata: {
+                      model: activeModel.id,
+                      tokens_in: Math.round(totalInputTokens),
+                      tokens_out: Math.round(totalOutputTokens),
+                      cost_usd: costUsd,
+                      breakdown: {
+                        multiplier: breakdown.model.multiplier,
+                        contextMult: breakdown.contextMult,
+                        addOns: breakdown.addOns,
+                      },
+                    },
+                  });
+                  if (creditErr) console.error("[credits_deduct] failed:", creditErr);
+                })(),
               );
             }
 
             // Insert context log for observability (fire-and-forget)
+            const UUID_RE =
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const onlyUuids = (arr: unknown[]): string[] =>
+              arr
+                .filter((x): x is string => typeof x === "string" && UUID_RE.test(x));
+            const safeMemoryIds = onlyUuids(assembled.memoriesUsed.map((m) => m.id));
+            const safeChunkIds = onlyUuids(finalChunks.map((c) => c.id));
+            const safeTaskId =
+              assembled.activeTask?.id && UUID_RE.test(assembled.activeTask.id)
+                ? assembled.activeTask.id
+                : null;
             runAfterResponse(
-              Promise.resolve(
-                supabase
-                  .rpc("insert_context_log", {
-                    p_user_id: userId,
-                    p_conversation_id: convo.id,
-                    p_message_id: assistantId,
-                    p_provider: activeModel.provider,
-                    p_model: activeModel.id,
-                    p_tokens_in: totalInputTokens,
-                    p_tokens_out: totalOutputTokens,
-                    p_tokens_saved: inputSavingsTokens,
-                    p_savings_pct: savingsPct,
-                    p_cost_usd: costUsd,
-                    p_latency_ms: latencyMs,
-                    p_retrieved_memory_ids: assembled.memoriesUsed.map((m) => m.id),
-                    p_retrieved_chunk_ids: finalChunks.map((c) => c.id).filter(Boolean),
-                    p_task_id: assembled.activeTask?.id ?? null,
-                    p_ranking_scores: JSON.stringify(
-                      Object.fromEntries(
-                        assembled.memoriesUsed.map((m) => [m.id, m.hybridScore ?? m.confidence]),
-                      ),
+              (async () => {
+                const { error: ctxLogErr } = await supabase.rpc("insert_context_log", {
+                  p_user_id: userId,
+                  p_conversation_id: convo.id,
+                  p_message_id: assistantId,
+                  p_provider: activeModel.provider,
+                  p_model: activeModel.id,
+                  p_tokens_in: Math.round(totalInputTokens) || 0,
+                  p_tokens_out: Math.round(totalOutputTokens) || 0,
+                  p_tokens_saved: Math.round(inputSavingsTokens) || 0,
+                  p_savings_pct: Math.round(savingsPct) || 0,
+                  p_cost_usd: costUsd,
+                  p_latency_ms: Math.round(latencyMs) || 0,
+                  p_retrieved_memory_ids: safeMemoryIds,
+                  p_retrieved_chunk_ids: safeChunkIds,
+                  p_task_id: safeTaskId,
+                  p_ranking_scores: JSON.stringify(
+                    Object.fromEntries(
+                      assembled.memoriesUsed
+                        .filter((m) => UUID_RE.test(m.id))
+                        .map((m) => [m.id, m.hybridScore ?? m.confidence]),
                     ),
-                    p_context_sections: JSON.stringify({
-                      memories: assembled.memoriesUsed.length,
-                      chunks: finalChunks.length,
-                      hasTask: Boolean(assembled.activeTask),
-                      hasSummary: Boolean(assembled.convState.summary),
-                    }),
-                    p_warnings: streamError ? ["stream_error"] : [],
-                  })
-                  .then(() => {}),
-              ),
+                  ),
+                  p_context_sections: JSON.stringify({
+                    memories: assembled.memoriesUsed.length,
+                    chunks: finalChunks.length,
+                    hasTask: Boolean(assembled.activeTask),
+                    hasSummary: Boolean(assembled.convState.summary),
+                  }),
+                  p_warnings: streamError ? ["stream_error"] : [],
+                });
+                if (ctxLogErr) {
+                  console.error("[context_log] insert failed:", ctxLogErr);
+                }
+              })(),
             );
           }
 

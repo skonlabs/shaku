@@ -2,6 +2,8 @@ import * as React from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase, type Profile } from "@/integrations/supabase/client";
 
+const AUTH_READY_TIMEOUT_MS = 8_000;
+
 export interface AuthContextValue {
   session: Session | null;
   user: User | null;
@@ -40,32 +42,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
+    let mounted = true;
+    const readyFallback = window.setTimeout(() => {
+      if (mounted) setLoading(false);
+    }, AUTH_READY_TIMEOUT_MS);
+
+    const finishLoading = () => {
+      if (!mounted) return;
+      window.clearTimeout(readyFallback);
+      setLoading(false);
+    };
+
     // 1. Subscribe FIRST (per Supabase auth best practices)
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!mounted) return;
       setSession(newSession);
       setUser(newSession?.user ?? null);
       if (newSession?.user) {
         // Defer profile fetch to avoid deadlocks inside the auth callback
         setTimeout(() => {
-          void loadProfile(newSession.user.id);
+          if (mounted) void loadProfile(newSession.user.id).finally(finishLoading);
         }, 0);
       } else {
         setProfile(null);
+        finishLoading();
       }
     });
 
     // 2. Then check existing session
     void supabase.auth.getSession().then(({ data: { session: initial } }) => {
+      if (!mounted) return;
       setSession(initial);
       setUser(initial?.user ?? null);
       if (initial?.user) {
-        void loadProfile(initial.user.id).finally(() => setLoading(false));
+        void loadProfile(initial.user.id).finally(finishLoading);
       } else {
-        setLoading(false);
+        finishLoading();
       }
+    }).catch((error) => {
+      console.error("[auth] session load error", error);
+      if (!mounted) return;
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      finishLoading();
     });
 
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      window.clearTimeout(readyFallback);
+      sub.subscription.unsubscribe();
+    };
   }, [loadProfile]);
 
   const value = React.useMemo<AuthContextValue>(

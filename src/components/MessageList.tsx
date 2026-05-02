@@ -11,8 +11,9 @@ import {
   FileText,
   Sparkles,
   PanelRightOpen,
-  Brain,
   Share2,
+  Globe,
+  ExternalLink,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { MessageContent } from "@/components/MessageContent";
@@ -333,12 +334,15 @@ function MessageRow({
           </div>
         )}
 
-        {/* Memory usage indicator */}
-        {!isStreaming &&
-          Array.isArray(message.metadata?.memories_used) &&
-          (message.metadata!.memories_used as MemoryChipEntry[]).length > 0 && (
-            <MemoryUsedChip memories={message.metadata!.memories_used as MemoryChipEntry[]} />
-          )}
+        {/* Web sources used by the model — shown as compact chips */}
+        {message.role === "assistant" && message.content && (
+          <SourcesRow metadata={message.metadata} />
+        )}
+
+        {/* "Behind the answer" — per-message transparency affordance */}
+        {!isStreaming && message.role === "assistant" && message.content && !message.pending && (
+          <BehindAnswerChip metadata={message.metadata} />
+        )}
 
         {!isStreaming && message.content && !message.pending && (
           <div className="mt-1 flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
@@ -376,28 +380,8 @@ function MessageRow({
                 {showOriginal ? "Show new response" : "Previous response"}
               </button>
             )}
-            {(() => {
-              const tin = message.metadata?.tokens_in as number | undefined;
-              const tout = message.metadata?.tokens_out as number | undefined;
-              const saved = message.metadata?.tokens_saved as number | undefined;
-              const pct = message.metadata?.savings_pct as number | undefined;
-              if (!tin && !tout) return null;
-              const hasSavings = saved && saved > 0;
-              return (
-                <span
-                  title={
-                    `Input: ${tin ?? 0} tokens · Output: ${tout ?? 0} tokens` +
-                    (hasSavings ? ` · Saved: ${saved} tokens (${pct ?? 0}% optimized)` : "")
-                  }
-                  className="ml-1.5 inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                >
-                  {fmtTok(tin)}↑ {fmtTok(tout)}↓
-                  {hasSavings && (
-                    <span className="text-emerald-600 dark:text-emerald-400">-{pct ?? 0}%</span>
-                  )}
-                </span>
-              );
-            })()}
+            {/* Token usage intentionally not shown here — see Settings → Usage. */}
+
           </div>
         )}
       </div>
@@ -514,35 +498,180 @@ const MEMORY_EMOJI: Record<string, string> = {
   correction: "✏️",
   response_style: "✍️",
   project: "📁",
+  fact: "📌",
+  skill: "🎯",
+  goal: "🚀",
+  relationship: "👤",
+  event: "📅",
 };
 
-function MemoryUsedChip({ memories }: { memories: MemoryChipEntry[] }) {
+/**
+ * "Behind the answer" — per-message transparency. Shows what Cortex used to
+ * compose this specific reply: memories, document snippets, the active task,
+ * or a clear note that nothing extra was needed. Replaces the global
+ * Context Debugger panel for the common case.
+ */
+function BehindAnswerChip({ metadata }: { metadata: Message["metadata"] | undefined }) {
   const [open, setOpen] = useState(false);
+  const memories = (Array.isArray(metadata?.memories_used)
+    ? (metadata!.memories_used as MemoryChipEntry[])
+    : []) as MemoryChipEntry[];
+  const chunkCount =
+    typeof metadata?.chunks_used === "number" ? (metadata!.chunks_used as number) : 0;
+  const hasTask = Boolean(metadata?.task_id);
+  const hasSummary = Boolean(metadata?.has_summary);
+  const usedAnything = memories.length > 0 || chunkCount > 0 || hasTask || hasSummary;
+
+  // Build a compact label. The empty state is intentionally distinct so
+  // people can tell the chip is a feature (transparency control) and not
+  // just a status note.
+  let label: string;
+  if (!usedAnything) {
+    label = "Behind this answer";
+  } else {
+    const parts: string[] = [];
+    if (memories.length > 0) {
+      parts.push(`${memories.length} ${memories.length === 1 ? "memory" : "memories"}`);
+    }
+    if (chunkCount > 0) {
+      parts.push(`${chunkCount} ${chunkCount === 1 ? "snippet" : "snippets"}`);
+    }
+    if (hasTask) parts.push("active task");
+    label = `Used ${parts.join(" + ")}`;
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition hover:border-primary/30 hover:text-foreground">
-          <Brain className="h-3 w-3" />
-          {memories.length} {memories.length === 1 ? "memory" : "memories"} used
+        <button
+          className={cn(
+            "mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition",
+            usedAnything
+              ? "border-primary/30 bg-primary/[0.08] text-primary hover:border-primary/50 hover:bg-primary/[0.12]"
+              : "border-dashed border-border/70 bg-transparent text-muted-foreground hover:border-primary/30 hover:bg-primary/[0.04] hover:text-foreground",
+          )}
+          aria-label="Behind the answer"
+        >
+          <Sparkles className="h-3 w-3" />
+          {label}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-3">
-        <p className="mb-2.5 text-xs font-medium">Memories that shaped this response</p>
-        <div className="space-y-2">
-          {memories.map((m) => (
-            <div key={m.id} className="flex items-start gap-2">
-              <span className="mt-0.5 shrink-0 text-sm">{MEMORY_EMOJI[m.type] ?? "💡"}</span>
-              <p className="text-xs leading-relaxed text-foreground/90">{m.content}</p>
+      <PopoverContent align="start" className="w-80 p-3">
+        <p className="mb-2.5 text-xs font-semibold text-foreground">Behind this answer</p>
+
+        {!usedAnything && (
+          <div className="space-y-2">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              For this reply, Cortex didn't need to pull in saved memories, documents,
+              or an active task — your conversation alone was enough.
+            </p>
+            <p className="text-[11px] leading-relaxed text-muted-foreground/80">
+              When Cortex does use them, you'll see what was used right here.
+            </p>
+          </div>
+        )}
+
+        {memories.length > 0 && (
+          <div className="mb-3">
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Memories ({memories.length})
+            </p>
+            <div className="space-y-2">
+              {memories.map((m) => (
+                <div key={m.id} className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 text-sm">
+                    {MEMORY_EMOJI[m.type] ?? "💡"}
+                  </span>
+                  <p className="text-xs leading-relaxed text-foreground/90">{m.content}</p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        )}
+
+        {chunkCount > 0 && (
+          <div className="mb-3 flex items-start gap-2">
+            <span className="mt-0.5 shrink-0 text-sm">📄</span>
+            <p className="text-xs leading-relaxed text-foreground/90">
+              {chunkCount} {chunkCount === 1 ? "snippet" : "snippets"} from your library
+              were referenced.
+            </p>
+          </div>
+        )}
+
+        {hasTask && (
+          <div className="mb-3 flex items-start gap-2">
+            <span className="mt-0.5 shrink-0 text-sm">🎯</span>
+            <p className="text-xs leading-relaxed text-foreground/90">
+              Connected to your active task — see the banner above the chat for details.
+            </p>
+          </div>
+        )}
+
+        {hasSummary && (
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 shrink-0 text-sm">📝</span>
+            <p className="text-xs leading-relaxed text-foreground/90">
+              Earlier conversation context was included as a summary.
+            </p>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );
 }
 
-function fmtTok(n: number | undefined): string {
-  if (!n) return "0";
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
+
+interface WebCitation {
+  title: string;
+  url: string;
+}
+
+function SourcesRow({ metadata }: { metadata: Message["metadata"] | undefined }) {
+  const raw = (metadata as Record<string, unknown> | undefined)?.web_citations;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const sources = raw as WebCitation[];
+
+  // Deduplicate by hostname for a tidy display while keeping the full list reachable.
+  const seen = new Set<string>();
+  const display: (WebCitation & { host: string })[] = [];
+  for (const s of sources) {
+    if (!s?.url) continue;
+    let host = "";
+    try {
+      host = new URL(s.url).hostname.replace(/^www\./, "");
+    } catch {
+      host = s.url;
+    }
+    if (seen.has(host)) continue;
+    seen.add(host);
+    display.push({ ...s, host });
+    if (display.length >= 4) break;
+  }
+  const extra = sources.length - display.length;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <div className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+        <Globe className="h-3 w-3" />
+        <span>Sources</span>
+      </div>
+      {display.map((s) => (
+        <a
+          key={s.url}
+          href={s.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={s.title}
+          className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-foreground/80 transition hover:border-primary/40 hover:bg-accent hover:text-foreground"
+        >
+          <span className="max-w-[140px] truncate">{s.host}</span>
+          <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+        </a>
+      ))}
+      {extra > 0 && (
+        <span className="text-[11px] text-muted-foreground">+{extra} more</span>
+      )}
+    </div>
+  );
 }

@@ -40,9 +40,11 @@ export type PanelId =
   | "settings"
   | "account"
   | "document"
-  | "memory"
-  | "context"
-  | "task";
+  | "memory";
+//
+// Removed: "context" and "task". Per-message context now renders inline
+// (BehindAnswerChip) and active task appears as a banner above the chat
+// (ActiveTaskBanner).
 const PanelContext = React.createContext<PanelContextValue | null>(null);
 
 export function PanelProvider({ children }: { children: React.ReactNode }) {

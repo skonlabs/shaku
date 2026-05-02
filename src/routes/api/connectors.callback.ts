@@ -15,7 +15,6 @@ export const Route = createFileRoute("/api/connectors/callback")({
         const code = url.searchParams.get("code");
         const state = url.searchParams.get("state");
         const error = url.searchParams.get("error");
-        const service = url.searchParams.get("service");
 
         // OAuth provider returned an error
         if (error) {
@@ -24,12 +23,6 @@ export const Route = createFileRoute("/api/connectors/callback")({
 
         if (!code || !state) {
           return redirect("/?connector_error=missing_params");
-        }
-
-        // Validate service param presence — it must be in the query string
-        if (!service) {
-          console.warn("[connectors.callback] Missing service param in callback URL");
-          return redirect("/?error=oauth_missing_service");
         }
 
         // Use service-role client for the callback: the oauth_state UUID acts as the CSRF
@@ -54,25 +47,52 @@ export const Route = createFileRoute("/api/connectors/callback")({
             return redirect("/?connector_error=invalid_state");
           }
 
-          // Validate that the service in the URL matches the service stored in the DB
-          if (connector.service !== service) {
-            console.warn(`[connectors.callback] service mismatch: URL="${service}" DB="${connector.service}"`);
-            return redirect("/?error=oauth_state_mismatch");
-          }
-
           const userId = connector.user_id;
-          const redirectUri = `${url.origin}/api/connectors/callback?service=${connector.service}`;
+          const redirectUri = `${url.origin}/api/connectors/callback`;
 
           if (connector.service === "google_drive") {
             const { exchangeCodeForTokens, encryptToken } = await import("@/lib/connectors/google-drive");
             const tokens = await exchangeCodeForTokens(code, redirectUri);
             const encryptedAccess = await encryptToken(tokens.accessToken);
             const encryptedRefresh = await encryptToken(tokens.refreshToken);
-
             await serviceSupabase.from("connectors").update({
               status: "connected",
               oauth_token_encrypted: encryptedAccess,
               oauth_refresh_token_encrypted: encryptedRefresh,
+              oauth_state: null,
+            }).eq("id", connector.id);
+          } else if (
+            connector.service === "google_docs" ||
+            connector.service === "google_sheets" ||
+            connector.service === "google_slides" ||
+            connector.service === "gmail" ||
+            connector.service === "google_calendar"
+          ) {
+            const { exchangeGoogleCode } = await import("@/lib/connectors/google");
+            const { encryptToken } = await import("@/lib/connectors/google-drive");
+            const tokens = await exchangeGoogleCode(code, redirectUri);
+            await serviceSupabase.from("connectors").update({
+              status: "connected",
+              oauth_token_encrypted: await encryptToken(tokens.accessToken),
+              oauth_refresh_token_encrypted: await encryptToken(tokens.refreshToken),
+              oauth_state: null,
+            }).eq("id", connector.id);
+          } else if (
+            connector.service === "onedrive" ||
+            connector.service === "microsoft_word" ||
+            connector.service === "microsoft_excel" ||
+            connector.service === "microsoft_powerpoint" ||
+            connector.service === "microsoft_onenote" ||
+            connector.service === "microsoft_outlook" ||
+            connector.service === "microsoft_teams"
+          ) {
+            const { exchangeMicrosoftCode } = await import("@/lib/connectors/microsoft");
+            const { encryptToken } = await import("@/lib/connectors/google-drive");
+            const tokens = await exchangeMicrosoftCode(connector.service, code, redirectUri);
+            await serviceSupabase.from("connectors").update({
+              status: "connected",
+              oauth_token_encrypted: await encryptToken(tokens.accessToken),
+              oauth_refresh_token_encrypted: await encryptToken(tokens.refreshToken),
               oauth_state: null,
             }).eq("id", connector.id);
           } else if (connector.service === "slack") {
@@ -86,7 +106,6 @@ export const Route = createFileRoute("/api/connectors/callback")({
               oauth_token_encrypted: encryptedAccess,
               oauth_refresh_token_encrypted: await encryptToken(""),
               oauth_state: null,
-              // Store team_id in metadata so webhook handler can filter by workspace
               metadata: { team_id: result.teamId, team_name: result.teamName },
             }).eq("id", connector.id);
           }

@@ -26,6 +26,7 @@ import {
   Pause,
   Play,
   Upload,
+  Sparkles,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
@@ -33,6 +34,15 @@ import { useTheme } from "@/lib/theme-context";
 import { HARD_UPLOAD_MAX_MB, useUploadMaxMb } from "@/lib/upload-settings";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { HelpCircle } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,7 +89,8 @@ import {
   updateProject,
   listProjectConversations,
 } from "@/lib/projects.functions";
-import { getContextLog, getActiveTaskForConversation } from "@/lib/context.functions";
+// getContextLog and getActiveTaskForConversation are now consumed inline by
+// MessageList (BehindAnswerChip) and ActiveTaskBanner respectively.
 import { listFiles, createDatasourceFile, deleteDatasourceFile } from "@/lib/datasources.functions";
 import {
   listConnectors,
@@ -88,6 +99,7 @@ import {
   disconnectConnector,
   getConnectorAvailability,
 } from "@/lib/connectors.functions";
+import { verifyGoogleConnection } from "@/lib/connectors/verify.functions";
 import { supabase } from "@/integrations/supabase/client";
 import type { UserKnowledgeModel } from "@/lib/knowledge/ukm";
 import { MessageContent } from "@/components/MessageContent";
@@ -138,8 +150,7 @@ export function SidePanel({ side = "left" }: { side?: "left" | "right" }) {
         {active === "datasources" && <DatasourcesPanel />}
         {active === "connectors" && <ConnectorsPanel />}
         {active === "memory" && <MemoryPanel />}
-        {active === "context" && <ContextDebuggerPanel />}
-        {active === "task" && <TaskPanel />}
+        {/* "context" and "task" panels were retired — see ActiveTaskBanner & BehindAnswerChip. */}
         {active === "settings" && <SettingsPanel />}
         {active === "account" && <AccountPanel />}
         {active === "document" && <DocumentPanel />}
@@ -153,17 +164,13 @@ function labelFor(p: string) {
     case "chats":
       return "Chats";
     case "projects":
-      return "Projects";
+      return "Spaces";
     case "datasources":
       return "Data sources";
     case "connectors":
       return "Connectors";
     case "memory":
       return "Memory & Persona";
-    case "context":
-      return "Context Debugger";
-    case "task":
-      return "Active Task";
     case "settings":
       return "Settings";
     case "account":
@@ -516,11 +523,12 @@ function SettingsPanel() {
   const { theme, setTheme } = useTheme();
   const [maxMb, setMaxMb] = useUploadMaxMb();
   return (
-    <div className="space-y-6 px-4 py-2">
-      <div>
-        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Appearance
-        </p>
+    <ScrollArea className="h-full">
+      <div className="space-y-6 px-4 py-2 pb-8">
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Appearance
+          </p>
         <div className="grid grid-cols-3 gap-1.5">
           {(
             [
@@ -572,8 +580,8 @@ function SettingsPanel() {
         </p>
       </div>
       <TokenUsageSection />
-      <MemoryPreferencesSection />
-    </div>
+      </div>
+    </ScrollArea>
   );
 }
 
@@ -597,68 +605,150 @@ function MemoryPreferencesSection() {
 
   if (isLoading || !prefs) return null;
 
+  // Map raw confidence threshold (0.1–1.0) to 3 friendly presets.
+  const confPreset: "eager" | "balanced" | "cautious" =
+    prefs.minConfidenceThreshold <= 0.45
+      ? "eager"
+      : prefs.minConfidenceThreshold >= 0.75
+        ? "cautious"
+        : "balanced";
+  const confValue = { eager: 0.4, balanced: 0.6, cautious: 0.8 } as const;
+
   return (
-    <div>
-      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        Memory preferences
-      </p>
-      <div className="space-y-3 rounded-lg border border-border bg-card p-3">
-        <label className="flex items-center justify-between gap-3 text-sm">
-          <span>Auto-extract memories</span>
-          <button
-            onClick={() => updateMut.mutate({ auto_extract: !prefs.autoExtract })}
-            className={cn(
-              "relative h-5 w-9 rounded-full transition-colors",
-              prefs.autoExtract ? "bg-primary" : "bg-muted-foreground/30",
-            )}
-          >
-            <span
-              className={cn(
-                "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform",
-                prefs.autoExtract ? "translate-x-4" : "translate-x-0.5",
-              )}
-            />
-          </button>
-        </label>
-
-        <label className="flex items-center justify-between gap-3 text-sm">
-          <span>Confidence threshold</span>
-          <div className="flex items-center gap-1.5">
-            <input
-              type="number"
-              min={0.1}
-              max={1.0}
-              step={0.05}
-              defaultValue={prefs.minConfidenceThreshold}
-              onBlur={(e) => {
-                const v = parseFloat(e.target.value);
-                if (Number.isFinite(v) && v >= 0.1 && v <= 1.0) {
-                  updateMut.mutate({ min_confidence_threshold: v });
-                }
-              }}
-              className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm outline-none focus:border-ring/60"
-            />
+    <TooltipProvider delayDuration={150}>
+      <div>
+        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Memory preferences
+        </p>
+        <div className="space-y-5 rounded-lg border border-border bg-card p-3">
+          {/* Confidence */}
+          <div>
+            <p className="mb-1 flex items-center gap-1.5 text-sm font-medium">
+              How sure should Cortex be before saving?
+              <HelpTip>
+                <p className="mb-1 font-medium">What this changes</p>
+                <p className="mb-2 text-muted-foreground">
+                  Sets the bar Cortex uses before turning something into a memory.
+                </p>
+                <p className="mb-1 font-medium">Examples</p>
+                <ul className="space-y-1.5 text-muted-foreground">
+                  <li>
+                    <b className="text-foreground">Eager —</b> "I think I'd like to learn
+                    French someday" gets saved. You'll see more reminders, some off-base.
+                  </li>
+                  <li>
+                    <b className="text-foreground">Balanced —</b> "I'm learning French" gets
+                    saved. Casual asides usually don't.
+                  </li>
+                  <li>
+                    <b className="text-foreground">Cautious —</b> only clear statements like
+                    "My name is Sam" or "I live in Berlin" stick.
+                  </li>
+                </ul>
+              </HelpTip>
+            </p>
+            <p className="mb-2 text-[12px] leading-snug text-muted-foreground">
+              Higher means fewer, more reliable memories. Lower means more memories but some may
+              be wrong.
+            </p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(
+                [
+                  { v: "eager", label: "Eager", hint: "Save more" },
+                  { v: "balanced", label: "Balanced", hint: "Recommended" },
+                  { v: "cautious", label: "Cautious", hint: "Only sure things" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.v}
+                  onClick={() =>
+                    updateMut.mutate({ min_confidence_threshold: confValue[opt.v] })
+                  }
+                  className={cn(
+                    "rounded-md border border-border px-2 py-2 text-center text-xs transition",
+                    confPreset === opt.v
+                      ? "border-primary bg-accent"
+                      : "hover:bg-accent/60",
+                  )}
+                >
+                  <div className="font-medium">{opt.label}</div>
+                  <div className="text-[10px] text-muted-foreground">{opt.hint}</div>
+                </button>
+              ))}
+            </div>
           </div>
-        </label>
 
-        <label className="flex items-center justify-between gap-3 text-sm">
-          <span>Memories per response</span>
-          <input
-            type="number"
-            min={1}
-            max={50}
-            defaultValue={prefs.maxMemoriesPerCall}
-            onBlur={(e) => {
-              const v = parseInt(e.target.value, 10);
-              if (Number.isFinite(v) && v >= 1 && v <= 50) {
-                updateMut.mutate({ max_memories_per_call: v });
+          {/* Memories per response */}
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                How much to remember per chat
+                <HelpTip>
+                  <p className="mb-1 font-medium">What this changes</p>
+                  <p className="mb-2 text-muted-foreground">
+                    The most facts Cortex will pull out of a single conversation.
+                  </p>
+                  <p className="mb-1 font-medium">Examples</p>
+                  <ul className="space-y-1.5 text-muted-foreground">
+                    <li>
+                      <b className="text-foreground">1–3 (Just essentials) —</b> from a long
+                      planning chat, Cortex might only save "trip to Lisbon in June."
+                    </li>
+                    <li>
+                      <b className="text-foreground">5–8 (Recommended) —</b> also saves
+                      "traveling with partner," "wants museums and food," "budget €1500."
+                    </li>
+                    <li>
+                      <b className="text-foreground">15–20 (Capture everything) —</b> adds
+                      smaller details like preferred neighborhoods and dietary notes.
+                    </li>
+                  </ul>
+                </HelpTip>
+              </p>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                up to {prefs.maxMemoriesPerCall}
+              </span>
+            </div>
+            <p className="mb-2 text-[12px] leading-snug text-muted-foreground">
+              Most chats produce 1–3 useful facts. A higher limit lets Cortex capture more from
+              long conversations.
+            </p>
+            <Slider
+              min={1}
+              max={20}
+              step={1}
+              value={[Math.min(prefs.maxMemoriesPerCall, 20)]}
+              onValueChange={(vals) =>
+                updateMut.mutate({ max_memories_per_call: vals[0] })
               }
-            }}
-            className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm outline-none focus:border-ring/60"
-          />
-        </label>
+            />
+            <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+              <span>Just essentials</span>
+              <span>Capture everything</span>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
+  );
+}
+
+function HelpTip({ children }: { children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="More info"
+          className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/70 hover:text-foreground"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="left" align="start" className="max-w-[280px] text-[12px] leading-snug">
+        {children}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -705,7 +795,10 @@ function TokenUsageSection() {
     cur.calls += 1;
     byModel.set(model, cur);
   }
-  const rows = [...byModel.entries()].sort((a, b) => b[1].in + b[1].out - (a[1].in + a[1].out));
+  const totalTokens = totalIn + totalOut;
+  const rows = [...byModel.entries()]
+    .map(([model, v]) => ({ model, ...v, total: v.in + v.out }))
+    .sort((a, b) => b.total - a.total);
 
   return (
     <div>
@@ -723,11 +816,23 @@ function TokenUsageSection() {
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-2 rounded-lg border border-border bg-card/60 p-3 text-center">
-            <UsageStat label="Input" value={formatTokens(totalIn)} tone="text-foreground" />
-            <UsageStat label="Output" value={formatTokens(totalOut)} tone="text-primary" />
-            <UsageStat label="Cost" value={`$${totalCost.toFixed(4)}`} tone="text-foreground" />
+          {/* Total across all models */}
+          <div className="rounded-lg border border-border bg-card/60 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Total · {rows.length} model{rows.length === 1 ? "" : "s"}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {events.length} call{events.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <UsageStat label="Input" value={formatTokens(totalIn)} tone="text-foreground" />
+              <UsageStat label="Output" value={formatTokens(totalOut)} tone="text-primary" />
+              <UsageStat label="Cost" value={`$${totalCost.toFixed(4)}`} tone="text-foreground" />
+            </div>
           </div>
+
           {summaryData && (
             <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-border bg-card/60 p-3 text-center">
               <UsageStat
@@ -742,38 +847,49 @@ function TokenUsageSection() {
               />
             </div>
           )}
-          <div className="mt-3 space-y-1.5">
-            {rows.map(([model, v]) => {
-              const total = v.in + v.out || 1;
-              const inPct = (v.in / total) * 100;
+
+          {/* Per-model breakdown */}
+          <p className="mb-1.5 mt-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            By model
+          </p>
+          <div className="space-y-1.5">
+            {rows.map((r) => {
+              const sharePct = totalTokens > 0 ? (r.total / totalTokens) * 100 : 0;
+              const inPct = r.total > 0 ? (r.in / r.total) * 100 : 0;
               return (
                 <div
-                  key={model}
+                  key={r.model}
                   className="rounded-md border border-border bg-card/60 px-2.5 py-2 text-[11px]"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-medium text-foreground" title={model}>
-                      {model}
+                    <span className="truncate font-medium text-foreground" title={r.model}>
+                      {prettyModel(r.model)}
                     </span>
-                    <span className="text-muted-foreground">
-                      {v.calls} call{v.calls === 1 ? "" : "s"} · ${v.cost.toFixed(4)}
+                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+                      {sharePct.toFixed(0)}%
                     </span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>
+                      {r.calls} call{r.calls === 1 ? "" : "s"}
+                    </span>
+                    <span>${r.cost.toFixed(4)}</span>
                   </div>
                   <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted">
                     <div
                       className="bg-foreground/70"
                       style={{ width: `${inPct}%` }}
-                      title={`Input: ${v.in.toLocaleString()}`}
+                      title={`Input: ${r.in.toLocaleString()}`}
                     />
                     <div
                       className="bg-primary"
                       style={{ width: `${100 - inPct}%` }}
-                      title={`Output: ${v.out.toLocaleString()}`}
+                      title={`Output: ${r.out.toLocaleString()}`}
                     />
                   </div>
                   <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-                    <span>↓ {formatTokens(v.in)} in</span>
-                    <span>↑ {formatTokens(v.out)} out</span>
+                    <span>↓ {formatTokens(r.in)} in</span>
+                    <span>↑ {formatTokens(r.out)} out</span>
                   </div>
                 </div>
               );
@@ -786,6 +902,13 @@ function TokenUsageSection() {
       )}
     </div>
   );
+}
+
+function prettyModel(id: string): string {
+  if (!id || id === "unknown" || id === "chat") return "Unknown model";
+  // Strip provider prefix e.g. "openai/gpt-4o-mini" -> "gpt-4o-mini"
+  const slash = id.lastIndexOf("/");
+  return slash >= 0 ? id.slice(slash + 1) : id;
 }
 
 function UsageStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
@@ -965,7 +1088,7 @@ const MEMORY_TYPE_META: { value: MemoryType; label: string; emoji: string }[] = 
   { value: "behavioral", label: "Behavioral", emoji: "🎯" },
   { value: "response_style", label: "Response style", emoji: "✍️" },
   { value: "correction", label: "Corrections", emoji: "✏️" },
-  { value: "project", label: "Projects", emoji: "📁" },
+  { value: "project", label: "Spaces", emoji: "📁" },
   { value: "episodic", label: "Events", emoji: "📅" },
   { value: "semantic", label: "Facts", emoji: "🧠" },
   { value: "long_term", label: "Long-term", emoji: "🔒" },
@@ -990,10 +1113,9 @@ type RecentPersonaSignal = {
   createdAt: string;
 };
 
-// ─── Projects ────────────────────────────────────────────────────────────────
+// ─── Spaces (formerly Projects) ─────────────────────────────────────────────
 
 function ProjectsPanel() {
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -1012,22 +1134,38 @@ function ProjectsPanel() {
       qc.invalidateQueries({ queryKey: ["projects"] });
       setCreating(false);
       setNewName("");
+      toast.success("Space created.");
     },
-    onError: () => toast.error("Couldn't create project."),
+    onError: () => toast.error("Couldn't create space."),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deleteProject({ data: { id } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects"] });
-      toast.success("Project archived.");
+      toast.success("Space archived.");
     },
-    onError: () => toast.error("Couldn't archive project."),
+    onError: () => toast.error("Couldn't archive space."),
   });
   const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState<string | null>(null);
 
   return (
     <div className="flex h-full flex-col">
+      {/* Always-visible explainer */}
+      <div className="mx-3 mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+        <div className="flex items-start gap-2">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-foreground">What's a space?</p>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              A space groups chats and memories around a topic — like a job search,
+              a trip, or a long project. Cortex remembers context across every chat
+              inside it.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="flex shrink-0 items-center px-4 py-2">
         <button
           onClick={() => {
@@ -1036,7 +1174,7 @@ function ProjectsPanel() {
           }}
           className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline"
         >
-          <FolderPlus className="h-3.5 w-3.5" /> New project
+          <FolderPlus className="h-3.5 w-3.5" /> New space
         </button>
       </div>
 
@@ -1052,7 +1190,7 @@ function ProjectsPanel() {
             autoFocus
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Project name"
+            placeholder="e.g. Job search, Trip to Japan"
             maxLength={100}
             className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus:border-ring/60"
           />
@@ -1083,12 +1221,23 @@ function ProjectsPanel() {
           <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>
         )}
         {!isLoading && projects.length === 0 && !creating && (
-          <div className="px-4 py-8 text-center">
-            <FolderPlus className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
-            <p className="text-xs text-muted-foreground">No projects yet.</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Create a project to organize related chats together.
+          <div className="mx-3 rounded-lg border border-dashed border-border bg-card/50 p-4 text-center">
+            <FolderPlus className="mx-auto mb-2 h-6 w-6 text-primary/40" />
+            <p className="text-xs font-medium text-foreground">No spaces yet</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Try one for something you'll keep coming back to — Cortex will get
+              smarter every time.
             </p>
+            <Button
+              size="sm"
+              className="mt-3 h-7 text-xs"
+              onClick={() => {
+                setCreating(true);
+                setNewName("");
+              }}
+            >
+              Create your first space
+            </Button>
           </div>
         )}
         <div className="space-y-0.5 px-2 pb-2">
@@ -1111,9 +1260,9 @@ function ProjectsPanel() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Archive this project?</AlertDialogTitle>
+            <AlertDialogTitle>Archive this space?</AlertDialogTitle>
             <AlertDialogDescription>
-              The project's chats will remain accessible individually.
+              The chats inside will remain accessible individually.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1142,7 +1291,7 @@ function ProjectRow({
   onToggle,
   onDelete,
 }: {
-  project: { id: string; name: string; color: string };
+  project: { id: string; name: string; color: string; chats?: number; memories?: number };
   isExpanded: boolean;
   onToggle: () => void;
   onDelete: () => void;
@@ -1174,10 +1323,12 @@ function ProjectRow({
   const renameMut = useMutation({
     mutationFn: (name: string) => updateProject({ data: { id: project.id, name } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
-    onError: () => toast.error("Couldn't rename project."),
+    onError: () => toast.error("Couldn't rename space."),
   });
 
   const convs = convData?.conversations ?? [];
+  const chatCount = project.chats ?? 0;
+  const memCount = project.memories ?? 0;
 
   return (
     <div>
@@ -1226,7 +1377,7 @@ function ProjectRow({
               e.stopPropagation();
               createMut.mutate();
             }}
-            title="New chat in project"
+            title="New chat in this space"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -1237,7 +1388,7 @@ function ProjectRow({
               setEditingName(true);
               setEditName(project.name);
             }}
-            title="Rename project"
+            title="Rename space"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -1247,7 +1398,7 @@ function ProjectRow({
               e.stopPropagation();
               onDelete();
             }}
-            title="Archive project"
+            title="Archive space"
             className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-destructive"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -1257,9 +1408,20 @@ function ProjectRow({
 
       {isExpanded && (
         <div className="mb-0.5 ml-5 border-l border-border pl-2">
+          {/* What's in this space — mini-card */}
+          <div className="mb-1.5 mt-1 flex items-center gap-3 rounded-md bg-accent/30 px-2 py-1.5 text-[11px] text-muted-foreground">
+            <span title="Chats in this space" className="flex items-center gap-1">
+              <span className="font-medium text-foreground">{chatCount}</span> chat{chatCount === 1 ? "" : "s"}
+            </span>
+            <span aria-hidden className="opacity-30">·</span>
+            <span title="Memories saved from chats in this space" className="flex items-center gap-1">
+              <span className="font-medium text-foreground">{memCount}</span> memor{memCount === 1 ? "y" : "ies"}
+            </span>
+          </div>
+
           {convs.length === 0 ? (
             <p className="py-1 text-xs text-muted-foreground">
-              No chats yet. Click + to create one.
+              No chats yet. Click + to start one — Cortex will remember what you discuss here.
             </p>
           ) : (
             convs.map((c) => (
@@ -1297,30 +1459,15 @@ function fmtBytes(n: number): string {
 }
 
 const CLOUD_STORAGE_SERVICES = [
-  {
-    service: "google_drive",
-    name: "Google Drive",
-    desc: "Sync Docs, Sheets, Slides and files",
-    implemented: true,
-  },
-  {
-    service: "onedrive",
-    name: "OneDrive / SharePoint",
-    desc: "Sync files from Microsoft OneDrive",
-    implemented: false,
-  },
-  {
-    service: "dropbox",
-    name: "Dropbox",
-    desc: "Sync documents and files from Dropbox",
-    implemented: false,
-  },
-  {
-    service: "shared_folder",
-    name: "Shared / Network Folder",
-    desc: "Mount a local or network shared folder",
-    implemented: false,
-  },
+  { service: "google_drive", name: "Google Drive", desc: "Sync Docs, Sheets, Slides and files", implemented: true },
+  { service: "google_docs", name: "Google Docs", desc: "Index your Google Docs documents", implemented: true },
+  { service: "google_sheets", name: "Google Sheets", desc: "Index your Google Sheets spreadsheets", implemented: true },
+  { service: "google_slides", name: "Google Slides", desc: "Index your Google Slides presentations", implemented: true },
+  { service: "onedrive", name: "OneDrive", desc: "Sync files from Microsoft OneDrive", implemented: true },
+  { service: "microsoft_word", name: "Microsoft Word", desc: "Index .docx files from OneDrive", implemented: true },
+  { service: "microsoft_excel", name: "Microsoft Excel", desc: "Index .xlsx files from OneDrive", implemented: true },
+  { service: "microsoft_powerpoint", name: "Microsoft PowerPoint", desc: "Index .pptx files from OneDrive", implemented: true },
+  { service: "microsoft_onenote", name: "Microsoft OneNote", desc: "Index OneNote notebooks and pages", implemented: true },
 ];
 
 function DatasourcesPanel() {
@@ -1373,7 +1520,7 @@ function DatasourcesPanel() {
       initiateConnectorAuth({
         data: {
           service,
-          redirect_uri: `${window.location.origin}/api/connectors/callback?service=${service}`,
+          redirect_uri: `${window.location.origin}/api/connectors/callback`,
         },
       }),
     onSuccess: (res) => {
@@ -1389,6 +1536,19 @@ function DatasourcesPanel() {
       toast.success("Disconnected.");
     },
     onError: () => toast.error("Couldn't disconnect."),
+  });
+
+  const verifyMut = useMutation({
+    mutationFn: (service: string) => verifyGoogleConnection({ data: { service } }),
+    onSuccess: (res) => {
+      const r = res as { ok: boolean; message: string; account?: { email?: string | null } };
+      if (r.ok) {
+        toast.success(r.account?.email ? `${r.message} (${r.account.email})` : r.message);
+      } else {
+        toast.error(r.message);
+      }
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Verification failed."),
   });
 
   const [pendingDeleteFileId, setPendingDeleteFileId] = useState<string | null>(null);
@@ -1624,6 +1784,18 @@ function DatasourcesPanel() {
                           {c.last_synced_at ? ` · synced ${relativeTime(c.last_synced_at)}` : ""}
                         </p>
                         <div className="mt-2 flex gap-1.5">
+                          {c.service.startsWith("google") || c.service === "gmail" ? (
+                            <button
+                              onClick={() => verifyMut.mutate(c.service)}
+                              disabled={verifyMut.isPending}
+                              className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+                            >
+                              {verifyMut.isPending && verifyMut.variables === c.service ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : null}
+                              Verify
+                            </button>
+                          ) : null}
                           <button
                             onClick={() => setPendingDisconnectId(c.id)}
                             disabled={disconnectMut.isPending}
@@ -1647,13 +1819,15 @@ function DatasourcesPanel() {
                   (s) => !connectedStorage.some((c) => c.service === s.service),
                 ).map((s) => {
                   const isConfigured = availability[s.service] ?? false;
-                  const canConnect = s.implemented && isConfigured;
+                  const isPremiumOnly = s.service !== "google_drive";
+                  const canConnect = s.implemented && isConfigured && !isPremiumOnly;
                   return (
                     <div
                       key={s.service}
                       className={cn(
                         "rounded-lg border border-border bg-background p-3",
                         !canConnect && "opacity-60",
+                        isPremiumOnly && "grayscale",
                       )}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1661,7 +1835,11 @@ function DatasourcesPanel() {
                           <p className="text-sm font-medium">{s.name}</p>
                           <p className="mt-0.5 text-[11px] text-muted-foreground">{s.desc}</p>
                         </div>
-                        {canConnect ? (
+                        {isPremiumOnly ? (
+                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            Premium
+                          </span>
+                        ) : canConnect ? (
                           <button
                             onClick={() => connectMut.mutate(s.service)}
                             disabled={connectMut.isPending}
@@ -1766,43 +1944,24 @@ const CONNECTOR_STATUS_STYLES: Record<string, { badge: string; label: string }> 
 // Services that appear in Connectors (not cloud storage)
 const CONNECTOR_ONLY_SERVICES = new Set([
   "slack",
-  "teams",
+  "microsoft_teams",
   "gmail",
+  "microsoft_outlook",
   "google_calendar",
-  "jira",
-  "github",
-  "notion",
-  "confluence",
 ]);
 
 const CONNECTOR_GROUPS: { label: string; services: string[]; desc: string }[] = [
-  { label: "Communication", services: ["slack", "teams", "gmail"], desc: "" },
-  { label: "Knowledge", services: ["notion", "confluence"], desc: "" },
-  { label: "Dev & Code", services: ["github"], desc: "" },
-  { label: "Productivity", services: ["jira", "google_calendar"], desc: "" },
+  { label: "Messaging", services: ["slack", "microsoft_teams"], desc: "" },
+  { label: "Email", services: ["gmail", "microsoft_outlook"], desc: "" },
+  { label: "Calendar", services: ["google_calendar"], desc: "" },
 ];
 
 const CONNECTOR_META: Record<string, { name: string; desc: string; implemented: boolean }> = {
   slack: { name: "Slack", desc: "Index channel messages, threads and files", implemented: true },
-  teams: { name: "Microsoft Teams", desc: "Index Teams messages and channels", implemented: false },
-  gmail: { name: "Gmail", desc: "Index email threads and attachments", implemented: false },
-  google_calendar: {
-    name: "Google Calendar",
-    desc: "Access calendar events in chat context",
-    implemented: false,
-  },
-  jira: {
-    name: "Jira (Atlassian)",
-    desc: "Index issues, epics, sprints and comments",
-    implemented: false,
-  },
-  github: { name: "GitHub", desc: "Index issues, PRs, discussions and code", implemented: false },
-  notion: { name: "Notion", desc: "Index pages, databases and wikis", implemented: false },
-  confluence: {
-    name: "Confluence (Atlassian)",
-    desc: "Index spaces, pages and comments",
-    implemented: false,
-  },
+  microsoft_teams: { name: "Microsoft Teams", desc: "Index Teams messages and channels", implemented: true },
+  gmail: { name: "Gmail", desc: "Index email threads and attachments", implemented: true },
+  microsoft_outlook: { name: "Microsoft Outlook", desc: "Index Outlook email threads", implemented: true },
+  google_calendar: { name: "Google Calendar", desc: "Index events from your primary calendar", implemented: true },
 };
 
 function ConnectorsPanel() {
@@ -1829,7 +1988,7 @@ function ConnectorsPanel() {
       initiateConnectorAuth({
         data: {
           service,
-          redirect_uri: `${window.location.origin}/api/connectors/callback?service=${service}`,
+          redirect_uri: `${window.location.origin}/api/connectors/callback`,
         },
       }),
     onSuccess: (res) => {
@@ -1861,6 +2020,13 @@ function ConnectorsPanel() {
   return (
     <ScrollArea className="h-full">
       <div className="space-y-5 px-4 py-3">
+        <div className="rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300">
+          <p className="font-medium">Connectors are a premium feature</p>
+          <p className="mt-0.5 text-amber-700 dark:text-amber-400/90">
+            Upgrade to a premium plan to connect your apps and bring their data into Cortex.
+          </p>
+        </div>
+
         {isLoading && <p className="py-4 text-center text-xs text-muted-foreground">Loading…</p>}
 
         {connected.length > 0 && (
@@ -1938,13 +2104,14 @@ function ConnectorsPanel() {
                   const meta = CONNECTOR_META[service];
                   if (!meta) return null;
                   const isConfigured = availability[service] ?? false;
-                  const canConnect = meta.implemented && isConfigured;
+                  // Premium-gated: connectors are disabled for all users.
+                  const canConnect = false;
+                  void isConfigured;
                   return (
                     <div
                       key={service}
                       className={cn(
-                        "rounded-lg border border-border bg-background p-3",
-                        !canConnect && "opacity-60",
+                        "rounded-lg border border-border bg-background p-3 opacity-50 grayscale",
                       )}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1952,26 +2119,9 @@ function ConnectorsPanel() {
                           <p className="text-sm font-medium">{meta.name}</p>
                           <p className="mt-0.5 text-[11px] text-muted-foreground">{meta.desc}</p>
                         </div>
-                        {canConnect ? (
-                          <button
-                            onClick={() => connectMut.mutate(service)}
-                            disabled={connectMut.isPending}
-                            className="flex shrink-0 items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                          >
-                            {connectMut.isPending ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <ExternalLink className="h-3 w-3" />
-                            )}
-                            Connect
-                          </button>
-                        ) : meta.implemented && !isConfigured ? (
-                          <span className="shrink-0 rounded border border-amber-300/60 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">
-                            Config needed
-                          </span>
-                        ) : (
+                        {canConnect ? null : (
                           <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            Soon
+                            Premium
                           </span>
                         )}
                       </div>
@@ -2096,6 +2246,37 @@ function MemoryPanel() {
 
   return (
     <div className="flex h-full flex-col">
+      {/* Master learning controls — govern both Memories and Persona */}
+      <div className="shrink-0 space-y-3 border-b border-border px-3 py-3">
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+          <div className="flex items-start gap-2">
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-foreground">Cortex learns as you chat</p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Mention things naturally — like <span className="italic">"I'm vegetarian"</span> or{" "}
+                <span className="italic">"keep answers short"</span> — and Cortex remembers.
+                Both your memories and persona below are built from these chats.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
+          <div className="pr-3">
+            <p className="text-sm font-medium">Learn from conversations</p>
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Turn off to stop saving anything new. Existing entries stay until you delete them.
+            </p>
+          </div>
+          <Switch
+            checked={memoryEnabled}
+            onCheckedChange={(v) => toggleMut.mutate(v)}
+            aria-label={memoryEnabled ? "Disable learning" : "Enable learning"}
+          />
+        </div>
+      </div>
+
       {/* Tab switcher */}
       <div className="flex shrink-0 border-b border-border">
         {TABS.map((t) => (
@@ -2115,6 +2296,11 @@ function MemoryPanel() {
       </div>
 
       <ScrollArea className="flex-1">
+        {!memoryEnabled && (
+          <div className="mx-3 mt-3 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+            Learning is paused. Cortex won't add to your memories or persona until you turn it back on. Existing entries are kept.
+          </div>
+        )}
         {tab === "memories" && (
           <MemoriesTab
             memories={memories}
@@ -2192,93 +2378,11 @@ function MemoriesTab({
   onDelete: (id: string) => void;
   onRefresh: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [newType, setNewType] = useState<MemoryType>("preference");
-  const [newContent, setNewContent] = useState("");
-  const qc = useQueryClient();
-
-  const createMut = useMutation({
-    mutationFn: ({ type, content }: { type: MemoryType; content: string }) =>
-      createMemory({ data: { type, content } }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["memories"] });
-      setAdding(false);
-      setNewContent("");
-      toast.success("Memory saved.");
-    },
-    onError: () => toast.error("Couldn't save memory."),
-  });
 
   return (
     <div className="space-y-4 px-3 py-3">
-      {/* Memory toggle */}
-      <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
-        <div>
-          <p className="text-sm font-medium">Learn from conversations</p>
-          <p className="text-[11px] text-muted-foreground">Build your persona over time</p>
-        </div>
-        <button
-          onClick={() => onToggle(!memoryEnabled)}
-          aria-label={memoryEnabled ? "Disable memory" : "Enable memory"}
-          className={cn(
-            "relative h-5 w-9 rounded-full transition-colors",
-            memoryEnabled ? "bg-primary" : "bg-muted-foreground/30",
-          )}
-        >
-          <span
-            className={cn(
-              "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform",
-              memoryEnabled ? "translate-x-4" : "translate-x-0.5",
-            )}
-          />
-        </button>
-      </div>
-
-      {/* Add memory */}
-      {adding ? (
-        <div className="space-y-2 rounded-lg border border-border p-3">
-          <select
-            value={newType}
-            onChange={(e) => setNewType(e.target.value as MemoryType)}
-            className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:border-ring/60"
-          >
-            {MEMORY_TYPE_META.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.emoji} {t.label}
-              </option>
-            ))}
-          </select>
-          <textarea
-            value={newContent}
-            onChange={(e) => setNewContent(e.target.value)}
-            placeholder="Describe this memory…"
-            maxLength={1000}
-            rows={3}
-            className="w-full resize-none rounded-md border border-input bg-background px-2 py-1.5 text-xs outline-none focus:border-ring/60"
-          />
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => createMut.mutate({ type: newType, content: newContent.trim() })}
-              disabled={!newContent.trim() || createMut.isPending}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <Button
-          size="sm"
-          variant="outline"
-          className="w-full justify-start gap-2"
-          onClick={() => setAdding(true)}
-        >
-          <Plus className="h-3.5 w-3.5" /> Add memory
-        </Button>
-      )}
+      {/* Granular memory preferences (only meaningful when learning is on) */}
+      {memoryEnabled && <MemoryPreferencesSection />}
 
       {/* Memory list */}
       {isLoading ? (
@@ -2289,16 +2393,27 @@ function MemoriesTab({
         </div>
       ) : memories.length === 0 ? (
         <div className="space-y-3">
-          <div className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
-            <Brain className="mb-2 h-5 w-5 text-primary/40" />
-            No saved memories yet. Recent conversation signals are shown below while the memory profile builds.
-          </div>
-          {recentSignals.map((signal, index) => (
-            <div key={`${signal.createdAt}-${index}`} className="rounded-md bg-accent/40 px-3 py-2">
-              <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">{signal.content}</p>
-              <p className="mt-1 text-[10px] text-muted-foreground">{relativeTime(signal.createdAt)}</p>
+          {recentSignals.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border bg-card/50 p-4 text-center">
+              <Brain className="mx-auto mb-2 h-6 w-6 text-primary/40" />
+              <p className="text-xs font-medium text-foreground">Nothing saved yet</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Start a conversation and share a preference or detail about yourself.
+              </p>
             </div>
-          ))}
+          ) : (
+            <>
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Recent signals
+              </p>
+              {recentSignals.map((signal, index) => (
+                <div key={`${signal.createdAt}-${index}`} className="rounded-md bg-accent/40 px-3 py-2">
+                  <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">{signal.content}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">{relativeTime(signal.createdAt)}</p>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -2953,324 +3068,11 @@ function StatBox({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ContextDebuggerPanel() {
-  const location = useLocation();
-  const convId = location.pathname.match(/^\/c\/([a-f0-9-]{36})/)?.[1] ?? null;
-
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ["context-log", convId],
-    queryFn: () => getContextLog({ data: { conversation_id: convId! } }),
-    enabled: Boolean(convId),
-    staleTime: 10_000,
-  });
-
-  if (!convId) {
-    return (
-      <div className="px-4 py-10 text-center text-xs text-muted-foreground">
-        Open a conversation to view context logs.
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="space-y-3 p-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-10 animate-pulse rounded-md bg-muted/60" />
-        ))}
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="px-4 py-10 text-center text-xs text-muted-foreground">
-        No context log yet — send a message first.
-        <Button size="sm" variant="ghost" className="mt-2 block w-full" onClick={() => refetch()}>
-          Refresh
-        </Button>
-      </div>
-    );
-  }
-
-  const fmtMs = (ms: number | null) => (ms != null ? `${ms}ms` : "—");
-  const fmtTok = (n: number | null) => (n != null ? n.toLocaleString() : "—");
-  const fmtCost = (usd: number | null) => (usd != null ? `$${usd.toFixed(5)}` : "—");
-
-  return (
-    <ScrollArea className="h-full">
-      <div className="space-y-4 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">Last call</span>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => refetch()}>
-            Refresh
-          </Button>
-        </div>
-
-        {/* Provider / model */}
-        <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">Provider</span>
-            <span className="font-medium capitalize">{data.provider}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">Model</span>
-            <span className="font-medium truncate max-w-[160px]" title={data.model}>
-              {data.model}
-            </span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">Latency</span>
-            <span className="font-medium">{fmtMs(data.latencyMs)}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">Cost</span>
-            <span className="font-medium">{fmtCost(data.costUsd)}</span>
-          </div>
-        </div>
-
-        {/* Tokens */}
-        <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Tokens
-          </p>
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">Input</span>
-            <span className="font-medium">{fmtTok(data.tokensIn)}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">Output</span>
-            <span className="font-medium">{fmtTok(data.tokensOut)}</span>
-          </div>
-          {data.tokensSaved > 0 && (
-            <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Saved</span>
-              <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                {fmtTok(data.tokensSaved)} ({data.savingsPct}%)
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Context sections */}
-        {Object.keys(data.contextSections).length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Context
-            </p>
-            {Object.entries(data.contextSections).map(([k, v]) => (
-              <div key={k} className="flex justify-between text-xs">
-                <span className="text-muted-foreground capitalize">{k}</span>
-                <span className="font-medium">{String(v)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Retrieved memories */}
-        {data.retrievedMemoryIds.length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Retrieved memories ({data.retrievedMemoryIds.length})
-            </p>
-            {data.retrievedMemoryIds.map((id) => {
-              const score = data.rankingScores[id];
-              return (
-                <div key={id} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate font-mono text-[10px] text-muted-foreground">
-                    {id.slice(0, 8)}…
-                  </span>
-                  {score != null && (
-                    <span className="shrink-0 text-[10px] tabular-nums text-primary">
-                      {(score * 100).toFixed(0)}%
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Retrieved chunks */}
-        {data.retrievedChunkIds.length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Retrieved chunks ({data.retrievedChunkIds.length})
-            </p>
-            <div className="mt-1.5 space-y-0.5">
-              {data.retrievedChunkIds.map((id) => (
-                <p key={id} className="font-mono text-[10px] text-muted-foreground truncate">
-                  {id.slice(0, 8)}…
-                </p>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Warnings */}
-        {data.warnings.length > 0 && (
-          <div className="rounded-lg border border-yellow-200 bg-yellow-50 dark:border-yellow-800/50 dark:bg-yellow-900/10 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-yellow-700 dark:text-yellow-400">
-              Warnings
-            </p>
-            {data.warnings.map((w, i) => (
-              <p key={i} className="mt-1 text-xs text-yellow-800 dark:text-yellow-300">
-                {w}
-              </p>
-            ))}
-          </div>
-        )}
-      </div>
-    </ScrollArea>
-  );
-}
-
-function TaskPanel() {
-  const location = useLocation();
-  const convId = location.pathname.match(/^\/c\/([a-f0-9-]{36})/)?.[1] ?? null;
-
-  const {
-    data: task,
-    isLoading,
-    refetch,
-  } = useQuery({
-    queryKey: ["active-task", convId],
-    queryFn: () => getActiveTaskForConversation({ data: { conversation_id: convId! } }),
-    enabled: Boolean(convId),
-    staleTime: 15_000,
-  });
-
-  if (!convId) {
-    return (
-      <div className="px-4 py-10 text-center text-xs text-muted-foreground">
-        Open a conversation to view task state.
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="space-y-3 p-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-10 animate-pulse rounded-md bg-muted/60" />
-        ))}
-      </div>
-    );
-  }
-
-  if (!task) {
-    return (
-      <div className="px-4 py-10 text-center text-xs text-muted-foreground">
-        No active task for this conversation yet.
-        <Button size="sm" variant="ghost" className="mt-2 block w-full" onClick={() => refetch()}>
-          Refresh
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <ScrollArea className="h-full">
-      <div className="space-y-4 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary capitalize">
-            {task.status}
-          </span>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => refetch()}>
-            Refresh
-          </Button>
-        </div>
-
-        {/* Goal */}
-        <div className="rounded-lg border border-border bg-card p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Goal
-          </p>
-          <p className="mt-1.5 text-sm font-medium">{task.goal || task.title}</p>
-          {task.title && task.goal && task.title !== task.goal && (
-            <p className="mt-0.5 text-xs text-muted-foreground">{task.title}</p>
-          )}
-        </div>
-
-        {/* Current step */}
-        {task.currentStep && (
-          <div className="rounded-lg border border-border bg-card p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Current step
-            </p>
-            <p className="mt-1.5 text-xs">{task.currentStep}</p>
-          </div>
-        )}
-
-        {/* Completed steps */}
-        {task.completedSteps.length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Completed ({task.completedSteps.length})
-            </p>
-            <ul className="space-y-1">
-              {task.completedSteps.map((s, i) => (
-                <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                  <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-500" />
-                  {s}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Next actions */}
-        {task.nextActions.length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Next actions
-            </p>
-            <ul className="space-y-1">
-              {task.nextActions.map((a, i) => (
-                <li key={i} className="flex items-start gap-1.5 text-xs">
-                  <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
-                  {a}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Open questions */}
-        {task.openQuestions.length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Open questions
-            </p>
-            <ul className="space-y-1">
-              {task.openQuestions.map((q, i) => (
-                <li key={i} className="text-xs text-muted-foreground">
-                  • {q}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Decisions */}
-        {task.decisions.length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Decisions
-            </p>
-            <ul className="space-y-1">
-              {task.decisions.map((d, i) => (
-                <li key={i} className="text-xs text-muted-foreground">
-                  {d}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    </ScrollArea>
-  );
-}
+// Retired: ContextDebuggerPanel, ContextAssemblySection, and TaskPanel.
+// Per-message context now renders inline via BehindAnswerChip in MessageList,
+// and the active task surfaces as ActiveTaskBanner above the chat. The
+// underlying server functions (getContextLog, getActiveTaskForConversation)
+// remain available for future use.
 
 function CompletenessRow({
   label,

@@ -13,16 +13,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const POLLING_INTERVALS: Record<string, number> = {
   google_drive: 5 * 60 * 1000,
-  slack: 5 * 60 * 1000,
-  dropbox: 30 * 60 * 1000,
-  onedrive: 30 * 60 * 1000,
+  google_docs: 15 * 60 * 1000,
+  google_sheets: 15 * 60 * 1000,
+  google_slides: 15 * 60 * 1000,
   gmail: 15 * 60 * 1000,
   google_calendar: 15 * 60 * 1000,
-  jira: 15 * 60 * 1000,
-  github: 15 * 60 * 1000,
-  notion: 30 * 60 * 1000,
-  confluence: 30 * 60 * 1000,
-  teams: 15 * 60 * 1000,
+  onedrive: 30 * 60 * 1000,
+  microsoft_word: 30 * 60 * 1000,
+  microsoft_excel: 30 * 60 * 1000,
+  microsoft_powerpoint: 30 * 60 * 1000,
+  microsoft_onenote: 30 * 60 * 1000,
+  microsoft_outlook: 15 * 60 * 1000,
+  microsoft_teams: 15 * 60 * 1000,
+  slack: 5 * 60 * 1000,
 };
 
 export async function syncConnector(
@@ -31,7 +34,6 @@ export async function syncConnector(
   service: string,
   supabase: SupabaseClient,
 ): Promise<void> {
-  // Mark as syncing
   await supabase
     .from("connectors")
     .update({ status: "syncing" })
@@ -43,16 +45,59 @@ export async function syncConnector(
 
     if (service === "google_drive") {
       const { syncGoogleDrive } = await import("./google-drive");
-      const result = await syncGoogleDrive(connectorId, userId, supabase);
-      itemsProcessed = result.itemsProcessed;
-      newCursor = result.newCursor;
+      const r = await syncGoogleDrive(connectorId, userId, supabase);
+      itemsProcessed = r.itemsProcessed; newCursor = r.newCursor;
+    } else if (service === "google_docs") {
+      const { syncGoogleDocs } = await import("./google");
+      const r = await syncGoogleDocs(connectorId, userId, supabase);
+      itemsProcessed = r.itemsProcessed; newCursor = r.newCursor;
+    } else if (service === "google_sheets") {
+      const { syncGoogleSheets } = await import("./google");
+      const r = await syncGoogleSheets(connectorId, userId, supabase);
+      itemsProcessed = r.itemsProcessed; newCursor = r.newCursor;
+    } else if (service === "google_slides") {
+      const { syncGoogleSlides } = await import("./google");
+      const r = await syncGoogleSlides(connectorId, userId, supabase);
+      itemsProcessed = r.itemsProcessed; newCursor = r.newCursor;
+    } else if (service === "gmail") {
+      const { syncGmail } = await import("./google");
+      const r = await syncGmail(connectorId, userId, supabase);
+      itemsProcessed = r.itemsProcessed; newCursor = r.newCursor;
+    } else if (service === "google_calendar") {
+      const { syncGoogleCalendar } = await import("./google");
+      const r = await syncGoogleCalendar(connectorId, userId, supabase);
+      itemsProcessed = r.itemsProcessed; newCursor = r.newCursor;
+    } else if (
+      service === "onedrive" ||
+      service === "microsoft_word" ||
+      service === "microsoft_excel" ||
+      service === "microsoft_powerpoint"
+    ) {
+      const { syncMicrosoftDrive } = await import("./microsoft");
+      const sourceName =
+        service === "onedrive" ? "OneDrive" :
+        service === "microsoft_word" ? "Microsoft Word" :
+        service === "microsoft_excel" ? "Microsoft Excel" :
+        "Microsoft PowerPoint";
+      const r = await syncMicrosoftDrive(connectorId, userId, service, supabase, sourceName);
+      itemsProcessed = r.itemsProcessed; newCursor = r.newCursor;
+    } else if (service === "microsoft_onenote") {
+      const { syncMicrosoftOneNote } = await import("./microsoft");
+      const r = await syncMicrosoftOneNote(connectorId, userId, supabase);
+      itemsProcessed = r.itemsProcessed; newCursor = r.newCursor;
+    } else if (service === "microsoft_outlook") {
+      const { syncMicrosoftOutlook } = await import("./microsoft");
+      const r = await syncMicrosoftOutlook(connectorId, userId, supabase);
+      itemsProcessed = r.itemsProcessed; newCursor = r.newCursor;
+    } else if (service === "microsoft_teams") {
+      const { syncMicrosoftTeams } = await import("./microsoft");
+      const r = await syncMicrosoftTeams(connectorId, userId, supabase);
+      itemsProcessed = r.itemsProcessed; newCursor = r.newCursor;
     } else if (service === "slack") {
       const { syncSlack } = await import("./slack");
-      const result = await syncSlack(connectorId, userId, supabase);
-      itemsProcessed = result.itemsProcessed;
-      newCursor = result.newCursor;
+      const r = await syncSlack(connectorId, userId, supabase);
+      itemsProcessed = r.itemsProcessed; newCursor = r.newCursor;
     } else {
-      // Service not yet implemented in Phase 1
       await supabase
         .from("connectors")
         .update({ status: "error", error_message: "Sync not implemented for this service" })

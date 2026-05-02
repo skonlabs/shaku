@@ -1,18 +1,39 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export interface CitationSource {
+  title: string;
+  url: string;
+}
+
+export interface UpgradeRequiredInfo {
+  /** out_of_credits | plan_required */
+  reason: "out_of_credits" | "plan_required";
+  /** What's blocked, in friendly copy. */
+  message: string;
+  /** What feature/model triggered the block, if any. */
+  blocked?: "model" | "memory" | "documents" | "credits";
+  currentPlan?: string;
+  requiredPlan?: string;
+  upgradeUrl: string;
+}
+
 export interface StreamCallbacks {
   onUserMessage: (id: string, createdAt: string) => void;
   onDelta: (text: string) => void;
+  onCitations?: (sources: CitationSource[]) => void;
   onDone: (info: {
     assistantMessageId?: string;
     followups?: string[];
     memoriesUsed?: number;
     tokensIn?: number;
     tokensOut?: number;
+    citations?: CitationSource[];
   }) => void;
   onInterrupted?: () => void;
   onError: (message: string) => void;
   onRateLimit?: (resetAt: string) => void;
+  /** Called when the server returns 402 — show an upgrade prompt with a link to /billing. */
+  onUpgradeRequired?: (info: UpgradeRequiredInfo) => void;
 }
 
 export interface StreamRequest {
@@ -78,6 +99,33 @@ export async function streamChat(
           return;
         }
 
+        if (res.status === 402) {
+          const data = await res.json().catch(() => ({}));
+          const reason: "out_of_credits" | "plan_required" =
+            data.error === "out_of_credits" ? "out_of_credits" : "plan_required";
+          const blocked: UpgradeRequiredInfo["blocked"] =
+            reason === "out_of_credits"
+              ? "credits"
+              : /memory/i.test(data.message ?? "")
+                ? "memory"
+                : /document/i.test(data.message ?? "")
+                  ? "documents"
+                  : "model";
+          cb.onUpgradeRequired?.({
+            reason,
+            message:
+              data.message ??
+              "This needs the Basic plan. Upgrade to keep going with Cortex's full toolkit.",
+            blocked,
+            currentPlan: data.plan,
+            requiredPlan: data.required_plan ?? "basic",
+            upgradeUrl: data.upgrade_url ?? "/billing",
+          });
+          // Also surface a short error so the composer doesn't hang silently.
+          cb.onError(data.message ?? "Upgrade required.");
+          return;
+        }
+
         if (!res.ok || !res.body) {
           const err = await res.json().catch(() => ({ error: "I ran into a problem." }));
           throw new Error(err.error ?? "I ran into a problem.");
@@ -112,6 +160,10 @@ export async function streamChat(
               } else if (event === "delta") {
                 receivedAnyToken = true;
                 cb.onDelta(parsed.text);
+              } else if (event === "citations") {
+                if (Array.isArray(parsed.sources)) {
+                  cb.onCitations?.(parsed.sources);
+                }
               } else if (event === "done") {
                 sawDoneEvent = true;
                 cb.onDone({

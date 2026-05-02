@@ -5,7 +5,11 @@ import { ChatComposer, type Attachment } from "@/components/ChatComposer";
 import { MessageList, type DisplayMessage } from "@/components/MessageList";
 import { getConversation } from "@/lib/conversations.functions";
 import { streamChat } from "@/lib/streamChat";
+import { showUpgradeToast } from "@/lib/upgrade-toast";
 import { RateLimitBanner } from "@/components/RateLimitBanner";
+import { ActiveTaskBanner } from "@/components/ActiveTaskBanner";
+import { SpaceNudge } from "@/components/SpaceNudge";
+import { ChatContextHeader } from "@/components/ChatContextHeader";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 
@@ -42,7 +46,10 @@ function ChatPage() {
     is_edited: m.is_edited,
     metadata: m.metadata,
   }));
-  const messages = [...serverMessages, ...streamingMessages];
+  // De-dupe: hide any streaming placeholders whose real id has now arrived from the server.
+  const serverIds = new Set(serverMessages.map((m) => m.id));
+  const visibleStreaming = streamingMessages.filter((m) => !serverIds.has(m.id));
+  const messages = [...serverMessages, ...visibleStreaming];
 
   const send = async (text: string, attachments: Attachment[] = []) => {
     if (sendInFlightRef.current) return;
@@ -75,9 +82,20 @@ function ChatPage() {
             ),
           );
         },
-        onDone: ({ assistantMessageId }) => {
+        onCitations: (sources) => {
+          setStreamingMessages((cur) =>
+            cur.map((m) =>
+              m.id === tempAsstId
+                ? { ...m, metadata: { ...(m.metadata ?? {}), web_citations: sources, web_grounded: true } }
+                : m,
+            ),
+          );
+        },
+        onDone: async ({ assistantMessageId }) => {
           sendInFlightRef.current = false;
           setStreamingId(null);
+          // Refetch first, THEN clear streaming buffer to avoid flicker.
+          await qc.refetchQueries({ queryKey: ["conversation", id] });
           if (assistantMessageId) {
             setStreamingMessages([]);
           } else {
@@ -85,7 +103,6 @@ function ChatPage() {
               cur.map((m) => (m.id === tempAsstId ? { ...m, pending: false } : m)),
             );
           }
-          qc.invalidateQueries({ queryKey: ["conversation", id] });
           qc.invalidateQueries({ queryKey: ["conversations"] });
         },
         onInterrupted: () => {
@@ -104,6 +121,12 @@ function ChatPage() {
           );
         },
         onRateLimit: (resetAt) => setRateLimitedUntil(resetAt),
+        onUpgradeRequired: (info) => {
+          sendInFlightRef.current = false;
+          setStreamingId(null);
+          showUpgradeToast(info);
+          setStreamingMessages([]);
+        },
       },
     );
     abortRef.current = controller;
@@ -125,9 +148,19 @@ function ChatPage() {
             ),
           );
         },
-        onDone: ({ assistantMessageId }) => {
+        onCitations: (sources) => {
+          setStreamingMessages((cur) =>
+            cur.map((m) =>
+              m.id === tempAsstId
+                ? { ...m, metadata: { ...(m.metadata ?? {}), web_citations: sources, web_grounded: true } }
+                : m,
+            ),
+          );
+        },
+        onDone: async ({ assistantMessageId }) => {
           sendInFlightRef.current = false;
           setStreamingId(null);
+          await qc.refetchQueries({ queryKey: ["conversation", id] });
           if (assistantMessageId) {
             setStreamingMessages([]);
           } else {
@@ -135,7 +168,6 @@ function ChatPage() {
               cur.map((m) => (m.id === tempAsstId ? { ...m, pending: false } : m)),
             );
           }
-          qc.invalidateQueries({ queryKey: ["conversation", id] });
         },
         onInterrupted: () => {
           sendInFlightRef.current = false;
@@ -148,6 +180,12 @@ function ChatPage() {
           sendInFlightRef.current = false;
           setStreamingId(null);
           toast.error(msg);
+          setStreamingMessages([]);
+        },
+        onUpgradeRequired: (info) => {
+          sendInFlightRef.current = false;
+          setStreamingId(null);
+          showUpgradeToast(info);
           setStreamingMessages([]);
         },
       },
@@ -204,14 +242,29 @@ function ChatPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <ActiveTaskBanner conversationId={id} />
+      <ChatContextHeader
+        conversationId={id}
+        projectId={(data.conversation as { project_id: string | null }).project_id ?? null}
+        isEmpty={messages.length === 0}
+      />
+      <div className="px-4">
+        <SpaceNudge />
+      </div>
       <div className="flex-1 overflow-hidden">
         {messages.length === 0 ? (
           <div className="flex h-full animate-fade-in items-center justify-center px-4 text-center">
-            <div className="flex flex-col items-center gap-3 text-muted-foreground">
+            <div className="flex max-w-md flex-col items-center gap-3 text-muted-foreground">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <span className="text-lg font-bold">C</span>
               </div>
-              <p className="text-sm">Start the conversation — type below.</p>
+              <p className="text-sm font-medium text-foreground">
+                What's on your mind?
+              </p>
+              <p className="text-xs leading-relaxed">
+                Type below to start. Share preferences naturally — Cortex will
+                remember them for next time.
+              </p>
             </div>
           </div>
         ) : (

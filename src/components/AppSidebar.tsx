@@ -8,24 +8,26 @@ import {
   User,
   Sparkles,
   Plus,
-  Wrench,
-  ListChecks,
   Leaf,
+  Receipt,
 } from "lucide-react";
 import { usePanel, type PanelId } from "@/lib/ui-context";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Friendly labels — keep the original term in parentheses so power users
-// can still find Memory, Persona, Context, and Token usage.
+// can still find Memory, Persona, and other features.
+//
+// Note: "Active task" and "Context debugger" used to live here. They were
+// retired because per-message context belongs inline with each message
+// (see BehindAnswerChip in MessageList) and the active task now appears
+// as an ambient banner above the chat (see ActiveTaskBanner).
 const items: { id: PanelId; icon: typeof MessageSquare; label: string }[] = [
   { id: "chats", icon: MessageSquare, label: "My chats" },
-  { id: "projects", icon: FolderHeart, label: "Projects" },
+  { id: "projects", icon: FolderHeart, label: "Spaces" },
   { id: "datasources", icon: BookOpen, label: "My library (data sources)" },
   { id: "connectors", icon: Plug, label: "Connections" },
   { id: "memory", icon: Sparkles, label: "What I remember (Memory & Persona)" },
-  { id: "task", icon: ListChecks, label: "What I'm working on (Active task)" },
-  { id: "context", icon: Wrench, label: "Behind the scenes (Context debugger)" },
 ];
 
 export function AppSidebar() {
@@ -101,6 +103,24 @@ export function AppSidebar() {
         </div>
 
         <div className="flex flex-col items-center gap-1.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                to="/billing"
+                aria-label="Billing & credits"
+                className={cn(
+                  "relative flex h-11 w-11 items-center justify-center rounded-2xl text-sidebar-foreground/65 transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  location.pathname === "/billing" && "bg-sidebar-accent text-primary",
+                )}
+              >
+                {location.pathname === "/billing" && (
+                  <span className="absolute -left-[14px] top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
+                )}
+                <Receipt className="h-[19px] w-[19px]" />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="right">Billing &amp; credits</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
