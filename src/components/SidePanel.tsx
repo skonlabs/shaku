@@ -472,7 +472,7 @@ type ConversationLike = {
   created_at?: string | null;
 };
 
-function groupConversationsByDate<T extends ConversationLike>(
+export function groupConversationsByDate<T extends ConversationLike>(
   items: T[],
 ): { key: string; title: string; items: T[] }[] {
   if (items.length === 0) return [];
