@@ -156,6 +156,28 @@ function BillingPage() {
     onError: (e: Error) => toast.error(e.message ?? "Couldn't schedule plan change."),
   });
 
+  const loadAllActivity = useCallback(
+    async (cursor: string | null) => {
+      setLoadingMoreActivity(true);
+      try {
+        const res = await getCreditLedger({
+          data: { limit: 50, cursor: cursor ?? undefined },
+        });
+        setAllActivityEntries((prev) => {
+          if (!cursor) return res.entries;
+          const seen = new Set(prev.map((e) => e.id));
+          return [...prev, ...res.entries.filter((e) => !seen.has(e.id))];
+        });
+        setAllActivityCursor(res.nextCursor ?? null);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Couldn't load activity.");
+      } finally {
+        setLoadingMoreActivity(false);
+      }
+    },
+    [],
+  );
+
   // Toast on return from Stripe
   const [poll, setPoll] = useState(false);
   useEffect(() => {
