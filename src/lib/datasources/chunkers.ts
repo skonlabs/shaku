@@ -98,22 +98,72 @@ function chunkByStructure(content: string): string[] {
   return chunks.filter((c) => c.length > 50);
 }
 
-// Row-level chunking for spreadsheets (group N rows per chunk)
+// Row-level chunking for spreadsheets.
+// Splits on sheet boundaries ("--- Sheet: NAME ... ---") and repeats the
+// column-header row on every chunk so each chunk is self-describing for retrieval.
 function chunkByRows(content: string, rowsPerChunk: number): string[] {
-  const parts = content.split("--- ");
+  if (!content.trim()) return [];
+
+  // Split on sheet header markers but keep them attached to their block.
+  // Matches headers produced by the extractor: "--- Sheet: NAME (N rows) ---"
+  // and the simpler "--- CSV ---" / "--- TSV ---" forms.
+  const sheetHeaderRe = /^--- (?:Sheet: .+?|CSV|TSV)(?: \(\d+ rows\))? ---$/m;
+  const blocks: { header: string; body: string }[] = [];
+
+  const lines = content.split("\n");
+  let currentHeader = "";
+  let currentBody: string[] = [];
+
+  const flush = () => {
+    if (currentHeader || currentBody.length) {
+      blocks.push({ header: currentHeader, body: currentBody.join("\n") });
+    }
+  };
+
+  for (const line of lines) {
+    if (sheetHeaderRe.test(line)) {
+      flush();
+      currentHeader = line;
+      currentBody = [];
+    } else {
+      currentBody.push(line);
+    }
+  }
+  flush();
+
+  // No sheet markers found — treat the whole content as one block.
+  if (!blocks.length) blocks.push({ header: "", body: content });
+
   const chunks: string[] = [];
 
-  for (const part of parts) {
-    if (!part.trim()) continue;
-    const lines = part.split("\n").filter((l) => l.trim());
-    if (!lines.length) continue;
+  for (const { header, body } of blocks) {
+    const rows = body.split("\n").filter((l) => l.trim().length > 0);
+    if (!rows.length) continue;
 
-    // First line may be a sheet header
-    const header = lines[0].includes("---") ? lines.shift() ?? "" : "";
+    // First non-empty row is treated as the column header so it can be
+    // repeated in every chunk for context. This preserves column meaning
+    // across row batches and is critical for accurate retrieval.
+    const columnHeader = rows[0];
+    const dataRows = rows.slice(1);
 
-    for (let i = 0; i < lines.length; i += rowsPerChunk) {
-      const batch = lines.slice(i, i + rowsPerChunk);
-      const chunk = (header ? header + "\n" : "") + batch.join("\n");
+    // If a sheet has only a header row, still emit a chunk for it.
+    if (!dataRows.length) {
+      const chunk = [header, columnHeader].filter(Boolean).join("\n");
+      if (chunk.trim()) chunks.push(chunk.trim());
+      continue;
+    }
+
+    for (let i = 0; i < dataRows.length; i += rowsPerChunk) {
+      const batch = dataRows.slice(i, i + rowsPerChunk);
+      const rangeNote = `Rows ${i + 1}-${Math.min(i + rowsPerChunk, dataRows.length)} of ${dataRows.length}`;
+      const chunk = [
+        header,
+        rangeNote,
+        columnHeader,
+        ...batch,
+      ]
+        .filter(Boolean)
+        .join("\n");
       if (chunk.trim()) chunks.push(chunk.trim());
     }
   }
