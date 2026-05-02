@@ -687,8 +687,21 @@ export const Route = createFileRoute("/api/chat/stream")({
                 // Auto-continue handles longer responses so we don't waste context budget.
                 const taskType = intentToTaskType(intent, intentResult.domain);
                 const taskCap = TASK_OUTPUT_TOKENS[taskType] ?? 800;
-                const PER_TURN_MAX_TOKENS = Math.min(candidateModel.maxOutputTokens, taskCap);
-                const MAX_AUTO_CONTINUES = candidateModel.provider === "anthropic" ? 3 : 0;
+                // When the user attaches substantial document text, they typically
+                // expect comprehensive output (e.g. "process every row/sheet/page").
+                // Lift the per-turn cap to the model's full output capacity so we
+                // don't truncate at ~800 tokens mid-list.
+                const needsLongOutput = attachmentTextTokens > 5_000;
+                const PER_TURN_MAX_TOKENS = needsLongOutput
+                  ? candidateModel.maxOutputTokens
+                  : Math.min(candidateModel.maxOutputTokens, taskCap);
+                // Allow auto-continue for all providers when long output is needed,
+                // so Gemini/OpenAI can also keep generating past their first cap.
+                const MAX_AUTO_CONTINUES = needsLongOutput
+                  ? 5
+                  : candidateModel.provider === "anthropic"
+                  ? 3
+                  : 0;
 
                 if (candidateModel.provider === "anthropic") {
                   const apiKey = runtimeKeys.anthropic;
