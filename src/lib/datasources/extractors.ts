@@ -112,50 +112,113 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
   return (Array.isArray(text) ? text.join("\n\n") : text).trim();
 }
 
+type SpreadsheetCell = { v?: unknown; w?: string; f?: string; c?: { t?: string; a?: string }[] };
+type SpreadsheetRange = { s: { r: number; c: number }; e: { r: number; c: number } };
+type XLSXModule = typeof import("xlsx");
+type SpreadsheetSheet = Record<string, unknown> & { "!ref"?: string; "!merges"?: SpreadsheetRange[] };
+
 async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<string> {
   const XLSX = await import("xlsx");
-  // cellDates: parse Excel serial dates to JS Date; cellNF: keep number formats
-  const wb = XLSX.read(bytes, { type: "array", cellDates: true, cellNF: false });
-  const parts: string[] = [];
+  const wb = XLSX.read(bytes, {
+    type: "array",
+    cellDates: true,
+    cellFormula: true,
+    cellNF: true,
+    sheetStubs: true,
+  });
+  const parts: string[] = [
+    `--- Workbook: ${normalizeCellText(name)} | Sheets: ${wb.SheetNames.length} ---\n${wb.SheetNames.map((sheet, i) => `${i + 1}. ${sheet}`).join("\n")}`,
+  ];
 
   for (const sheetName of wb.SheetNames) {
     const sheet = wb.Sheets[sheetName];
-    if (!sheet || !sheet["!ref"]) {
-      parts.push(`--- Sheet: ${sheetName} ---\n(empty)`);
+    const usedRange = findActualUsedRange(XLSX, sheet);
+    if (!sheet || !usedRange) {
+      parts.push(`--- Sheet: ${sheetName} | Range: empty | Rows: 0 | Columns: 0 ---\n(empty)`);
       continue;
     }
 
-    // Convert to AOA so we can render a readable, aligned table per tab.
-    // blankrows:false drops fully empty rows; defval:"" keeps column alignment.
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-      header: 1,
-      blankrows: false,
-      defval: "",
-      raw: false, // use formatted strings (dates, percents, currency) when available
-    });
-
-    if (!rows.length) {
-      parts.push(`--- Sheet: ${sheetName} ---\n(empty)`);
-      continue;
-    }
-
-    // Render as TSV-style rows. Tabs preserve cell boundaries better than CSV
-    // for LLM consumption and avoid quoting issues with commas inside cells.
     const lines: string[] = [];
-    for (const row of rows) {
-      const cells = (row as unknown[]).map((c) => {
-        if (c === null || c === undefined) return "";
-        if (c instanceof Date) return c.toISOString().slice(0, 10);
-        return String(c).replace(/[\t\r\n]+/g, " ").trim();
-      });
-      // Skip rows that became fully empty after normalization
-      if (cells.some((c) => c.length > 0)) lines.push(cells.join("\t"));
+    const columnCount = usedRange.e.c - usedRange.s.c + 1;
+    const verticalMergeValues = buildVerticalMergeValueMap(XLSX, sheet);
+
+    for (let r = usedRange.s.r; r <= usedRange.e.r; r++) {
+      const cells: string[] = [];
+      let hasValue = false;
+      for (let c = usedRange.s.c; c <= usedRange.e.c; c++) {
+        const address = XLSX.utils.encode_cell({ r, c });
+        const value = cellToText((sheet?.[address] as SpreadsheetCell | undefined) ?? undefined)
+          || verticalMergeValues.get(address)
+          || "";
+        if (value) hasValue = true;
+        cells.push(value);
+      }
+      if (hasValue) lines.push(cells.join("\t"));
     }
 
-    parts.push(`--- Sheet: ${sheetName} (${lines.length} rows) ---\n${lines.join("\n")}`);
+    const rangeLabel = XLSX.utils.encode_range(usedRange);
+    parts.push(
+      `--- Sheet: ${sheetName} | Range: ${rangeLabel} | Rows: ${lines.length} | Columns: ${columnCount} ---\n${lines.join("\n") || "(empty)"}`,
+    );
   }
 
-  return parts.length ? parts.join("\n\n") : `(empty spreadsheet: ${name})`;
+  return parts.length > 1 ? parts.join("\n\n") : `(empty spreadsheet: ${name})`;
+}
+
+function findActualUsedRange(XLSX: XLSXModule, sheet: SpreadsheetSheet | undefined): SpreadsheetRange | null {
+  if (!sheet?.["!ref"]) return null;
+  const declared = XLSX.utils.decode_range(sheet["!ref"]);
+  let minR = Number.POSITIVE_INFINITY;
+  let minC = Number.POSITIVE_INFINITY;
+  let maxR = -1;
+  let maxC = -1;
+
+  for (let r = declared.s.r; r <= declared.e.r; r++) {
+    for (let c = declared.s.c; c <= declared.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })] as SpreadsheetCell | undefined;
+      if (!cellHasContent(cell)) continue;
+      minR = Math.min(minR, r);
+      minC = Math.min(minC, c);
+      maxR = Math.max(maxR, r);
+      maxC = Math.max(maxC, c);
+    }
+  }
+
+  return maxR >= 0 ? { s: { r: minR, c: minC }, e: { r: maxR, c: maxC } } : null;
+}
+
+function buildVerticalMergeValueMap(XLSX: XLSXModule, sheet: SpreadsheetSheet): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const merge of sheet["!merges"] ?? []) {
+    if (merge.e.r <= merge.s.r) continue;
+    const anchor = cellToText(sheet[XLSX.utils.encode_cell(merge.s)] as SpreadsheetCell | undefined);
+    if (!anchor) continue;
+    for (let r = merge.s.r; r <= merge.e.r; r++) {
+      for (let c = merge.s.c; c <= merge.e.c; c++) {
+        values.set(XLSX.utils.encode_cell({ r, c }), anchor);
+      }
+    }
+  }
+  return values;
+}
+
+function cellHasContent(cell: SpreadsheetCell | undefined): boolean {
+  return !!cellToText(cell) || !!cell?.f || !!cell?.c?.some((comment) => normalizeCellText(comment.t).length > 0);
+}
+
+function cellToText(cell: SpreadsheetCell | undefined): string {
+  if (!cell) return "";
+  const value = cell.w ?? cell.v;
+  const text = value instanceof Date ? value.toISOString().slice(0, 10) : normalizeCellText(value);
+  const formula = cell.f ? ` [formula: =${normalizeCellText(cell.f)}]` : "";
+  const comments = cell.c?.map((comment) => normalizeCellText(comment.t)).filter(Boolean) ?? [];
+  const commentText = comments.length ? ` [comment: ${comments.join(" | ")}]` : "";
+  return `${text}${formula}${commentText}`.trim();
+}
+
+function normalizeCellText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/[\t\r\n]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function extractDelimited(bytes: Uint8Array, type: string): string {

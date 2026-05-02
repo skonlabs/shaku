@@ -20,9 +20,12 @@ export function chunkByFileType(content: string, fileType: string): string[] {
 
     case "xlsx":
     case "xls":
+    case "xlsm":
+    case "xlsb":
+    case "ods":
     case "csv":
     case "tsv":
-      return chunkByRows(content, 30);
+      return chunkByRows(content, 250);
 
     case "pptx":
     case "ppt":
@@ -105,9 +108,8 @@ function chunkByRows(content: string, rowsPerChunk: number): string[] {
   if (!content.trim()) return [];
 
   // Split on sheet header markers but keep them attached to their block.
-  // Matches headers produced by the extractor: "--- Sheet: NAME (N rows) ---"
-  // and the simpler "--- CSV ---" / "--- TSV ---" forms.
-  const sheetHeaderRe = /^--- (?:Sheet: .+?|CSV|TSV)(?: \(\d+ rows\))? ---$/m;
+  // Matches headers produced by the extractor, including workbook/sheet metadata.
+  const sheetHeaderRe = /^--- (?:Workbook: .+?|Sheet: .+?|CSV|TSV)(?: \(\d+ rows\))?(?: \| .+?)? ---$/m;
   const blocks: { header: string; body: string }[] = [];
 
   const lines = content.split("\n");
@@ -137,18 +139,21 @@ function chunkByRows(content: string, rowsPerChunk: number): string[] {
   const chunks: string[] = [];
 
   for (const { header, body } of blocks) {
+    if (header.startsWith("--- Workbook:")) continue;
+
     const rows = body.split("\n").filter((l) => l.trim().length > 0);
     if (!rows.length) continue;
 
-    // First non-empty row is treated as the column header so it can be
-    // repeated in every chunk for context. This preserves column meaning
-    // across row batches and is critical for accurate retrieval.
-    const columnHeader = rows[0];
-    const dataRows = rows.slice(1);
+    // Find the real table header instead of assuming row 1. Many workbooks use
+    // row 1 as a merged sheet title, with the actual columns on row 2+.
+    const headerIndex = header.startsWith("--- Workbook:") ? 0 : findLikelyHeaderRow(rows);
+    const metadataRows = rows.slice(0, headerIndex);
+    const columnHeader = rows[headerIndex] ?? rows[0];
+    const dataRows = header.startsWith("--- Workbook:") ? rows.slice(1) : rows.slice(headerIndex + 1);
 
     // If a sheet has only a header row, still emit a chunk for it.
     if (!dataRows.length) {
-      const chunk = [header, columnHeader].filter(Boolean).join("\n");
+      const chunk = [header, ...metadataRows, columnHeader].filter(Boolean).join("\n");
       if (chunk.trim()) chunks.push(chunk.trim());
       continue;
     }
@@ -159,6 +164,7 @@ function chunkByRows(content: string, rowsPerChunk: number): string[] {
       const chunk = [
         header,
         rangeNote,
+        ...metadataRows,
         columnHeader,
         ...batch,
       ]
@@ -169,6 +175,11 @@ function chunkByRows(content: string, rowsPerChunk: number): string[] {
   }
 
   return chunks.length ? chunks : chunkFixed(content, CHUNK_SIZE_CHARS, OVERLAP_CHARS);
+}
+
+function findLikelyHeaderRow(rows: string[]): number {
+  const idx = rows.findIndex((row) => row.split("\t").filter((cell) => cell.trim()).length >= 2);
+  return idx >= 0 ? idx : 0;
 }
 
 // One chunk per slide for presentations
