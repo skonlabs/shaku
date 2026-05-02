@@ -170,6 +170,7 @@ export function SidePanel({ side = "left" }: { side?: "left" | "right" }) {
         {active === "document" && <DocumentPanel />}
       </div>
     </div>
+    </>
   );
 }
 
