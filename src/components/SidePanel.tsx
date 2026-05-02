@@ -1669,9 +1669,34 @@ function getFileIcon(name: string, status?: string) {
     return <FileSpreadsheet className={cn(baseClass, "text-green-600")} />;
   if (
     [
-      "py", "js", "ts", "tsx", "jsx", "java", "cpp", "c", "h", "hpp", "cs", "go",
-      "rs", "rb", "php", "swift", "kt", "html", "htm", "css", "scss", "sh", "sql",
-      "json", "xml", "yaml", "yml", "toml",
+      "py",
+      "js",
+      "ts",
+      "tsx",
+      "jsx",
+      "java",
+      "cpp",
+      "c",
+      "h",
+      "hpp",
+      "cs",
+      "go",
+      "rs",
+      "rb",
+      "php",
+      "swift",
+      "kt",
+      "html",
+      "htm",
+      "css",
+      "scss",
+      "sh",
+      "sql",
+      "json",
+      "xml",
+      "yaml",
+      "yml",
+      "toml",
     ].includes(ext)
   )
     return <FileCode className={cn(baseClass, "text-amber-600")} />;
@@ -1995,9 +2020,7 @@ function DatasourcesPanel() {
     qc.invalidateQueries({ queryKey: ["ds-files"] });
 
     if (wasCancelled) {
-      toast.info(
-        `Upload cancelled. ${succeeded} uploaded, ${cancelled} skipped.`,
-      );
+      toast.info(`Upload cancelled. ${succeeded} uploaded, ${cancelled} skipped.`);
     } else if (succeeded > 0 && failures.length === 0) {
       toast.success(succeeded === 1 ? "File is processing." : `${succeeded} files are processing.`);
     } else if (succeeded > 0 && failures.length > 0) {
@@ -2267,9 +2290,7 @@ function DatasourcesPanel() {
                 if (node.type === "folder") {
                   // Count files within this folder recursively
                   const countFiles = (n: FsNode): number =>
-                    n.type === "file"
-                      ? 1
-                      : n.children.reduce((acc, c) => acc + countFiles(c), 0);
+                    n.type === "file" ? 1 : n.children.reduce((acc, c) => acc + countFiles(c), 0);
                   const fileCount = countFiles(node);
                   return (
                     <button
@@ -2294,7 +2315,7 @@ function DatasourcesPanel() {
                 return (
                   <div
                     key={f.id}
-                    className="group flex items-center gap-2 rounded-md px-2 py-2 hover:bg-accent/40"
+                    className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md px-2 py-2 hover:bg-accent/40"
                   >
                     {getFileIcon(f.name, f.status)}
                     <div className="min-w-0 flex-1">
@@ -2305,7 +2326,7 @@ function DatasourcesPanel() {
                         {fmtBytes(f.file_size_bytes ?? 0)}
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-0.5">
+                    <div className="grid shrink-0 grid-flow-col auto-cols-[1.5rem] items-center justify-end gap-0.5">
                       {isActive && (
                         <span
                           className={cn(
@@ -2332,7 +2353,7 @@ function DatasourcesPanel() {
                       {canOpen && (
                         <button
                           onClick={() => viewFile(f)}
-                          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
                           title="View"
                           aria-label="View file"
                         >
@@ -2342,7 +2363,7 @@ function DatasourcesPanel() {
                       {canOpen && (
                         <button
                           onClick={() => downloadFile(f)}
-                          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
                           title="Download"
                           aria-label="Download file"
                         >
@@ -2352,7 +2373,7 @@ function DatasourcesPanel() {
                       {(f.status === "ready" || f.status === "error") && (
                         <button
                           onClick={() => setPendingDeleteFileId(f.id)}
-                          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-destructive"
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-destructive"
                           title="Remove file"
                           aria-label="Remove file"
                         >
