@@ -288,63 +288,63 @@ function ChatPage() {
         className="flex h-full min-w-0 flex-1 flex-col transition-opacity duration-150"
         style={{ opacity: showingStale ? 0.6 : 1 }}
       >
-      <ActiveTaskBanner conversationId={id} />
-      <ChatContextHeader
-        conversationId={id}
-        projectId={(data.conversation as { project_id: string | null }).project_id ?? null}
-        isEmpty={messages.length === 0}
-      />
-      <div className="px-4">
-        <SpaceNudge />
-      </div>
-      <div className="flex-1 overflow-hidden">
-        {messages.length === 0 ? (
-          <div className="flex h-full animate-fade-in items-center justify-center px-4 text-center">
-            <div className="flex max-w-md flex-col items-center gap-3 text-muted-foreground">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <span className="text-lg font-bold">C</span>
+        <ActiveTaskBanner conversationId={id} />
+        <ChatContextHeader
+          conversationId={id}
+          projectId={(data.conversation as { project_id: string | null }).project_id ?? null}
+          isEmpty={messages.length === 0}
+        />
+        <div className="px-4">
+          <SpaceNudge />
+        </div>
+        <div className="flex-1 overflow-hidden">
+          {messages.length === 0 ? (
+            <div className="flex h-full animate-fade-in items-center justify-center px-4 text-center">
+              <div className="flex max-w-md flex-col items-center gap-3 text-muted-foreground">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <span className="text-lg font-bold">C</span>
+                </div>
+                <p className="text-sm font-medium text-foreground">What's on your mind?</p>
+                <p className="text-xs leading-relaxed">
+                  Type below to start. Share preferences naturally — Cortex will
+                  remember them for next time.
+                </p>
               </div>
-              <p className="text-sm font-medium text-foreground">
-                What's on your mind?
-              </p>
-              <p className="text-xs leading-relaxed">
-                Type below to start. Share preferences naturally — Cortex will
-                remember them for next time.
-              </p>
             </div>
-          </div>
-        ) : (
-          <MessageList
-            conversationId={id}
-            messages={messages}
-            streamingId={streamingId}
-            onRegenerate={regenerate}
-            onEdit={sendEditedThenRestream}
-            onFollowupClick={(t) => void send(t, [])}
-          />
-        )}
-      </div>
-      <RateLimitBanner />
-      <ChatComposer
-        conversationId={id}
-        onSend={send}
-        onStop={() => {
-          // Preserve partial assistant text in the UI; just stop the network/stream.
-          abortRef.current?.abort();
-          sendInFlightRef.current = false;
-          setStreamingId(null);
-          setStreamingMessages((cur) => cur.map((m) => (m.pending ? { ...m, pending: false } : m)));
-        }}
-        isStreaming={streamingId !== null}
-        draftKey={`cortex.draft.${id}`}
-        autoFocus
-        disabled={isRateLimited}
-        disabledMessage={
-          isRateLimited
-            ? `You've reached your free message limit. Resets ${formatReset(rateLimitedUntil!)}.`
-            : undefined
-        }
-      />
+          ) : (
+            <MessageList
+              conversationId={id}
+              messages={messages}
+              streamingId={streamingId}
+              onRegenerate={regenerate}
+              onEdit={sendEditedThenRestream}
+              onFollowupClick={(t) => void send(t, [])}
+            />
+          )}
+        </div>
+        <RateLimitBanner />
+        <ChatComposer
+          conversationId={id}
+          onSend={send}
+          onStop={() => {
+            // Preserve partial assistant text in the UI; just stop the network/stream.
+            abortRef.current?.abort();
+            sendInFlightRef.current = false;
+            setStreamingId(null);
+            setStreamingMessages((cur) =>
+              cur.map((m) => (m.pending ? { ...m, pending: false } : m)),
+            );
+          }}
+          isStreaming={streamingId !== null}
+          draftKey={`cortex.draft.${id}`}
+          autoFocus
+          disabled={isRateLimited}
+          disabledMessage={
+            isRateLimited
+              ? `You've reached your free message limit. Resets ${formatReset(rateLimitedUntil!)}.`
+              : undefined
+          }
+        />
       </div>
     </div>
   );
