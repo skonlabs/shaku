@@ -75,8 +75,11 @@ const SYSTEM_PROMPT = `You are Cortex, a highly capable personal AI assistant. Y
 - You are simply Cortex.`;
 
 const TITLE_PROMPT = `Generate a concise 3-6 word title for this conversation. Return ONLY the title text, no quotes, no punctuation at the end.`;
-const MAX_ATTACHMENT_CONTEXT_CHARS = 400_000;
-const MAX_ATTACHMENT_CHARS_PER_FILE = 150_000;
+// Fallback attachment budgets used only when model context window is unknown.
+// At runtime these are replaced by dynamic budgets derived from the selected
+// model's remaining context headroom (contextWindow - estimatedTokens - responseBuffer).
+const FALLBACK_ATTACHMENT_CONTEXT_CHARS = 400_000;
+const FALLBACK_ATTACHMENT_CHARS_PER_FILE = 150_000;
 
 const ACK_RESPONSES = [
   "You're welcome! Let me know if you need anything else.",
@@ -556,7 +559,19 @@ export const Route = createFileRoute("/api/chat/stream")({
           }
         }
 
-        const attachmentContext = buildAttachmentContext(body.attachments ?? []);
+        // Dynamic attachment budget: use whatever tokens remain after all other
+        // context consumers, converted to chars (4 chars ≈ 1 token). Reserve
+        // 4 000 tokens for the model's response.
+        const RESPONSE_BUFFER_TOKENS = 4_000;
+        const remainingTokens = Math.max(
+          0,
+          selectedModel.contextWindow - estimatedCtxTokens - RESPONSE_BUFFER_TOKENS,
+        );
+        const dynamicTotalChars = remainingTokens * 4;
+        const attachmentContext = buildAttachmentContext(
+          body.attachments ?? [],
+          dynamicTotalChars || FALLBACK_ATTACHMENT_CONTEXT_CHARS,
+        );
 
         // ---- Multimodal attachment expansion on last user turn (Anthropic format) ----
         const lastIdx = optimizedMessages.length - 1;
@@ -1319,18 +1334,19 @@ function intentToTaskType(intent: string, domain: string): TaskType {
 
 type ChatAttachment = NonNullable<z.infer<typeof BodySchema>["attachments"]>[number];
 
-function buildAttachmentContext(attachments: ChatAttachment[]): string {
+function buildAttachmentContext(
+  attachments: ChatAttachment[],
+  maxTotalChars = FALLBACK_ATTACHMENT_CONTEXT_CHARS,
+): string {
   if (!attachments.length) return "";
   const parts: string[] = [];
-  let remaining = MAX_ATTACHMENT_CONTEXT_CHARS;
+  let remaining = maxTotalChars;
 
   for (const a of attachments) {
     let part = "";
     if (a.extracted_text?.trim()) {
-      const text = truncateChars(
-        a.extracted_text.trim(),
-        Math.min(MAX_ATTACHMENT_CHARS_PER_FILE, remaining),
-      );
+      // Each file gets up to its full extracted text; total budget governs overall size.
+      const text = truncateChars(a.extracted_text.trim(), remaining);
       part = `\n\n--- Attached: ${a.name} (${a.type || "unknown"}) ---\n${text}\n--- end of ${a.name} ---`;
     } else if (a.extraction_error) {
       part = `\n\n[Attached "${a.name}" could not be parsed: ${a.extraction_error}]`;
