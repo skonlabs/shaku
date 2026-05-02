@@ -317,7 +317,7 @@ export function ChatComposer({
         )}
       </div>
       <p className="mt-2.5 text-center text-[11px] text-muted-foreground/80">
-        Cortex can make mistakes. Verify important information.
+        Ekonomical can make mistakes. Verify important information.
       </p>
     </div>
   );

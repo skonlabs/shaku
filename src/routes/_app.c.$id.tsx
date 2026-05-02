@@ -253,9 +253,9 @@ function ChatPage() {
     if (isLoading) return;
     if (pendingHandledRef.current === id) return;
     try {
-      const pending = sessionStorage.getItem(`cortex.pending.${id}`);
+      const pending = sessionStorage.getItem(`ekonomical.pending.${id}`);
       if (pending) {
-        sessionStorage.removeItem(`cortex.pending.${id}`);
+        sessionStorage.removeItem(`ekonomical.pending.${id}`);
         pendingHandledRef.current = id;
         let text = pending;
         let attachments: Attachment[] = [];
@@ -316,7 +316,7 @@ function ChatPage() {
                 </div>
                 <p className="text-sm font-medium text-foreground">What's on your mind?</p>
                 <p className="text-xs leading-relaxed">
-                  Type below to start. Share preferences naturally — Cortex will remember them for
+                  Type below to start. Share preferences naturally — Ekonomical will remember them for
                   next time.
                 </p>
               </div>
@@ -346,7 +346,7 @@ function ChatPage() {
             );
           }}
           isStreaming={streamingId !== null}
-          draftKey={`cortex.draft.${id}`}
+          draftKey={`ekonomical.draft.${id}`}
           autoFocus
           disabled={isRateLimited}
           disabledMessage={

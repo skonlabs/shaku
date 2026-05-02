@@ -286,7 +286,7 @@ function ChatsPanel() {
             {pinned.length > 0 && (
               <Section
                 title="Pinned"
-                storageKey="cortex.sidebar.section.pinned"
+                storageKey="ekonomical.sidebar.section.pinned"
                 defaultOpen
                 count={pinned.length}
               >
@@ -309,7 +309,7 @@ function ChatsPanel() {
               <Section
                 key={group.key}
                 title={group.title}
-                storageKey={`cortex.sidebar.section.${group.key}`}
+                storageKey={`ekonomical.sidebar.section.${group.key}`}
                 defaultOpen={group.key === "today"}
                 count={group.items.length}
               >
@@ -726,11 +726,11 @@ function MemoryPreferencesSection() {
           {/* Confidence */}
           <div>
             <p className="mb-1 flex items-center gap-1.5 text-sm font-medium">
-              How sure should Cortex be before saving?
+              How sure should Ekonomical be before saving?
               <HelpTip>
                 <p className="mb-1 font-medium">What this changes</p>
                 <p className="mb-2 text-muted-foreground">
-                  Sets the bar Cortex uses before turning something into a memory.
+                  Sets the bar Ekonomical uses before turning something into a memory.
                 </p>
                 <p className="mb-1 font-medium">Examples</p>
                 <ul className="space-y-1.5 text-muted-foreground">
@@ -784,13 +784,13 @@ function MemoryPreferencesSection() {
                 <HelpTip>
                   <p className="mb-1 font-medium">What this changes</p>
                   <p className="mb-2 text-muted-foreground">
-                    The most facts Cortex will pull out of a single conversation.
+                    The most facts Ekonomical will pull out of a single conversation.
                   </p>
                   <p className="mb-1 font-medium">Examples</p>
                   <ul className="space-y-1.5 text-muted-foreground">
                     <li>
                       <b className="text-foreground">1–3 (Just essentials) —</b> from a long
-                      planning chat, Cortex might only save "trip to Lisbon in June."
+                      planning chat, Ekonomical might only save "trip to Lisbon in June."
                     </li>
                     <li>
                       <b className="text-foreground">5–8 (Recommended) —</b> also saves "traveling
@@ -808,7 +808,7 @@ function MemoryPreferencesSection() {
               </span>
             </div>
             <p className="mb-2 text-[12px] leading-snug text-muted-foreground">
-              Most chats produce 1–3 useful facts. A higher limit lets Cortex capture more from long
+              Most chats produce 1–3 useful facts. A higher limit lets Ekonomical capture more from long
               conversations.
             </p>
             <Slider
@@ -1027,7 +1027,7 @@ function AccountPanel() {
   return (
     <div className="space-y-4 px-4 py-2">
       <div className="space-y-1">
-        <p className="text-sm font-medium">{profile?.name ?? "Cortex user"}</p>
+        <p className="text-sm font-medium">{profile?.name ?? "Ekonomical user"}</p>
         <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
       </div>
       <Button variant="outline" size="sm" className="w-full justify-start gap-2" onClick={signOut}>
@@ -1255,7 +1255,7 @@ function ProjectsPanel() {
             <p className="text-xs font-medium text-foreground">What's a space?</p>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               A space groups chats and memories around a topic — like a job search, a trip, or a
-              long project. Cortex remembers context across every chat inside it.
+              long project. Ekonomical remembers context across every chat inside it.
             </p>
           </div>
         </div>
@@ -1320,7 +1320,7 @@ function ProjectsPanel() {
             <FolderPlus className="mx-auto mb-2 h-6 w-6 text-primary/40" />
             <p className="text-xs font-medium text-foreground">No spaces yet</p>
             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Try one for something you'll keep coming back to — Cortex will get smarter every time.
+              Try one for something you'll keep coming back to — Ekonomical will get smarter every time.
             </p>
             <Button
               size="sm"
@@ -1522,7 +1522,7 @@ function ProjectRow({
 
           {convs.length === 0 ? (
             <p className="py-1 text-xs text-muted-foreground">
-              No chats yet. Click + to start one — Cortex will remember what you discuss here.
+              No chats yet. Click + to start one — Ekonomical will remember what you discuss here.
             </p>
           ) : (
             <div className="space-y-1">
@@ -1530,7 +1530,7 @@ function ProjectRow({
                 <Section
                   key={group.key}
                   title={group.title}
-                  storageKey={`cortex.project.${project.id}.section.${group.key}`}
+                  storageKey={`ekonomical.project.${project.id}.section.${group.key}`}
                   defaultOpen={group.key === "today"}
                   count={group.items.length}
                 >
@@ -2679,7 +2679,7 @@ function ConnectorsPanel() {
         <div className="rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300">
           <p className="font-medium">Connectors are a premium feature</p>
           <p className="mt-0.5 text-amber-700 dark:text-amber-400/90">
-            Upgrade to a premium plan to connect your apps and bring their data into Cortex.
+            Upgrade to a premium plan to connect your apps and bring their data into Ekonomical.
           </p>
         </div>
 
@@ -2908,10 +2908,10 @@ function MemoryPanel() {
           <div className="flex items-start gap-2">
             <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <div className="space-y-1">
-              <p className="text-xs font-medium text-foreground">Cortex learns as you chat</p>
+              <p className="text-xs font-medium text-foreground">Ekonomical learns as you chat</p>
               <p className="text-[11px] leading-relaxed text-muted-foreground">
                 Mention things naturally — like <span className="italic">"I'm vegetarian"</span> or{" "}
-                <span className="italic">"keep answers short"</span> — and Cortex remembers. Both
+                <span className="italic">"keep answers short"</span> — and Ekonomical remembers. Both
                 your memories and persona below are built from these chats.
               </p>
             </div>
@@ -2954,7 +2954,7 @@ function MemoryPanel() {
       <ScrollArea className="flex-1">
         {!memoryEnabled && (
           <div className="mx-3 mt-3 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
-            Learning is paused. Cortex won't add to your memories or persona until you turn it back
+            Learning is paused. Ekonomical won't add to your memories or persona until you turn it back
             on. Existing entries are kept.
           </div>
         )}

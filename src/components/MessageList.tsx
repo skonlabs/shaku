@@ -519,7 +519,7 @@ const MEMORY_EMOJI: Record<string, string> = {
 };
 
 /**
- * "Behind the answer" — per-message transparency. Shows what Cortex used to
+ * "Behind the answer" — per-message transparency. Shows what Ekonomical used to
  * compose this specific reply: memories, document snippets, the active task,
  * or a clear note that nothing extra was needed. Replaces the global
  * Context Debugger panel for the common case.
@@ -575,11 +575,11 @@ function BehindAnswerChip({ metadata }: { metadata: Message["metadata"] | undefi
         {!usedAnything && (
           <div className="space-y-2">
             <p className="text-xs leading-relaxed text-muted-foreground">
-              For this reply, Cortex didn't need to pull in saved memories, documents,
+              For this reply, Ekonomical didn't need to pull in saved memories, documents,
               or an active task — your conversation alone was enough.
             </p>
             <p className="text-[11px] leading-relaxed text-muted-foreground/80">
-              When Cortex does use them, you'll see what was used right here.
+              When Ekonomical does use them, you'll see what was used right here.
             </p>
           </div>
         )}

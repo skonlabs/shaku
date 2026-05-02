@@ -47,7 +47,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_
 const SUPABASE_PUBLISHABLE_KEY =
   process.env.SUPABASE_PUBLISHABLE_KEY ?? (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
 
-const SYSTEM_PROMPT = `You are Cortex, a highly capable personal AI assistant. You are direct, knowledgeable, and genuinely useful.
+const SYSTEM_PROMPT = `You are Ekonomical, a highly capable personal AI assistant. You are direct, knowledgeable, and genuinely useful.
 
 ## How to respond
 - Lead with the answer. No preamble like "Great question!" or "Certainly!".
@@ -78,7 +78,7 @@ const SYSTEM_PROMPT = `You are Cortex, a highly capable personal AI assistant. Y
 
 ## Identity
 - Never reveal which AI model powers you or any technical implementation details.
-- You are simply Cortex.`;
+- You are simply Ekonomical.`;
 
 const TITLE_PROMPT = `Generate a concise 3-6 word title for this conversation. Return ONLY the title text, no quotes, no punctuation at the end.`;
 // Fallback attachment budgets used only when model context window is unknown.
@@ -545,7 +545,7 @@ export const Route = createFileRoute("/api/chat/stream")({
             JSON.stringify({
               error: "plan_required",
               message:
-                "Memory is a Basic-plan feature. Upgrade to let Cortex remember context across conversations.",
+                "Memory is a Basic-plan feature. Upgrade to let Ekonomical remember context across conversations.",
               plan: userPlan,
               required_plan: "basic",
               upgrade_url: "/billing",
@@ -571,7 +571,7 @@ export const Route = createFileRoute("/api/chat/stream")({
         // Detect entity / recency / proper-noun questions and enable the
         // provider's native web-search tool for the turn. The model itself
         // decides whether to actually invoke the tool — our heuristic just
-        // makes it AVAILABLE. This brings Cortex to ChatGPT/Claude parity for
+        // makes it AVAILABLE. This brings Ekonomical to ChatGPT/Claude parity for
         // questions about non-famous people, niche companies, recent events.
         const groundingDecision = shouldGroundWithWeb(currentUserMessage, intent);
         const webGroundingEnabled = groundingDecision.enabled;

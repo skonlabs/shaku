@@ -50,7 +50,7 @@ function OnboardingPage() {
   const steps = [
     {
       icon: Leaf,
-      title: "Welcome to Cortex",
+      title: "Welcome to Ekonomical",
       body: "I'm a friendly AI here to help — whether you want to draft a message, think something through, or just chat. No tech skills needed.",
     },
     {

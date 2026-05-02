@@ -156,7 +156,7 @@ export default function MyProfilePage() {
                 </div>
               </div>
               <p className="max-w-md text-sm leading-relaxed text-primary-foreground/75">
-                Unlike ChatGPT or Gemini, Cortex builds a persistent profile from your
+                Unlike ChatGPT or Gemini, Ekonomical builds a persistent profile from your
                 conversations — remembering your preferences, expertise, and corrections so every
                 response feels personal.
               </p>
@@ -331,7 +331,7 @@ export default function MyProfilePage() {
                 <p className="text-sm font-medium text-foreground/70">Profile is still learning</p>
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                   Start chatting — mention your name, role, preferences, or what you&apos;re working on.
-                  <br />Cortex will build your profile automatically.
+                  <br />Ekonomical will build your profile automatically.
                 </p>
               </div>
             )}
@@ -409,7 +409,7 @@ export default function MyProfilePage() {
                       />
                     </div>
                     <p className="mt-1 text-[10px] text-muted-foreground">
-                      Fraction of responses where Cortex recalled a relevant memory
+                      Fraction of responses where Ekonomical recalled a relevant memory
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
@@ -430,7 +430,7 @@ export default function MyProfilePage() {
             <div className="mb-3 flex items-center gap-2">
               <Shield className="h-4 w-4 text-muted-foreground" />
               <h2 className="text-sm font-semibold">
-                What Cortex has learned not to do{" "}
+                What Ekonomical has learned not to do{" "}
                 <span className="font-normal text-muted-foreground">
                   — applied as hard constraints in every response
                 </span>
@@ -466,7 +466,7 @@ export default function MyProfilePage() {
         {topMemories.length > 0 && (
           <ProfileCard title="Most-used memories" icon={Star}>
             <p className="mb-3 text-xs text-muted-foreground">
-              These memories have influenced Cortex's responses most often.
+              These memories have influenced Ekonomical's responses most often.
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {topMemories.map((m) => {

@@ -37,7 +37,7 @@ function LoginPage() {
         if (error) toast.error(error);
         else if (needsConfirmation)
           toast.info("Check your email — we sent a quick confirmation link.");
-        else toast.success("Welcome to Cortex!");
+        else toast.success("Welcome to Ekonomical!");
       }
     } finally {
       setSubmitting(false);
@@ -65,7 +65,7 @@ function LoginPage() {
           <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-gradient-to-br from-[oklch(0.62_0.08_145)] to-[oklch(0.50_0.07_150)] text-primary-foreground shadow-[0_10px_30px_-10px_oklch(0.50_0.07_150/0.55)]">
             <Leaf className="h-7 w-7" />
           </div>
-          <span className="font-display text-2xl font-semibold">Cortex</span>
+          <span className="font-display text-2xl font-semibold">Ekonomical</span>
         </Link>
 
         <div className="rounded-3xl border border-border/70 bg-card/90 p-8 shadow-[var(--shadow-float)] backdrop-blur">
@@ -151,7 +151,7 @@ function LoginPage() {
         </div>
 
         <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
-          Your conversations stay private. You can review or clear what Cortex remembers anytime.
+          Your conversations stay private. You can review or clear what Ekonomical remembers anytime.
         </p>
       </div>
     </div>

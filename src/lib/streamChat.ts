@@ -133,7 +133,7 @@ export async function streamChat(
             reason,
             message:
               data.message ??
-              "This needs the Basic plan. Upgrade to keep going with Cortex's full toolkit.",
+              "This needs the Basic plan. Upgrade to keep going with Ekonomical's full toolkit.",
             blocked,
             currentPlan: data.plan,
             requiredPlan: data.required_plan ?? "basic",

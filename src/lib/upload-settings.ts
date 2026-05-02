@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const KEY = "cortex.upload.maxMb";
+const KEY = "ekonomical.upload.maxMb";
 export const DEFAULT_UPLOAD_MAX_MB = 1;
 export const HARD_UPLOAD_MAX_MB = 25; // server-enforced ceiling
 
@@ -20,7 +20,7 @@ export function setUploadMaxMb(mb: number) {
   const clamped = Math.min(Math.max(Math.floor(mb), 1), HARD_UPLOAD_MAX_MB);
   try {
     localStorage.setItem(KEY, String(clamped));
-    window.dispatchEvent(new CustomEvent("cortex:upload-max-changed", { detail: clamped }));
+    window.dispatchEvent(new CustomEvent("ekonomical:upload-max-changed", { detail: clamped }));
   } catch {
     /* noop */
   }
@@ -30,10 +30,10 @@ export function useUploadMaxMb(): [number, (mb: number) => void] {
   const [mb, setMb] = useState<number>(() => getUploadMaxMb());
   useEffect(() => {
     const onChange = () => setMb(getUploadMaxMb());
-    window.addEventListener("cortex:upload-max-changed", onChange);
+    window.addEventListener("ekonomical:upload-max-changed", onChange);
     window.addEventListener("storage", onChange);
     return () => {
-      window.removeEventListener("cortex:upload-max-changed", onChange);
+      window.removeEventListener("ekonomical:upload-max-changed", onChange);
       window.removeEventListener("storage", onChange);
     };
   }, []);

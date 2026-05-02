@@ -16,7 +16,7 @@ export const Route = createFileRoute("/share/$shareId")({
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-4 text-center">
       <p className="text-lg font-semibold">Shared response not found</p>
       <p className="text-sm text-muted-foreground">This link may have expired or been removed.</p>
-      <Link to="/" className="text-sm text-primary underline underline-offset-2">Go to Cortex</Link>
+      <Link to="/" className="text-sm text-primary underline underline-offset-2">Go to Ekonomical</Link>
     </div>
   ),
 });
@@ -34,7 +34,7 @@ function SharedResponsePage() {
       <header className="border-b border-border bg-sidebar/60 backdrop-blur-sm">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <Link to="/" className="text-sm font-semibold tracking-tight text-foreground hover:text-primary">
-            Cortex
+            Ekonomical
           </Link>
           <span className="text-xs text-muted-foreground">{createdAt}</span>
         </div>
@@ -54,7 +54,7 @@ function SharedResponsePage() {
         <p className="text-center text-xs text-muted-foreground">
           Shared via{" "}
           <Link to="/" className="text-primary underline underline-offset-2">
-            Cortex
+            Ekonomical
           </Link>
           {" · "}
           {response.view_count ?? 0} view{response.view_count !== 1 ? "s" : ""}

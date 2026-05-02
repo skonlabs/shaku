@@ -824,7 +824,7 @@ function BillingPage() {
         <p className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
           <AlertCircle className="h-3.5 w-3.5" />
           Pro &amp; Team plans are coming soon. Need higher limits?{" "}
-          <a className="underline" href="mailto:hello@cortex.app">
+          <a className="underline" href="mailto:hello@ekonomical.app">
             Get in touch
           </a>
           .
