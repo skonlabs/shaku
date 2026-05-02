@@ -1589,8 +1589,12 @@ function DatasourcesPanel() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<"files" | "cloud">("files");
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: ["ds-files"],
