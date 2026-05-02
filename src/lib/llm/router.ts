@@ -40,6 +40,10 @@ export interface RoutingContext {
   contextType: ContextType;   // dominant shape of request content
   contextCriticality: number; // 0–1: how important it is that model faithfully uses context
   taskType: RoutingTaskType;  // routing-level task classification
+  // Optional: providers with runtime API keys available. When set, models from
+  // other providers are filtered out before scoring so we never route to a
+  // model whose API key is missing (which would cause "no runnable models").
+  availableProviders?: Set<string>;
 }
 
 interface Range { min: number; max: number }
