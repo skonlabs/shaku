@@ -281,10 +281,12 @@ function ChatPage() {
     rateLimitedUntil !== null && new Date(rateLimitedUntil).getTime() > Date.now();
 
   return (
-    <div
-      className="flex h-full flex-col transition-opacity duration-150"
-      style={{ opacity: showingStale ? 0.6 : 1 }}
-    >
+    <div className="flex h-full w-full">
+      <ChatHistoryRail />
+      <div
+        className="flex h-full min-w-0 flex-1 flex-col transition-opacity duration-150"
+        style={{ opacity: showingStale ? 0.6 : 1 }}
+      >
       <ActiveTaskBanner conversationId={id} />
       <ChatContextHeader
         conversationId={id}
