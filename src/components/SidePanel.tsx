@@ -1760,7 +1760,7 @@ function DatasourcesPanel() {
     }
   }
 
-  async function handleFilesSelected(fileList: FileList | null) {
+  async function handleFilesSelected(fileList: FileList | File[] | null) {
     if (!fileList || !user) return;
     const allFiles = Array.from(fileList).filter((f) => f.size > 0);
     if (allFiles.length === 0) return;
@@ -1846,7 +1846,7 @@ function DatasourcesPanel() {
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
+    const files = e.target.files ? Array.from(e.target.files) : [];
     e.target.value = "";
     await handleFilesSelected(files);
   }
