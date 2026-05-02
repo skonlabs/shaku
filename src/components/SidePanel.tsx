@@ -548,7 +548,7 @@ function ChatItem({
   return (
     <div
       className={cn(
-        "group flex items-center gap-1 rounded-md pr-1 transition",
+        "group flex min-w-0 items-center gap-1 rounded-md pr-1 transition",
         isActive ? "bg-accent" : "hover:bg-accent/60",
       )}
     >
