@@ -6,7 +6,7 @@ import { getRuntimeEnv } from "@/lib/runtime-env";
 
 const HARD_MAX_BYTES = 25 * 1024 * 1024; // 25 MB ceiling
 const BUCKET = "chat-uploads";
-const MAX_EXTRACTED_CHARS = 400_000; // cap to keep prompt size sane
+const MAX_EXTRACTED_CHARS = 1_500_000; // stored in DB; LLM context budget governs what's actually sent
 
 /**
  * Upload a file to Supabase Storage AND extract its text content (when possible).

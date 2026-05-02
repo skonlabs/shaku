@@ -102,14 +102,18 @@ function chunkByStructure(content: string): string[] {
 }
 
 // Row-level chunking for spreadsheets.
-// Splits on sheet boundaries ("--- Sheet: NAME ... ---") and repeats the
-// column-header row on every chunk so each chunk is self-describing for retrieval.
+// Splits on sheet boundaries and repeats the column-header row on every chunk
+// so each chunk is self-describing for retrieval.
+//
+// Handles both extractor output formats:
+//   New: === SheetName | N rows × M cols ===  (current)
+//   Old: --- Sheet: SheetName | Rows: N | Columns: M ---  (legacy indexed files)
 function chunkByRows(content: string, rowsPerChunk: number): string[] {
   if (!content.trim()) return [];
 
-  // Split on sheet header markers but keep them attached to their block.
-  // Matches headers produced by the extractor, including workbook/sheet metadata.
-  const sheetHeaderRe = /^--- (?:Workbook: .+?|Sheet: .+?|CSV|TSV)(?: \(\d+ rows\))?(?: \| .+?)? ---$/m;
+  // Match both current (===) and legacy (---) sheet boundary markers.
+  const sheetHeaderRe =
+    /^(?:=== .+ ===|--- (?:Workbook: .+?|Sheet: .+?|CSV|TSV)(?: \(\d+ rows\))?(?: \| .+?)? ---)$/m;
   const blocks: { header: string; body: string }[] = [];
 
   const lines = content.split("\n");
@@ -139,17 +143,20 @@ function chunkByRows(content: string, rowsPerChunk: number): string[] {
   const chunks: string[] = [];
 
   for (const { header, body } of blocks) {
+    // Skip old-format workbook summary block.
     if (header.startsWith("--- Workbook:")) continue;
+    // Skip new-format preamble block (empty header, no tab-separated data rows).
+    if (!header && !body.split("\n").some((l) => l.includes("\t"))) continue;
 
     const rows = body.split("\n").filter((l) => l.trim().length > 0);
     if (!rows.length) continue;
 
     // Find the real table header instead of assuming row 1. Many workbooks use
     // row 1 as a merged sheet title, with the actual columns on row 2+.
-    const headerIndex = header.startsWith("--- Workbook:") ? 0 : findLikelyHeaderRow(rows);
+    const headerIndex = findLikelyHeaderRow(rows);
     const metadataRows = rows.slice(0, headerIndex);
     const columnHeader = rows[headerIndex] ?? rows[0];
-    const dataRows = header.startsWith("--- Workbook:") ? rows.slice(1) : rows.slice(headerIndex + 1);
+    const dataRows = rows.slice(headerIndex + 1);
 
     // If a sheet has only a header row, still emit a chunk for it.
     if (!dataRows.length) {
