@@ -48,6 +48,12 @@ export function ChatHistoryRail() {
   const pinned = filtered.filter((c) => c.pinned);
   const recent = filtered.filter((c) => !c.pinned);
 
+  // Hide the rail entirely when the user has no conversations yet — avoids
+  // showing an empty shell on a brand-new account.
+  if (!isLoading && conversations.length === 0) {
+    return null;
+  }
+
   if (!open) {
     return (
       <aside className="flex h-full w-9 shrink-0 flex-col items-center border-r border-border/60 bg-background/40 py-2">
