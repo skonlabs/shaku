@@ -1012,7 +1012,12 @@ export const Route = createFileRoute("/api/chat/stream")({
                 // complete answer in one shot, only after 100% of processing
                 // finished (all auto-continues for every tab/section).
                 if (needsLongOutput && deferredBuffer.length > 0) {
-                  send("progress", { stage: "complete" });
+                  send("progress", {
+                    stage: "complete",
+                    label: "Done — putting it all together for you.",
+                    pass: currentPass,
+                    chars: deferredBuffer.length,
+                  });
                   send("delta", { text: deferredBuffer });
                   deferredBuffer = "";
                 }
