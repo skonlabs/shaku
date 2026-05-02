@@ -107,12 +107,25 @@ function BillingPage() {
     refetchOnWindowFocus: true,
   });
   const ledgerQ = useQuery({
-    queryKey: ["credit-ledger"],
-    queryFn: () => getCreditLedger({ data: { limit: 25 } }),
+    queryKey: ["credit-ledger", "recent"],
+    queryFn: () => getCreditLedger({ data: { limit: 5 } }),
   });
   const summaryQ = useQuery({
     queryKey: ["credit-summary"],
     queryFn: () => getCreditSummary(),
+  });
+  const convoUsageQ = useQuery({
+    queryKey: ["credit-by-conversation"],
+    queryFn: () => getCreditByConversation({ data: { days: 30, limit: 50 } }),
+    enabled: conversationsExpanded,
+  });
+  const convoDetailQ = useQuery({
+    queryKey: ["credit-convo-detail", expandedConvoId],
+    queryFn: () =>
+      getCreditEntriesForConversation({
+        data: { conversation_id: expandedConvoId!, days: 90 },
+      }),
+    enabled: !!expandedConvoId,
   });
   const plansQ = useQuery({
     queryKey: ["plans"],
