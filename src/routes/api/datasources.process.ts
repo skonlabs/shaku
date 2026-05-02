@@ -3,7 +3,7 @@
 // Uses waitUntil for async processing so response returns quickly.
 
 import { createFileRoute } from "@tanstack/react-router";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
@@ -98,7 +98,7 @@ async function processFileAsync(
   storagePath: string,
   fileType: string,
   fileName: string,
-  supabase: any,
+  supabase: SupabaseClient,
 ): Promise<void> {
   try {
     // Download from Supabase Storage.
