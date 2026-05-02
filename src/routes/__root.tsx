@@ -12,6 +12,7 @@ import { ThemeProvider } from "@/lib/theme-context";
 import { KbHelpProvider, PanelProvider } from "@/lib/ui-context";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
+import { SiteGate } from "@/components/SiteGate";
 
 import appCss from "../styles.css?url";
 
@@ -66,6 +67,7 @@ export const Route = createRootRouteWithContext<RouterCtx>()({
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "robots", content: "noindex, nofollow" },
     ],
     links: [{ rel: "stylesheet", href: appCss }],
   }),
@@ -104,16 +106,18 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <AuthProvider>
-          <PanelProvider>
-            <KbHelpProvider>
-              <KeyboardShortcuts />
-              <KeyboardShortcutsDialog />
-              <Outlet />
-              <Toaster richColors closeButton position="top-right" />
-            </KbHelpProvider>
-          </PanelProvider>
-        </AuthProvider>
+        <SiteGate>
+          <AuthProvider>
+            <PanelProvider>
+              <KbHelpProvider>
+                <KeyboardShortcuts />
+                <KeyboardShortcutsDialog />
+                <Outlet />
+                <Toaster richColors closeButton position="top-right" />
+              </KbHelpProvider>
+            </PanelProvider>
+          </AuthProvider>
+        </SiteGate>
       </ThemeProvider>
     </QueryClientProvider>
   );
