@@ -401,10 +401,9 @@ function SearchResults({
           className="block rounded-md px-2 py-1.5 text-xs transition hover:bg-accent"
         >
           <div className="truncate font-medium">{r.conversation_title ?? "Untitled chat"}</div>
-          <div
-            className="line-clamp-2 text-muted-foreground [&>mark]:rounded [&>mark]:bg-primary/20 [&>mark]:px-0.5 [&>mark]:text-foreground"
-            dangerouslySetInnerHTML={{ __html: r.snippet }}
-          />
+          {/* Render snippet as plain text — message content is user-supplied
+              and must never reach the DOM as HTML (XSS). */}
+          <div className="line-clamp-2 text-muted-foreground">{r.snippet}</div>
         </Link>
       ))}
     </div>
