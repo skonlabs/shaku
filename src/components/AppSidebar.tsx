@@ -43,7 +43,7 @@ export function AppSidebar() {
 
   return (
     <TooltipProvider delayDuration={250}>
-      <aside className="z-30 flex h-svh w-[68px] shrink-0 flex-col items-center justify-between border-r border-sidebar-border bg-sidebar py-5">
+      <aside className="z-30 flex h-svh w-[56px] shrink-0 flex-col items-center justify-between border-r border-sidebar-border bg-sidebar py-4 md:w-[68px] md:py-5">
         <div className="flex flex-col items-center gap-1.5">
           {/* Brand — soft sage gradient with a leaf, warm and welcoming */}
           <Tooltip>
