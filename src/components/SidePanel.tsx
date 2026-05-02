@@ -22,6 +22,7 @@ import {
   ExternalLink,
   File,
   FolderPlus,
+  FolderUp,
   Loader2,
   Pause,
   Play,
@@ -1589,8 +1590,12 @@ function DatasourcesPanel() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<"files" | "cloud">("files");
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: ["ds-files"],
@@ -1669,11 +1674,8 @@ function DatasourcesPanel() {
   const [pendingDeleteFileId, setPendingDeleteFileId] = useState<string | null>(null);
   const [pendingDisconnectId, setPendingDisconnectId] = useState<string | null>(null);
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    e.target.value = "";
-    setUploading(true);
+  async function uploadSingleFile(file: File): Promise<{ ok: boolean; error?: string }> {
+    if (!user) return { ok: false, error: "Not signed in" };
     try {
       const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
       const { file: record } = await createDatasourceFile({
@@ -1688,7 +1690,7 @@ function DatasourcesPanel() {
 
       if (upErr) {
         await deleteDatasourceFile({ data: { id: fileId } });
-        throw new Error(upErr.message);
+        return { ok: false, error: upErr.message };
       }
 
       const { error: pathUpdateErr } = await supabase
@@ -1696,10 +1698,8 @@ function DatasourcesPanel() {
         .update({ storage_path: storagePath })
         .eq("id", fileId);
       if (pathUpdateErr) {
-        // Surface error to user rather than proceeding to process with missing path
-        toast.error("Failed to record file path. Please try again.");
         await deleteDatasourceFile({ data: { id: fileId } });
-        return;
+        return { ok: false, error: "Failed to record file path" };
       }
 
       const { data: sessionData } = await supabase.auth.getSession();
@@ -1723,17 +1723,104 @@ function DatasourcesPanel() {
           } catch {
             /* noop */
           }
-          toast.error(errMsg);
+          return { ok: false, error: errMsg };
         }
       }
-
-      qc.invalidateQueries({ queryKey: ["ds-files"] });
-      toast.success(`"${file.name}" is processing.`);
+      return { ok: true };
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed.");
-    } finally {
-      setUploading(false);
+      return { ok: false, error: err instanceof Error ? err.message : "Upload failed" };
     }
+  }
+
+  async function handleFilesSelected(fileList: FileList | null) {
+    if (!fileList || !user) return;
+    const allFiles = Array.from(fileList).filter((f) => f.size > 0);
+    if (allFiles.length === 0) return;
+
+    const ALLOWED = new Set([
+      "pdf","docx","doc","txt","md","rtf","xlsx","xls","csv","tsv",
+      "pptx","ppt","png","jpg","jpeg","gif","webp",
+      "py","js","ts","tsx","jsx","java","cpp","c","h","hpp",
+      "cs","go","rs","rb","php","swift","kt","html","htm","css",
+      "scss","sh","sql","json","xml","yaml","yml","toml",
+    ]);
+    const maxBytes = 50 * 1024 * 1024;
+
+    const unsupported = allFiles.filter((f) => {
+      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+      return !ALLOWED.has(ext);
+    });
+    const supported = allFiles.filter((f) => {
+      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+      return ALLOWED.has(ext);
+    });
+    const tooLarge = supported.filter((f) => f.size > maxBytes);
+    const valid = supported.filter((f) => f.size <= maxBytes);
+
+    if (unsupported.length > 0) {
+      toast.info(
+        `${unsupported.length} unsupported file${unsupported.length === 1 ? "" : "s"} skipped.`,
+      );
+    }
+    if (tooLarge.length > 0) {
+      toast.error(
+        `${tooLarge.length} file${tooLarge.length === 1 ? "" : "s"} exceed 50 MB and were skipped.`,
+      );
+    }
+    if (valid.length === 0) {
+      return;
+    }
+
+    setUploading(true);
+    setUploadProgress({ done: 0, total: valid.length });
+
+    let succeeded = 0;
+    const failures: string[] = [];
+
+    // Limit concurrency to 3 to avoid overwhelming the browser/server
+    const CONCURRENCY = 3;
+    let idx = 0;
+    const workers = Array.from({ length: Math.min(CONCURRENCY, valid.length) }, async () => {
+      while (idx < valid.length) {
+        const myIdx = idx++;
+        const file = valid[myIdx];
+        const result = await uploadSingleFile(file);
+        if (result.ok) {
+          succeeded++;
+        } else {
+          failures.push(`${file.name}: ${result.error ?? "failed"}`);
+        }
+        setUploadProgress((p) =>
+          p ? { done: p.done + 1, total: p.total } : { done: 1, total: valid.length },
+        );
+        qc.invalidateQueries({ queryKey: ["ds-files"] });
+      }
+    });
+    await Promise.all(workers);
+
+    setUploading(false);
+    setUploadProgress(null);
+    qc.invalidateQueries({ queryKey: ["ds-files"] });
+
+    if (succeeded > 0 && failures.length === 0) {
+      toast.success(
+        succeeded === 1
+          ? "File is processing."
+          : `${succeeded} files are processing.`,
+      );
+    } else if (succeeded > 0 && failures.length > 0) {
+      toast.warning(
+        `${succeeded} uploaded, ${failures.length} failed. ${failures[0]}`,
+      );
+    } else {
+      toast.error(`Upload failed: ${failures[0] ?? "unknown error"}`);
+    }
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    e.target.value = "";
+    await handleFilesSelected(files);
   }
 
   const connectedStorage = (connData?.connected ?? []).filter((c) =>
@@ -1769,27 +1856,55 @@ function DatasourcesPanel() {
 
       {tab === "files" && (
         <>
-          <div className="flex shrink-0 items-center px-4 py-2">
+          <div className="flex shrink-0 flex-col gap-1.5 px-4 py-2">
             <input
               ref={fileRef}
               type="file"
+              multiple
               className="sr-only"
               onChange={handleFileChange}
               accept=".pdf,.docx,.doc,.txt,.md,.rtf,.xlsx,.xls,.csv,.pptx,.ppt,.png,.jpg,.jpeg,.gif,.webp,.py,.js,.ts,.tsx,.jsx,.java,.cpp,.c,.rs,.go,.rb,.php,.swift,.kt,.html,.css,.json,.yaml,.sql"
             />
-            <p className="text-[11px] text-muted-foreground">PDFs, Docs, Code, Spreadsheets</p>
-            <button
-              disabled={uploading}
-              onClick={() => fileRef.current?.click()}
-              className="ml-auto flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
-            >
-              {uploading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Upload className="h-3.5 w-3.5" />
-              )}
-              {uploading ? "Uploading…" : "Upload file"}
-            </button>
+            <input
+              ref={folderRef}
+              type="file"
+              multiple
+              className="sr-only"
+              onChange={handleFileChange}
+              // @ts-expect-error - non-standard but widely supported
+              webkitdirectory=""
+              directory=""
+            />
+            <div className="flex items-center gap-2">
+              <p className="flex-1 text-[11px] text-muted-foreground">
+                PDFs, Docs, Code, Spreadsheets
+              </p>
+              <button
+                disabled={uploading}
+                onClick={() => fileRef.current?.click()}
+                className="flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
+              >
+                {uploading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" />
+                )}
+                {uploading ? "Uploading…" : "Upload files"}
+              </button>
+              <button
+                disabled={uploading}
+                onClick={() => folderRef.current?.click()}
+                className="flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
+              >
+                <FolderUp className="h-3.5 w-3.5" />
+                Folder
+              </button>
+            </div>
+            {uploadProgress && uploadProgress.total > 1 && (
+              <p className="text-[11px] text-muted-foreground">
+                Uploading {uploadProgress.done} of {uploadProgress.total}…
+              </p>
+            )}
           </div>
           <ScrollArea className="flex-1">
             {isLoading && (
