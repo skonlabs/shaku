@@ -953,6 +953,16 @@ export const Route = createFileRoute("/api/chat/stream")({
                   const gemini = new GeminiProvider(apiKey);
 
                   const turnMessages = [...optimizedMessages];
+                  if (resumingFromFallback) {
+                    turnMessages.push({
+                      role: "assistant",
+                      content: trimContinuationTurn(assistantText),
+                    });
+                    turnMessages.push({
+                      role: "user",
+                      content: "Continue from exactly where you stopped. Do not repeat prior content.",
+                    });
+                  }
                   for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
                     let turnText = "";
                     let finishedFull = true;
