@@ -813,7 +813,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                         const { text: safeChunk } = redactOutputPii(emit, allowedPiiValues);
                         assistantText += safeChunk;
                         const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                        if (visible) send("delta", { text: visible });
+                        if (visible) sendDelta(visible);
                       } else if (event.type === "message_start") {
                         totalInputTokens += event.message.usage?.input_tokens ?? 0;
                       } else if (event.type === "message_delta") {
@@ -842,7 +842,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                       const { text: safeChunk } = redactOutputPii(dedupBuffer, allowedPiiValues);
                       assistantText += safeChunk;
                       const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                      if (visible) send("delta", { text: visible });
+                      if (visible) sendDelta(visible);
                     }
 
                     if (stopReason !== "max_tokens") break;
@@ -881,7 +881,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                       assistantText += safeChunk;
                       turnText += safeChunk;
                       const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                      if (visible) send("delta", { text: visible });
+                      if (visible) sendDelta(visible);
                       if (chunk.finishReason === "MAX_TOKENS" || chunk.finishReason === "length") {
                         finishedFull = false;
                       }
@@ -942,7 +942,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                         assistantText += safeChunk;
                         turnText += safeChunk;
                         const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                        if (visible) send("delta", { text: visible });
+                        if (visible) sendDelta(visible);
                       }
                       const fr = chunk.choices[0]?.finish_reason;
                       if (fr) finishReason = fr;
