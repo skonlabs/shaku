@@ -894,20 +894,49 @@ export const Route = createFileRoute("/api/chat/stream")({
                   for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
                     let turnText = "";
                     let finishedFull = true;
+                    const isContinuation = turn > 0;
+                    const priorTail = isContinuation ? assistantText.slice(-OVERLAP_CHARS) : "";
+                    let dedupResolved = !isContinuation;
+                    let dedupBuffer = "";
+                    const DEDUP_SCAN_BUDGET = OVERLAP_CHARS * 3;
                     for await (const chunk of gemini.generate({
                       model: candidateModel,
                       messages: turnMessages,
                       systemPrompt: optimizedSystemPrompt,
                       maxTokens: PER_TURN_MAX_TOKENS,
                     })) {
-                      const { text: safeChunk } = redactOutputPii(chunk.text, allowedPiiValues);
+                      const raw = chunk.text;
+                      turnText += raw;
+                      let emit = raw;
+                      if (!dedupResolved) {
+                        dedupBuffer += raw;
+                        const stripped = stripOverlapPrefix(dedupBuffer, priorTail);
+                        if (stripped !== null) {
+                          emit = stripped;
+                          dedupResolved = true;
+                        } else if (dedupBuffer.length >= DEDUP_SCAN_BUDGET) {
+                          emit = dedupBuffer;
+                          dedupResolved = true;
+                        } else {
+                          if (chunk.finishReason === "MAX_TOKENS" || chunk.finishReason === "length") {
+                            finishedFull = false;
+                          }
+                          continue;
+                        }
+                      }
+                      const { text: safeChunk } = redactOutputPii(emit, allowedPiiValues);
                       assistantText += safeChunk;
-                      turnText += safeChunk;
                       const visible = stripFollowupsTagPartial(safeChunk, assistantText);
                       if (visible) sendDelta(visible);
                       if (chunk.finishReason === "MAX_TOKENS" || chunk.finishReason === "length") {
                         finishedFull = false;
                       }
+                    }
+                    if (!dedupResolved && dedupBuffer.length > 0) {
+                      const { text: safeChunk } = redactOutputPii(dedupBuffer, allowedPiiValues);
+                      assistantText += safeChunk;
+                      const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                      if (visible) sendDelta(visible);
                     }
                     if (finishedFull) break;
                     if (turn === MAX_AUTO_CONTINUES) {
