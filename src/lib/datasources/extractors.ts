@@ -24,9 +24,14 @@ export async function extractContent(
 
     case "xlsx":
     case "xls":
+    case "xlsm":
+    case "xlsb":
+    case "ods":
+      return extractSpreadsheet(bytes, fileName);
+
     case "csv":
     case "tsv":
-      return extractSpreadsheet(bytes, fileName);
+      return extractDelimited(bytes, type);
 
     case "pptx":
     case "ppt":
