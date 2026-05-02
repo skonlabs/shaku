@@ -1170,6 +1170,26 @@ export const Route = createFileRoute("/api/chat/stream")({
             heartbeatTimer = null;
           }
 
+          // C1 + C4: in deferred-output mode, if the success-path flush didn't run
+          // (all fallbacks errored, or wall-clock deadline triggered), flush whatever
+          // partial work we accumulated so the user gets something useful instead of
+          // only the always-respond fallback. Followups are stripped before the flush.
+          if (needsLongOutput && deferredBuffer.length > 0) {
+            const { visible: visibleBuffer } = splitFollowups(deferredBuffer);
+            send("progress", {
+              stage: "complete",
+              label: abortedForTime
+                ? "Stopping here so I can return what I have."
+                : "Done — putting it all together for you.",
+              pass: currentPass,
+              chars: deferredBuffer.length,
+            });
+            if (visibleBuffer.length > 0) {
+              send("delta", { text: visibleBuffer });
+            }
+            deferredBuffer = "";
+          }
+
           // ---- Output validation ----
           const { visible, followups } = splitFollowups(assistantText);
 
