@@ -15,8 +15,11 @@ export function ChatHistoryRail() {
 
   const [open, setOpen] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
+    // Default closed on small screens — the 256px rail eats the chat area on phones.
+    const isSmall = window.matchMedia("(max-width: 767px)").matches;
     const v = window.localStorage.getItem(RAIL_KEY);
-    return v === null ? true : v === "1";
+    if (v === null) return !isSmall;
+    return v === "1";
   });
   const toggle = () => {
     setOpen((p) => {
