@@ -440,6 +440,12 @@ export const Route = createFileRoute("/api/chat/stream")({
         const attachmentTextTokens = (body.attachments ?? []).reduce((sum, a) => {
           return sum + (a.extracted_text ? countTokens(a.extracted_text) : 0);
         }, 0);
+        const nonAttachmentEstimatedCtxTokens = estimatePreRetrievalTokens(
+          countTokens(SYSTEM_PROMPT),
+          countTokens(preloadedHistory.map((m) => m.content).join(" ")) +
+            preloadedHistory.length * 4,
+          countTokens(currentUserMessage),
+        );
         const estimatedCtxTokens = estimatePreRetrievalTokens(
           countTokens(SYSTEM_PROMPT),
           countTokens(preloadedHistory.map((m) => m.content).join(" ")) +
@@ -594,7 +600,7 @@ export const Route = createFileRoute("/api/chat/stream")({
         const RESPONSE_BUFFER_TOKENS = 4_000;
         const remainingTokens = Math.max(
           0,
-          selectedModel.contextWindow - estimatedCtxTokens - RESPONSE_BUFFER_TOKENS,
+          selectedModel.contextWindow - nonAttachmentEstimatedCtxTokens - RESPONSE_BUFFER_TOKENS,
         );
         const dynamicTotalChars = remainingTokens * 4;
         const attachmentContext = buildAttachmentContext(
@@ -698,7 +704,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                 // Allow auto-continue for all providers when long output is needed,
                 // so Gemini/OpenAI can also keep generating past their first cap.
                 const MAX_AUTO_CONTINUES = needsLongOutput
-                  ? 5
+                  ? 24
                   : candidateModel.provider === "anthropic"
                   ? 3
                   : 0;
@@ -817,7 +823,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                     // that risks duplication and drift. A simple instruction to continue
                     // is more reliable. Token counts are tracked per turn via separate
                     // message_start events so cost logs remain accurate.
-                    turnMessages.push({ role: "assistant", content: turnText });
+                    turnMessages.push({ role: "assistant", content: trimContinuationTurn(turnText) });
                     turnMessages.push({
                       role: "user",
                       content: "Continue from exactly where you stopped. Do not repeat prior content.",
@@ -853,7 +859,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                       hitFinalCap = true;
                       break;
                     }
-                    turnMessages.push({ role: "assistant", content: turnText });
+                    turnMessages.push({ role: "assistant", content: trimContinuationTurn(turnText) });
                     turnMessages.push({
                       role: "user",
                       content: "Continue from exactly where you stopped. Do not repeat prior content.",
@@ -934,7 +940,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                       hitFinalCap = true;
                       break;
                     }
-                    oaiMessages.push({ role: "assistant", content: turnText });
+                    oaiMessages.push({ role: "assistant", content: trimContinuationTurn(turnText) });
                     oaiMessages.push({
                       role: "user",
                       content: "Continue from exactly where you stopped. Do not repeat prior content.",
@@ -1578,6 +1584,12 @@ function messageContentToText(content: unknown): string {
     })
     .filter(Boolean)
     .join("\n");
+}
+
+function trimContinuationTurn(text: string): string {
+  const MAX_CONTINUATION_ECHO_CHARS = 8_000;
+  if (text.length <= MAX_CONTINUATION_ECHO_CHARS) return text;
+  return `[Previous response segment omitted for context size. Continue after this exact tail:]\n${text.slice(-MAX_CONTINUATION_ECHO_CHARS)}`;
 }
 
 function stripOverlapPrefix(buffer: string, priorTail: string): string | null {
