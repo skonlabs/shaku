@@ -21,7 +21,7 @@ function LoginPage() {
   const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
-    if (user) void navigate({ to: "/" });
+    if (user) void navigate({ to: "/app" });
   }, [user, navigate]);
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -61,7 +61,7 @@ function LoginPage() {
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.88_0.04_130/0.6),transparent_60%)]"
       />
       <div className="relative w-full max-w-sm">
-        <Link to="/" className="mb-10 flex flex-col items-center justify-center gap-3">
+        <Link to="/login" className="mb-10 flex flex-col items-center justify-center gap-3">
           <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-gradient-to-br from-[oklch(0.62_0.08_145)] to-[oklch(0.50_0.07_150)] text-primary-foreground shadow-[0_10px_30px_-10px_oklch(0.50_0.07_150/0.55)]">
             <Leaf className="h-7 w-7" />
           </div>
