@@ -40,6 +40,10 @@ export interface RoutingContext {
   contextType: ContextType;   // dominant shape of request content
   contextCriticality: number; // 0–1: how important it is that model faithfully uses context
   taskType: RoutingTaskType;  // routing-level task classification
+  // Optional: providers with runtime API keys available. When set, models from
+  // other providers are filtered out before scoring so we never route to a
+  // model whose API key is missing (which would cause "no runnable models").
+  availableProviders?: Set<string>;
 }
 
 interface Range { min: number; max: number }
@@ -77,11 +81,12 @@ export function route(ctx: RoutingContext): RoutingDecision {
     adjustedReasoningDepth = Math.min(1.0, adjustedReasoningDepth + 0.15);
   }
 
-  // 3. Hard filters: health, context window, modality.
+  // 3. Hard filters: health, context window, modality, provider availability.
   const eligible = MODEL_REGISTRY.filter((m) => {
     if (!isModelHealthy(m.id)) return false;
     if (!fitsInContext(m.id, ctx.estimatedContextTokens)) return false;
     if (ctx.hasImages && !m.multimodal) return false;
+    if (ctx.availableProviders && !ctx.availableProviders.has(m.provider)) return false;
     return true;
   });
 
