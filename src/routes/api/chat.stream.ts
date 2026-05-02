@@ -419,20 +419,32 @@ export const Route = createFileRoute("/api/chat/stream")({
         );
         const formatHint = detectFormatHint(currentUserMessage);
 
+        const hasAttachmentText = (body.attachments ?? []).some((a) => a.extracted_text?.trim());
+        const attachmentDirective = hasAttachmentText
+          ? `\n## Attachment processing\nThe user has attached one or more documents. Their full extracted content is included in the user turn under "--- Attached: ... ---" markers. You MUST:\n- Read EVERY section, sheet, page, and row of every attachment before responding.\n- For spreadsheets: process each \`=== SheetName ===\` block. Do not skip sheets.\n- For multi-page documents: process every page.\n- If the user asks you to act on each item/row/sheet/test case, produce output for ALL of them — never a partial sample unless explicitly asked.\n- If content was truncated to fit context, say so explicitly and tell the user which parts were cut.`
+          : "";
+
         const finalSystemPrompt = [
           assembled.systemPrompt,
           systemAdditions ? `\n## Response guidance\n${systemAdditions}` : "",
+          attachmentDirective,
           formatHint ? `\n## Format\n${formatHint}` : "",
         ]
           .filter(Boolean)
           .join("\n");
 
         // ---- Model routing ----
+        // Include attachment text in the token estimate so large documents
+        // (spreadsheets, PDFs) push routing toward large-context models
+        // (Gemini 1M+) instead of getting silently truncated to fit a 200k window.
+        const attachmentTextTokens = (body.attachments ?? []).reduce((sum, a) => {
+          return sum + (a.extracted_text ? countTokens(a.extracted_text) : 0);
+        }, 0);
         const estimatedCtxTokens = estimatePreRetrievalTokens(
           countTokens(SYSTEM_PROMPT),
           countTokens(preloadedHistory.map((m) => m.content).join(" ")) +
             preloadedHistory.length * 4,
-          countTokens(currentUserMessage),
+          countTokens(currentUserMessage) + attachmentTextTokens,
         );
 
         // Momentum: avg complexity of last 3 user messages (message length as proxy).
@@ -452,12 +464,18 @@ export const Route = createFileRoute("/api/chat/stream")({
         const reasoningDepth = deriveReasoningDepth(intentResult);
         const precisionRequired = derivePrecisionRequired(intentResult);
         const contextType = inferContextType(currentUserMessage, intentResult.domain, finalChunks);
-        const contextCriticality = inferContextCriticality(
+        let contextCriticality = inferContextCriticality(
           assembled.memoriesUsed,
           assembled.activeTask,
           finalChunks,
           intent,
         );
+        // When the user attaches substantial document text, faithfully using
+        // every sheet/page is critical — bias routing toward high-fidelity,
+        // large-context models.
+        if (attachmentTextTokens > 5_000) {
+          contextCriticality = Math.min(1, Math.max(contextCriticality, 0.85));
+        }
         const routingTaskType = intentToRoutingTaskType(intent, intentResult.domain);
 
         const routingDecision = route({
