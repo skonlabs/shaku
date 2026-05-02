@@ -508,10 +508,10 @@ function groupConversationsByDate<T extends ConversationLike>(
       push(key, String(d.getFullYear()), 1000 - d.getFullYear(), c);
     }
   }
-  return Array.from(buckets.values())
-    .sort((a, b) => a.order - b.order)
-    .map(({ title, items }, i) => ({
-      key: `${title}-${i}`,
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[1].order - b[1].order)
+    .map(([key, { title, items }]) => ({
+      key,
       title,
       items,
     }));
