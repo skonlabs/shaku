@@ -548,7 +548,7 @@ function ChatItem({
   return (
     <div
       className={cn(
-        "group flex items-center gap-1 rounded-md pr-1 transition",
+        "group flex min-w-0 items-center gap-1 rounded-md pr-1 transition",
         isActive ? "bg-accent" : "hover:bg-accent/60",
       )}
     >
@@ -583,7 +583,7 @@ function ChatItem({
           to="/c/$id"
           params={{ id }}
           onClick={onNavigate}
-          className="flex-1 truncate px-2 py-1.5 text-sm"
+          className="block min-w-0 flex-1 truncate px-2 py-1.5 text-sm"
         >
           {title}
         </Link>
