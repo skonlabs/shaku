@@ -8,8 +8,7 @@ import { z } from "zod";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
 const SUPABASE_KEY =
-  process.env.SUPABASE_PUBLISHABLE_KEY ??
-  (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
+  process.env.SUPABASE_PUBLISHABLE_KEY ?? (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
 
 const BodySchema = z.object({
   file_id: z.string().uuid(),
@@ -76,7 +75,9 @@ export const Route = createFileRoute("/api/datasources/process")({
           supabase,
         );
 
-        const cfCtx = (globalThis as Record<string, unknown>).__cfContext as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+        const cfCtx = (globalThis as Record<string, unknown>).__cfContext as
+          | { waitUntil?: (p: Promise<unknown>) => void }
+          | undefined;
         if (cfCtx?.waitUntil) {
           cfCtx.waitUntil(processPromise);
         } else {
@@ -114,24 +115,37 @@ async function processFileAsync(
     const bytes = new Uint8Array(await fileData.arrayBuffer());
     const { processFile } = await import("@/lib/datasources/processor");
 
-    const result = await processFile(userId, bytes, fileName, fileType, {
-      sourceType: "datasource",
-      sourceId: fileId,
-      metadata: { file_name: fileName, file_type: fileType },
-    }, supabase);
+    const result = await processFile(
+      userId,
+      bytes,
+      fileName,
+      fileType,
+      {
+        sourceType: "datasource",
+        sourceId: fileId,
+        metadata: { file_name: fileName, file_type: fileType },
+      },
+      supabase,
+    );
 
-    await supabase.from("datasource_files").update({
-      status: "ready",
-      chunk_count: result.chunkCount,
-      content_hash: result.contentHash,
-      last_refreshed_at: new Date().toISOString(),
-    }).eq("id", fileId);
+    await supabase
+      .from("datasource_files")
+      .update({
+        status: "ready",
+        chunk_count: result.chunkCount,
+        content_hash: result.contentHash,
+        last_refreshed_at: new Date().toISOString(),
+      })
+      .eq("id", fileId);
   } catch (e) {
     console.error("[datasources.process] processing failed:", e);
-    await supabase.from("datasource_files").update({
-      status: "error",
-      error_message: e instanceof Error ? e.message : "Processing failed",
-    }).eq("id", fileId);
+    await supabase
+      .from("datasource_files")
+      .update({
+        status: "error",
+        error_message: e instanceof Error ? e.message : "Processing failed",
+      })
+      .eq("id", fileId);
   }
 }
 

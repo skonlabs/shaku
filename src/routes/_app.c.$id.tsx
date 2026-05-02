@@ -98,7 +98,9 @@ function ChatPage() {
         onDelta: (chunk) => {
           setStreamingMessages((cur) =>
             cur.map((m) =>
-              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false, progress: undefined } : m,
+              m.id === tempAsstId
+                ? { ...m, content: m.content + chunk, pending: false, progress: undefined }
+                : m,
             ),
           );
         },
@@ -106,7 +108,10 @@ function ChatPage() {
           setStreamingMessages((cur) =>
             cur.map((m) =>
               m.id === tempAsstId
-                ? { ...m, metadata: { ...(m.metadata ?? {}), web_citations: sources, web_grounded: true } }
+                ? {
+                    ...m,
+                    metadata: { ...(m.metadata ?? {}), web_citations: sources, web_grounded: true },
+                  }
                 : m,
             ),
           );
@@ -173,7 +178,9 @@ function ChatPage() {
         onDelta: (chunk) => {
           setStreamingMessages((cur) =>
             cur.map((m) =>
-              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false, progress: undefined } : m,
+              m.id === tempAsstId
+                ? { ...m, content: m.content + chunk, pending: false, progress: undefined }
+                : m,
             ),
           );
         },
@@ -181,7 +188,10 @@ function ChatPage() {
           setStreamingMessages((cur) =>
             cur.map((m) =>
               m.id === tempAsstId
-                ? { ...m, metadata: { ...(m.metadata ?? {}), web_citations: sources, web_grounded: true } }
+                ? {
+                    ...m,
+                    metadata: { ...(m.metadata ?? {}), web_citations: sources, web_grounded: true },
+                  }
                 : m,
             ),
           );
@@ -306,8 +316,8 @@ function ChatPage() {
                 </div>
                 <p className="text-sm font-medium text-foreground">What's on your mind?</p>
                 <p className="text-xs leading-relaxed">
-                  Type below to start. Share preferences naturally — Cortex will
-                  remember them for next time.
+                  Type below to start. Share preferences naturally — Cortex will remember them for
+                  next time.
                 </p>
               </div>
             </div>
