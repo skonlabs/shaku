@@ -12,7 +12,7 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { user, signInWithPassword, signUpWithPassword, signInWithGoogle } = useAuth();
+  const { user, signInWithPassword, signUpWithPassword } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = React.useState<"signin" | "signup">("signin");
   const [email, setEmail] = React.useState("");
