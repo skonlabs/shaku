@@ -152,7 +152,7 @@ export function SidePanel({ side = "left" }: { side?: "left" | "right" }) {
         {active === "projects" && <ProjectsPanel />}
         {active === "datasources" && <DatasourcesPanel />}
         {active === "connectors" && <ConnectorsPanel />}
-        {active === "memory" && <MemoryPanel />}
+        {/* "memory" panel was retired — see /my-profile (AI Profile). */}
         {/* "context" and "task" panels were retired — see ActiveTaskBanner & BehindAnswerChip. */}
         {active === "settings" && <SettingsPanel />}
         {active === "account" && <AccountPanel />}
