@@ -612,6 +612,7 @@ type DatasourceFile = {
   chunk_count: number | null;
   last_refreshed_at: string | null;
   created_at: string;
+  storage_path?: string | null;
 };
 
 function SettingsPanel() {
