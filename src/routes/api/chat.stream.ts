@@ -870,6 +870,10 @@ export const Route = createFileRoute("/api/chat/stream")({
                     // that risks duplication and drift. A simple instruction to continue
                     // is more reliable. Token counts are tracked per turn via separate
                     // message_start events so cost logs remain accurate.
+                    if (needsLongOutput) {
+                      currentPass += 1;
+                      emitProgress(`Continuing analysis of your ${docNoun}… (pass ${currentPass})`);
+                    }
                     turnMessages.push({ role: "assistant", content: trimContinuationTurn(turnText) });
                     turnMessages.push({
                       role: "user",
@@ -905,6 +909,10 @@ export const Route = createFileRoute("/api/chat/stream")({
                     if (turn === MAX_AUTO_CONTINUES) {
                       hitFinalCap = true;
                       break;
+                    }
+                    if (needsLongOutput) {
+                      currentPass += 1;
+                      emitProgress(`Continuing analysis of your ${docNoun}… (pass ${currentPass})`);
                     }
                     turnMessages.push({ role: "assistant", content: trimContinuationTurn(turnText) });
                     turnMessages.push({
@@ -986,6 +994,10 @@ export const Route = createFileRoute("/api/chat/stream")({
                     if (turn === MAX_AUTO_CONTINUES) {
                       hitFinalCap = true;
                       break;
+                    }
+                    if (needsLongOutput) {
+                      currentPass += 1;
+                      emitProgress(`Continuing analysis of your ${docNoun}… (pass ${currentPass})`);
                     }
                     oaiMessages.push({ role: "assistant", content: trimContinuationTurn(turnText) });
                     oaiMessages.push({
