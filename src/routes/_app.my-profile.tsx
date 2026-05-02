@@ -128,10 +128,10 @@ export default function MyProfilePage() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="mx-auto max-w-5xl space-y-6 p-6 pb-10">
+      <div className="mx-auto max-w-5xl space-y-5 p-4 pb-8 sm:space-y-6 sm:p-6 sm:pb-10">
 
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.50_0.16_245)] p-6 text-primary-foreground shadow-lg">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.50_0.16_245)] p-5 text-primary-foreground shadow-lg sm:p-6">
           {/* BG decoration */}
           <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/5" />
           <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-white/5" />
