@@ -181,6 +181,13 @@ export async function streamChat(
                 if (Array.isArray(parsed.sources)) {
                   cb.onCitations?.(parsed.sources);
                 }
+              } else if (event === "progress") {
+                cb.onProgress?.({
+                  stage: parsed.stage,
+                  label: parsed.label,
+                  pass: parsed.pass,
+                  chars: parsed.chars,
+                });
               } else if (event === "done") {
                 sawDoneEvent = true;
                 cb.onDone({
