@@ -801,6 +801,11 @@ export const Route = createFileRoute("/api/chat/stream")({
                   );
                 }
                 modelAttemptIdx += 1;
+                // Treat the first turn as a continuation when we're resuming from
+                // a fallback in deferred mode — so overlap-dedup activates against
+                // the work the previous model already produced. Without this, the
+                // new model re-emits content already in deferredBuffer.
+                const resumingFromFallback = needsLongOutput && assistantText.length > 0;
 
                 if (candidateModel.provider === "anthropic") {
                   const apiKey = runtimeKeys.anthropic;
