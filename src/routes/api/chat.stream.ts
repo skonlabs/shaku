@@ -440,6 +440,12 @@ export const Route = createFileRoute("/api/chat/stream")({
         const attachmentTextTokens = (body.attachments ?? []).reduce((sum, a) => {
           return sum + (a.extracted_text ? countTokens(a.extracted_text) : 0);
         }, 0);
+        const nonAttachmentEstimatedCtxTokens = estimatePreRetrievalTokens(
+          countTokens(SYSTEM_PROMPT),
+          countTokens(preloadedHistory.map((m) => m.content).join(" ")) +
+            preloadedHistory.length * 4,
+          countTokens(currentUserMessage),
+        );
         const estimatedCtxTokens = estimatePreRetrievalTokens(
           countTokens(SYSTEM_PROMPT),
           countTokens(preloadedHistory.map((m) => m.content).join(" ")) +
@@ -594,7 +600,7 @@ export const Route = createFileRoute("/api/chat/stream")({
         const RESPONSE_BUFFER_TOKENS = 4_000;
         const remainingTokens = Math.max(
           0,
-          selectedModel.contextWindow - estimatedCtxTokens - RESPONSE_BUFFER_TOKENS,
+          selectedModel.contextWindow - nonAttachmentEstimatedCtxTokens - RESPONSE_BUFFER_TOKENS,
         );
         const dynamicTotalChars = remainingTokens * 4;
         const attachmentContext = buildAttachmentContext(
