@@ -674,6 +674,78 @@ export const Route = createFileRoute("/api/chat/stream")({
             (model) => modelHasRuntimeKey(model, runtimeKeys),
           );
 
+          // ---- Long-output (deferred) mode state ----
+          // Hoisted out of the per-model retry loop so a provider error mid-way
+          // doesn't discard buffered work; the next fallback model continues into
+          // the same buffer. Also hoisted: heartbeat timer + global wall-clock guard.
+          //
+          // Trigger covers three signals — large attachments, long pasted text in
+          // the current message, or a heavy retrieval payload — so non-attachment
+          // long-form work also gets the comprehensive cap + auto-continue path.
+          const pastedUserChars = currentUserMessage.length;
+          const retrievalChars = (assembled.retrievalContext ?? "").length;
+          const needsLongOutput =
+            attachmentTextTokens > 5_000 ||
+            pastedUserChars > 20_000 ||
+            retrievalChars > 40_000;
+          const attachedDocCount = (body.attachments ?? []).filter(
+            (a) => a.extracted_text?.trim(),
+          ).length;
+          const docNoun = attachedDocCount > 1 ? "documents" : "document";
+          let deferredBuffer = "";
+          let currentPass = 1;
+          let lastProgressAt = 0;
+          // Hard wall-clock budget: prevents pathological multi-pass loops from
+          // running until the Worker is killed. ~4 min leaves headroom under
+          // typical edge runtime limits while supporting genuinely long jobs.
+          const MAX_TURN_DURATION_MS = 4 * 60 * 1000;
+          const turnDeadline = startTimeMs + MAX_TURN_DURATION_MS;
+          let abortedForTime = false;
+
+          const emitProgress = (label: string, stage = "processing") => {
+            send("progress", {
+              stage,
+              label,
+              pass: currentPass,
+              chars: deferredBuffer.length,
+            });
+          };
+          const sendDelta = (text: string) => {
+            if (!text) return;
+            if (needsLongOutput) {
+              deferredBuffer += text;
+              const now = Date.now();
+              if (now - lastProgressAt > 1500) {
+                lastProgressAt = now;
+                const kchars = Math.floor(deferredBuffer.length / 1000);
+                emitProgress(
+                  `Working through your ${docNoun}… (pass ${currentPass}, ~${kchars}k chars written)`,
+                );
+              }
+            } else {
+              send("delta", { text });
+            }
+          };
+
+          // Independent heartbeat: keeps the SSE connection warm and the user
+          // informed even when the upstream provider stalls (long TTFB on a
+          // continuation, slow tool call). Without this, edge proxies can idle-
+          // close the stream after ~30s of silence.
+          let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+          if (needsLongOutput) {
+            heartbeatTimer = setInterval(() => {
+              const now = Date.now();
+              if (now - lastProgressAt < 1500) return;
+              lastProgressAt = now;
+              const kchars = Math.floor(deferredBuffer.length / 1000);
+              emitProgress(
+                deferredBuffer.length > 0
+                  ? `Still working… (pass ${currentPass}, ~${kchars}k chars written)`
+                  : `Still reading your ${docNoun}…`,
+              );
+            }, 8_000);
+          }
+
           if (runnableModels.length === 0) {
             console.error("[chat.stream] no runnable models", {
               hasAnthropicKey: Boolean(runtimeKeys.anthropic),
