@@ -478,6 +478,16 @@ export const Route = createFileRoute("/api/chat/stream")({
         }
         const routingTaskType = intentToRoutingTaskType(intent, intentResult.domain);
 
+        // Load runtime keys before routing so we only consider providers we can
+        // actually call. Without this, attachment-heavy turns can route entirely
+        // to Gemini even when no GEMINI_API_KEY is configured, producing the
+        // "no runnable models" failure.
+        const runtimeKeysForRouting = await getRuntimeKeys();
+        const availableProviders = new Set<string>();
+        if (runtimeKeysForRouting.anthropic) availableProviders.add("anthropic");
+        if (runtimeKeysForRouting.openai) availableProviders.add("openai");
+        if (runtimeKeysForRouting.gemini) availableProviders.add("google");
+
         const routingDecision = route({
           intent: intentResult,
           estimatedContextTokens: estimatedCtxTokens,
@@ -492,6 +502,7 @@ export const Route = createFileRoute("/api/chat/stream")({
           contextType,
           contextCriticality,
           taskType: routingTaskType,
+          availableProviders: availableProviders.size > 0 ? availableProviders : undefined,
         });
         const selectedModel = routingDecision.selected;
 
