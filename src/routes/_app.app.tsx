@@ -139,7 +139,7 @@ function NewChatPage() {
               </span>
               Remembers everything
             </span>
-            <span aria-hidden className="text-muted-foreground/50">·</span>
+            <span aria-hidden className="hidden text-muted-foreground/50 sm:inline">·</span>
             <span className="group inline-flex items-center gap-2 rounded-full border border-accent/30 bg-card/80 py-1.5 pl-2 pr-3.5 text-[13px] font-medium text-foreground shadow-sm backdrop-blur transition-all hover:border-accent/60 hover:shadow-md">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[oklch(0.82_0.11_80)] to-[oklch(0.70_0.12_70)] text-accent-foreground">
                 <Compass className="h-3.5 w-3.5" />
