@@ -50,7 +50,7 @@ export function EmbeddedCheckoutDialog({
           Secure checkout powered by Stripe. Your card details are never seen or stored by us.
         </DialogDescription>
 
-        {/* Brand-forward header — Cortex first, Stripe attribution in footer */}
+        {/* Brand-forward header — Ekonomical first, Stripe attribution in footer */}
         <div className="border-b border-border/50 bg-gradient-to-b from-muted/40 to-background px-6 pt-6 pb-5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
@@ -58,7 +58,7 @@ export function EmbeddedCheckoutDialog({
                 <Leaf className="h-5 w-5" />
               </div>
               <div className="leading-tight">
-                <div className="font-display text-base font-semibold text-foreground">Cortex</div>
+                <div className="font-display text-base font-semibold text-foreground">Ekonomical</div>
                 <div className="text-xs text-muted-foreground">Complete your upgrade</div>
               </div>
             </div>

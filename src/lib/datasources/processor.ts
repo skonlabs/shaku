@@ -129,7 +129,7 @@ export async function processUrl(
   let html: string;
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "Cortex/1.0 (content indexer)" },
+      headers: { "User-Agent": "Ekonomical/1.0 (content indexer)" },
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -10,7 +10,7 @@ interface ThemeContextValue {
 
 const ThemeContext = React.createContext<ThemeContextValue | null>(null);
 
-const STORAGE_KEY = "cortex.theme";
+const STORAGE_KEY = "ekonomical.theme";
 
 function applyTheme(theme: Theme): "light" | "dark" {
   if (typeof document === "undefined") return "light";

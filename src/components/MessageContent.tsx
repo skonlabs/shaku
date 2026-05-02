@@ -7,7 +7,7 @@ import { useState } from "react";
 
 export function MessageContent({ content }: { content: string }) {
   return (
-    <div className="prose-cortex">
+    <div className="prose-ekonomical">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

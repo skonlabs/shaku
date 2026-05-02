@@ -20,7 +20,7 @@ const FRIENDLY_BODIES: Record<NonNullable<UpgradeRequiredInfo["blocked"]>, strin
   model:
     "Your question is better answered by GPT-4o or Claude Sonnet, included on the Basic plan.",
   memory:
-    "Let Cortex remember context across conversations. Available on Basic and above.",
+    "Let Ekonomical remember context across conversations. Available on Basic and above.",
   documents:
     "Chat with your uploaded files. Available on Basic and above.",
 };

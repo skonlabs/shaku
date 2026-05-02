@@ -6,7 +6,7 @@ import { listProjects } from "@/lib/projects.functions";
 import { usePanel } from "@/lib/ui-context";
 import { cn } from "@/lib/utils";
 
-const DISMISS_KEY = "cortex.nudge.first-space.dismissed";
+const DISMISS_KEY = "ekonomical.nudge.first-space.dismissed";
 const MIN_CHATS = 5;
 
 /**
@@ -70,7 +70,7 @@ export function SpaceNudge() {
           >
             space
           </button>{" "}
-          so Cortex can remember context across all of them.
+          so Ekonomical can remember context across all of them.
         </p>
       </div>
       <button

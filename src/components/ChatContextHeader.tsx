@@ -101,7 +101,7 @@ export function ChatContextHeader({
 
           {projects.length === 0 && !creating && (
             <p className="px-2 py-2 text-xs text-muted-foreground">
-              No spaces yet. Create one to group related chats and let Cortex
+              No spaces yet. Create one to group related chats and let Ekonomical
               remember context across them.
             </p>
           )}
@@ -189,7 +189,7 @@ export function ChatContextHeader({
       {/* Helper text only on empty chats so it's not noisy mid-conversation */}
       {isEmpty && current && (
         <span className="text-[11px] text-muted-foreground">
-          Cortex remembers what you discuss here across all chats in this space.
+          Ekonomical remembers what you discuss here across all chats in this space.
         </span>
       )}
     </div>

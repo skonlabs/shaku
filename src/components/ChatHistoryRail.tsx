@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Section, groupConversationsByDate } from "@/components/SidePanel";
 import { cn } from "@/lib/utils";
 
-const RAIL_KEY = "cortex.chathistoryrail.open";
+const RAIL_KEY = "ekonomical.chathistoryrail.open";
 
 export function ChatHistoryRail() {
   const params = useParams({ strict: false }) as { id?: string };
@@ -120,7 +120,7 @@ export function ChatHistoryRail() {
             {pinned.length > 0 && (
               <Section
                 title="Pinned"
-                storageKey="cortex.rail.section.pinned"
+                storageKey="ekonomical.rail.section.pinned"
                 defaultOpen
                 count={pinned.length}
               >
@@ -138,7 +138,7 @@ export function ChatHistoryRail() {
               <Section
                 key={group.key}
                 title={group.title}
-                storageKey={`cortex.rail.section.${group.key}`}
+                storageKey={`ekonomical.rail.section.${group.key}`}
                 defaultOpen={group.key === "today"}
                 count={group.items.length}
               >

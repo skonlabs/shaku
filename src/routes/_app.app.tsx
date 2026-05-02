@@ -92,7 +92,7 @@ function NewChatPage() {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       try {
         sessionStorage.setItem(
-          `cortex.pending.${conversationId}`,
+          `ekonomical.pending.${conversationId}`,
           JSON.stringify({ text, attachments }),
         );
       } catch {
@@ -131,7 +131,7 @@ function NewChatPage() {
             {greeting}
           </h1>
 
-          {/* Differentiator — two trait chips that tell people why Cortex isn't just another chatbot */}
+          {/* Differentiator — two trait chips that tell people why Ekonomical isn't just another chatbot */}
           <div className="animate-fade-rise mt-6 flex flex-wrap items-center justify-center gap-2 [animation-delay:120ms]">
             <span className="group inline-flex items-center gap-2 rounded-full border border-primary/20 bg-card/80 py-1.5 pl-2 pr-3.5 text-[13px] font-medium text-foreground shadow-sm backdrop-blur transition-all hover:border-primary/40 hover:shadow-md">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[oklch(0.62_0.08_145)] to-[oklch(0.46_0.075_150)] text-primary-foreground">
@@ -148,7 +148,7 @@ function NewChatPage() {
             </span>
           </div>
           <p className="animate-fade-rise mt-5 max-w-md text-[15px] leading-relaxed text-muted-foreground [animation-delay:200ms]">
-            Not just another chatbot — Cortex grows with you, every conversation.
+            Not just another chatbot — Ekonomical grows with you, every conversation.
           </p>
 
           {lastConvo && (
@@ -192,7 +192,7 @@ function NewChatPage() {
         conversationId={draftConvoId ?? undefined}
         onSend={(text, attachments) => startMut.mutate({ text, attachments })}
         isStreaming={startMut.isPending}
-        draftKey="cortex.draft.new"
+        draftKey="ekonomical.draft.new"
         autoFocus
         placeholder="Type a message, or just say hello…"
       />

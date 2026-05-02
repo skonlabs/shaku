@@ -1,4 +1,4 @@
-// PII detection and handling for Cortex.
+// PII detection and handling for Ekonomical.
 //
 // Detection: regex for structured PII (SSN, CC, phone, email, zip) +
 // LLM-based name detection (GPT-4o-mini, <200ms, <$0.001/call).

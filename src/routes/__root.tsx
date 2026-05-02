@@ -52,17 +52,17 @@ export const Route = createRootRouteWithContext<RouterCtx>()({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Cortex — Your personal AI" },
+      { title: "Ekonomical — Your personal AI" },
       {
         name: "description",
         content:
-          "Cortex is your personal AI assistant that remembers, learns, and helps you get things done.",
+          "Ekonomical is your personal AI assistant that remembers, learns, and helps you get things done.",
       },
-      { property: "og:title", content: "Cortex — Your personal AI" },
+      { property: "og:title", content: "Ekonomical — Your personal AI" },
       {
         property: "og:description",
         content:
-          "Cortex is your personal AI assistant that remembers, learns, and helps you get things done.",
+          "Ekonomical is your personal AI assistant that remembers, learns, and helps you get things done.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -83,7 +83,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                var t = localStorage.getItem('cortex.theme') || 'system';
+                var t = localStorage.getItem('ekonomical.theme') || 'system';
                 var d = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
                 if (d) document.documentElement.classList.add('dark');
               } catch(e) {}
