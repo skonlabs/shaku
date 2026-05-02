@@ -13,6 +13,7 @@
  */
 
 import { createServerFn } from "@tanstack/react-start";
+import { logger } from "@/lib/logger";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
@@ -88,12 +89,12 @@ export const getCreditState = createServerFn({ method: "GET" })
         p_user_id: userId,
       });
       if (applyErr) {
-        console.warn("[getCreditState] apply_pending_plan rpc error:", applyErr.message);
+        logger.warn("[getCreditState] apply_pending_plan rpc error:", applyErr.message);
       } else if (applied) {
-        console.log("[getCreditState] apply_pending_plan result:", JSON.stringify(applied));
+        logger.log("[getCreditState] apply_pending_plan result:", JSON.stringify(applied));
       }
     } catch (err) {
-      console.warn("[getCreditState] apply_pending_plan threw:", err);
+      logger.warn("[getCreditState] apply_pending_plan threw:", err);
     }
 
     const { data: raw, error } = await supabase
@@ -120,12 +121,12 @@ export const getCreditState = createServerFn({ method: "GET" })
         .eq("user_id", userId)
         .maybeSingle();
       if (pendErr) {
-        console.warn("[getCreditState] pending_plan read error:", pendErr.message);
+        logger.warn("[getCreditState] pending_plan read error:", pendErr.message);
       }
       pendingPlan = (pend?.pending_plan as string | null) ?? null;
       pendingPlanEffectiveAt = (pend?.pending_plan_effective_at as string | null) ?? null;
     } catch (err) {
-      console.warn("[getCreditState] pending_plan read threw:", err);
+      logger.warn("[getCreditState] pending_plan read threw:", err);
     }
 
     if (error || !data) {
