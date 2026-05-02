@@ -109,12 +109,49 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
 
 async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<string> {
   const XLSX = await import("xlsx");
-  const wb = XLSX.read(bytes, { type: "array" });
+  const wb = XLSX.read(bytes, {
+    type: "array",
+    cellDates: true,    // parse date cells as Date objects → formatted strings
+    cellFormula: false, // use computed cell values, not formula strings
+    cellHTML: false,
+  });
+
   const parts: string[] = [];
+
   for (const sheetName of wb.SheetNames) {
-    const csv = XLSX.utils.sheet_to_csv(wb.Sheets[sheetName]);
-    if (csv.trim()) parts.push(`--- ${sheetName} ---\n${csv.trim()}`);
+    const sheet = wb.Sheets[sheetName];
+    // Chart sheets, macro sheets, and dialog sheets have no cell grid (!ref is absent)
+    if (!sheet || !sheet["!ref"]) continue;
+
+    try {
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+        header: 1,
+        raw: false,
+        defval: "",
+        blankrows: false,
+      }) as string[][];
+
+      if (!rows.length) continue;
+
+      const csv = rows
+        .map((row) =>
+          row
+            .map((cell) => {
+              const s = cell == null ? "" : String(cell);
+              return s.includes(",") || s.includes('"') || s.includes("\n")
+                ? `"${s.replace(/"/g, '""')}"`
+                : s;
+            })
+            .join(","),
+        )
+        .join("\n");
+
+      if (csv.trim()) parts.push(`--- Sheet: ${sheetName} ---\n${csv.trim()}`);
+    } catch {
+      parts.push(`--- Sheet: ${sheetName} ---\n[Sheet could not be read]`);
+    }
   }
+
   return parts.length ? parts.join("\n\n") : `(empty spreadsheet: ${name})`;
 }
 
