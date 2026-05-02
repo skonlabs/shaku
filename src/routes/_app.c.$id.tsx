@@ -166,6 +166,15 @@ function ChatPage() {
             ),
           );
         },
+        onProgress: ({ stage, label }) => {
+          setStreamingMessages((cur) =>
+            cur.map((m) =>
+              m.id === tempAsstId
+                ? { ...m, progress: stage === "complete" ? undefined : label }
+                : m,
+            ),
+          );
+        },
         onDone: async ({ assistantMessageId }) => {
           sendInFlightRef.current = false;
           setStreamingId(null);
