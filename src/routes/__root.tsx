@@ -12,6 +12,7 @@ import { ThemeProvider } from "@/lib/theme-context";
 import { KbHelpProvider, PanelProvider } from "@/lib/ui-context";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
+import { SiteGate } from "@/components/SiteGate";
 
 import appCss from "../styles.css?url";
 
