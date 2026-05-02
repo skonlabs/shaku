@@ -8,6 +8,7 @@ import { streamChat } from "@/lib/streamChat";
 import { showUpgradeToast } from "@/lib/upgrade-toast";
 import { RateLimitBanner } from "@/components/RateLimitBanner";
 import { ActiveTaskBanner } from "@/components/ActiveTaskBanner";
+import { ChatHistoryRail } from "@/components/ChatHistoryRail";
 import { SpaceNudge } from "@/components/SpaceNudge";
 import { ChatContextHeader } from "@/components/ChatContextHeader";
 import { useAuth } from "@/lib/auth-context";
