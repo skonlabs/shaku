@@ -78,7 +78,7 @@ function ChatPage() {
         onDelta: (chunk) => {
           setStreamingMessages((cur) =>
             cur.map((m) =>
-              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false } : m,
+              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false, progress: undefined } : m,
             ),
           );
         },
@@ -153,7 +153,7 @@ function ChatPage() {
         onDelta: (chunk) => {
           setStreamingMessages((cur) =>
             cur.map((m) =>
-              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false } : m,
+              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false, progress: undefined } : m,
             ),
           );
         },
