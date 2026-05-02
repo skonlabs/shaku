@@ -55,6 +55,9 @@ export interface CanonicalRequest {
 
 export interface StreamChunk {
   text: string;
+  // Provider-reported finish reason on the final chunk (e.g. "STOP",
+  // "MAX_TOKENS", "length"). Empty/undefined on intermediate chunks.
+  finishReason?: string;
 }
 
 export interface LLMResponse {
