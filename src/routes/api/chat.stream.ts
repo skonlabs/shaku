@@ -812,6 +812,16 @@ export const Route = createFileRoute("/api/chat/stream")({
                   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
                   const anthropic = new Anthropic({ apiKey });
                   const turnMessages = [...optimizedMessages];
+                  if (resumingFromFallback) {
+                    turnMessages.push({
+                      role: "assistant",
+                      content: trimContinuationTurn(assistantText),
+                    });
+                    turnMessages.push({
+                      role: "user",
+                      content: "Continue from exactly where you stopped. Do not repeat prior content.",
+                    });
+                  }
                   let stopReason: string | null = null;
 
                   // Build cached system blocks: static SYSTEM_PROMPT is always identical
