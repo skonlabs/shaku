@@ -1956,10 +1956,12 @@ function DatasourcesPanel() {
       return;
     }
 
+    uploadCancelRef.current = { cancelled: false };
     setUploading(true);
     setUploadProgress({ done: 0, total: valid.length });
 
     let succeeded = 0;
+    let cancelled = 0;
     const failures: string[] = [];
 
     // Limit concurrency to 3 to avoid overwhelming the browser/server
@@ -1967,6 +1969,10 @@ function DatasourcesPanel() {
     let idx = 0;
     const workers = Array.from({ length: Math.min(CONCURRENCY, valid.length) }, async () => {
       while (idx < valid.length) {
+        if (uploadCancelRef.current.cancelled) {
+          cancelled = valid.length - idx;
+          break;
+        }
         const myIdx = idx++;
         const file = valid[myIdx];
         const result = await uploadSingleFile(file);
@@ -1983,17 +1989,26 @@ function DatasourcesPanel() {
     });
     await Promise.all(workers);
 
+    const wasCancelled = uploadCancelRef.current.cancelled;
     setUploading(false);
     setUploadProgress(null);
     qc.invalidateQueries({ queryKey: ["ds-files"] });
 
-    if (succeeded > 0 && failures.length === 0) {
+    if (wasCancelled) {
+      toast.info(
+        `Upload cancelled. ${succeeded} uploaded, ${cancelled} skipped.`,
+      );
+    } else if (succeeded > 0 && failures.length === 0) {
       toast.success(succeeded === 1 ? "File is processing." : `${succeeded} files are processing.`);
     } else if (succeeded > 0 && failures.length > 0) {
       toast.warning(`${succeeded} uploaded, ${failures.length} failed. ${failures[0]}`);
     } else {
       toast.error(`Upload failed: ${failures[0] ?? "unknown error"}`);
     }
+  }
+
+  function cancelUpload() {
+    uploadCancelRef.current.cancelled = true;
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
