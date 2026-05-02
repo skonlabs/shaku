@@ -627,34 +627,103 @@ function BillingPage() {
               Every credit transaction on your account, newest first.
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto">
-            {allActivityEntries.length === 0 && !loadingMoreActivity ? (
-              <div className="px-2 py-6 text-sm text-muted-foreground">No activity yet.</div>
-            ) : (
-              <ul className="divide-y divide-border/60">
-                {allActivityEntries.map((e) => (
-                  <LedgerRow key={e.id} entry={e} />
-                ))}
-              </ul>
-            )}
-            {loadingMoreActivity && (
-              <div className="py-3 text-center text-xs text-muted-foreground">
-                <Loader2 className="inline h-3.5 w-3.5 animate-spin" /> Loading…
-              </div>
-            )}
-          </div>
-          {allActivityCursor && (
-            <div className="flex justify-center pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => loadAllActivity(allActivityCursor)}
-                disabled={loadingMoreActivity}
-              >
-                Load more
-              </Button>
-            </div>
-          )}
+          {(() => {
+            const isFiltering = filterMonth !== "all" || filterYear !== "all";
+            const filtered = isFiltering
+              ? allActivityEntries.filter((e) => {
+                  const d = new Date(e.created_at);
+                  if (filterYear !== "all" && String(d.getFullYear()) !== filterYear) return false;
+                  if (filterMonth !== "all" && String(d.getMonth()) !== filterMonth) return false;
+                  return true;
+                })
+              : allActivityEntries;
+            const years = Array.from(
+              new Set(allActivityEntries.map((e) => new Date(e.created_at).getFullYear())),
+            ).sort((a, b) => b - a);
+            const monthNames = [
+              "January", "February", "March", "April", "May", "June",
+              "July", "August", "September", "October", "November", "December",
+            ];
+            return (
+              <>
+                <div className="flex flex-wrap items-center gap-2 pb-2">
+                  <span className="text-xs text-muted-foreground">Filter:</span>
+                  <Select value={filterMonth} onValueChange={setFilterMonth}>
+                    <SelectTrigger className="h-8 w-[140px]">
+                      <SelectValue placeholder="Month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All months</SelectItem>
+                      {monthNames.map((m, i) => (
+                        <SelectItem key={i} value={String(i)}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterYear} onValueChange={setFilterYear}>
+                    <SelectTrigger className="h-8 w-[110px]">
+                      <SelectValue placeholder="Year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All years</SelectItem>
+                      {years.map((y) => (
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {isFiltering && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => {
+                          setFilterMonth("all");
+                          setFilterYear("all");
+                        }}
+                      >
+                        Clear
+                      </Button>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {filtered.length} of {allActivityEntries.length} loaded
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="max-h-[55vh] overflow-y-auto">
+                  {filtered.length === 0 && !loadingMoreActivity ? (
+                    <div className="px-2 py-6 text-sm text-muted-foreground">
+                      {isFiltering
+                        ? "No activity in the selected period. Try loading more or adjusting the filter."
+                        : "No activity yet."}
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-border/60">
+                      {filtered.map((e) => (
+                        <LedgerRow key={e.id} entry={e} />
+                      ))}
+                    </ul>
+                  )}
+                  {loadingMoreActivity && (
+                    <div className="py-3 text-center text-xs text-muted-foreground">
+                      <Loader2 className="inline h-3.5 w-3.5 animate-spin" /> Loading…
+                    </div>
+                  )}
+                </div>
+                {allActivityCursor && (
+                  <div className="flex justify-center pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => loadAllActivity(allActivityCursor)}
+                      disabled={loadingMoreActivity}
+                    >
+                      Load more
+                    </Button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
