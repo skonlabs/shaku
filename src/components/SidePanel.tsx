@@ -583,7 +583,7 @@ function ChatItem({
           to="/c/$id"
           params={{ id }}
           onClick={onNavigate}
-          className="flex-1 truncate px-2 py-1.5 text-sm"
+          className="block min-w-0 flex-1 truncate px-2 py-1.5 text-sm"
         >
           {title}
         </Link>
