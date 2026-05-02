@@ -504,8 +504,10 @@ export const getCreditEntriesForConversation = createServerFn({ method: "POST" }
 
     const { data: rows, error } = await supabase
       .from("credits_ledger")
-      .select("id, delta, reason, balance_after, metadata, created_at")
+      .select("id, delta, reason, balance_after, request_id, metadata, created_at")
       .eq("user_id", userId)
+      .eq("reason", "chat")
+      .lt("delta", 0)
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(500);
@@ -515,13 +517,54 @@ export const getCreditEntriesForConversation = createServerFn({ method: "POST" }
     }
     if (error) throw error;
 
-    const filtered = (rows ?? []).filter((r) => {
-      const meta = (r as { metadata: unknown }).metadata;
-      return (
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    type Row = {
+      id: string;
+      delta: number;
+      reason: string;
+      balance_after: number;
+      request_id: string | null;
+      metadata: unknown;
+      created_at: string;
+    };
+    const list = (rows ?? []) as unknown as Row[];
+
+    // Look up message → conversation for entries that don't have conversation_id in metadata
+    const orphanReqIds = list
+      .filter((r) => {
+        const m = r.metadata;
+        const has =
+          typeof m === "object" &&
+          m !== null &&
+          typeof (m as Record<string, unknown>).conversation_id === "string";
+        return !has && r.request_id && UUID_RE.test(r.request_id);
+      })
+      .map((r) => r.request_id as string);
+
+    const messageIdToConvo = new Map<string, string>();
+    if (orphanReqIds.length > 0) {
+      const CHUNK = 200;
+      for (let i = 0; i < orphanReqIds.length; i += CHUNK) {
+        const slice = orphanReqIds.slice(i, i + CHUNK);
+        const { data: msgs } = await supabase
+          .from("messages")
+          .select("id, conversation_id")
+          .in("id", slice);
+        for (const m of (msgs ?? []) as Array<{ id: string; conversation_id: string }>) {
+          messageIdToConvo.set(m.id, m.conversation_id);
+        }
+      }
+    }
+
+    const filtered = list.filter((r) => {
+      const meta = r.metadata;
+      const fromMeta =
         typeof meta === "object" &&
         meta !== null &&
-        (meta as Record<string, unknown>).conversation_id === data.conversation_id
-      );
+        (meta as Record<string, unknown>).conversation_id === data.conversation_id;
+      if (fromMeta) return true;
+      if (r.request_id && messageIdToConvo.get(r.request_id) === data.conversation_id) return true;
+      return false;
     });
 
     return { entries: filtered, setupRequired: false };
