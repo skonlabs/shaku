@@ -12,7 +12,7 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
-  const { user, signInWithPassword, signUpWithPassword, signInWithGoogle } = useAuth();
+  const { user, signInWithPassword, signUpWithPassword } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = React.useState<"signin" | "signup">("signin");
   const [email, setEmail] = React.useState("");
@@ -44,14 +44,7 @@ function LoginPage() {
     }
   };
 
-  const onGoogle = async () => {
-    setSubmitting(true);
-    const { error } = await signInWithGoogle();
-    if (error) {
-      toast.error(error);
-      setSubmitting(false);
-    }
-  };
+
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background px-6">
@@ -78,23 +71,7 @@ function LoginPage() {
               : "Just a few details and you're in. Promise."}
           </p>
 
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-6 h-11 w-full rounded-xl text-sm font-medium"
-            onClick={onGoogle}
-            disabled={submitting}
-          >
-            Continue with Google
-          </Button>
-
-          <div className="my-5 flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted-foreground">or use email</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-
-          <form onSubmit={onSubmit} className="space-y-4">
+          <form onSubmit={onSubmit} className="mt-6 space-y-4">
             {mode === "signup" && (
               <div className="space-y-2">
                 <Label htmlFor="name">What should I call you?</Label>
