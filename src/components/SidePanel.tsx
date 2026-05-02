@@ -412,15 +412,109 @@ function SearchResults({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  storageKey,
+  defaultOpen = false,
+  count,
+}: {
+  title: string;
+  children: React.ReactNode;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  count?: number;
+}) {
+  const [open, setOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined" || !storageKey) return defaultOpen;
+    const stored = window.localStorage.getItem(storageKey);
+    if (stored === "1") return true;
+    if (stored === "0") return false;
+    return defaultOpen;
+  });
+  const toggle = () => {
+    setOpen((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined" && storageKey) {
+        window.localStorage.setItem(storageKey, next ? "1" : "0");
+      }
+      return next;
+    });
+  };
   return (
     <div>
-      <div className="px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-        {title}
-      </div>
-      <div className="space-y-0.5">{children}</div>
+      <button
+        type="button"
+        onClick={toggle}
+        className="group flex w-full items-center gap-1 rounded-md px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+        aria-expanded={open}
+      >
+        {open ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
+        <span>{title}</span>
+        {typeof count === "number" && (
+          <span className="ml-1 text-muted-foreground/70">({count})</span>
+        )}
+      </button>
+      {open && <div className="space-y-0.5">{children}</div>}
     </div>
   );
+}
+
+type ConversationLike = {
+  id: string;
+  title: string | null;
+  pinned: boolean;
+  updated_at?: string | null;
+  created_at?: string | null;
+};
+
+function groupConversationsByDate<T extends ConversationLike>(
+  items: T[],
+): { key: string; title: string; items: T[] }[] {
+  if (items.length === 0) return [];
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const startOfYesterday = startOfToday - dayMs;
+  const startOf7 = startOfToday - 7 * dayMs;
+  const startOf30 = startOfToday - 30 * dayMs;
+  const startOfThisYear = new Date(now.getFullYear(), 0, 1).getTime();
+
+  const buckets = new Map<string, { title: string; order: number; items: T[] }>();
+  const push = (key: string, title: string, order: number, item: T) => {
+    const b = buckets.get(key) ?? { title, order, items: [] };
+    b.items.push(item);
+    buckets.set(key, b);
+  };
+
+  for (const c of items) {
+    const ts = new Date(c.updated_at ?? c.created_at ?? now.toISOString()).getTime();
+    if (ts >= startOfToday) push("today", "Today", 0, c);
+    else if (ts >= startOfYesterday) push("yesterday", "Yesterday", 1, c);
+    else if (ts >= startOf7) push("prev7", "Previous 7 Days", 2, c);
+    else if (ts >= startOf30) push("prev30", "Previous 30 Days", 3, c);
+    else if (ts >= startOfThisYear) {
+      const d = new Date(ts);
+      const key = `m-${d.getFullYear()}-${d.getMonth()}`;
+      const title = d.toLocaleString(undefined, { month: "long" });
+      push(key, title, 4 + (11 - d.getMonth()), c);
+    } else {
+      const d = new Date(ts);
+      const key = `y-${d.getFullYear()}`;
+      push(key, String(d.getFullYear()), 1000 - d.getFullYear(), c);
+    }
+  }
+  return Array.from(buckets.values())
+    .sort((a, b) => a.order - b.order)
+    .map(({ title, items }, i) => ({
+      key: `${title}-${i}`,
+      title,
+      items,
+    }));
 }
 
 function ChatItem({
