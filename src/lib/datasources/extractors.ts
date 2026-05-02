@@ -113,6 +113,8 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
 }
 
 type SpreadsheetCell = { v?: unknown; w?: string; f?: string; c?: { t?: string; a?: string }[] };
+type SpreadsheetRange = { s: { r: number; c: number }; e: { r: number; c: number } };
+type XLSXModule = typeof import("xlsx");
 
 async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<string> {
   const XLSX = await import("xlsx");
@@ -160,6 +162,43 @@ async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<stri
   }
 
   return parts.length > 1 ? parts.join("\n\n") : `(empty spreadsheet: ${name})`;
+}
+
+function findActualUsedRange(XLSX: XLSXModule, sheet: XLSXModule.WorkSheet | undefined): SpreadsheetRange | null {
+  if (!sheet?.["!ref"]) return null;
+  const declared = XLSX.utils.decode_range(sheet["!ref"]);
+  let minR = Number.POSITIVE_INFINITY;
+  let minC = Number.POSITIVE_INFINITY;
+  let maxR = -1;
+  let maxC = -1;
+
+  for (let r = declared.s.r; r <= declared.e.r; r++) {
+    for (let c = declared.s.c; c <= declared.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })] as SpreadsheetCell | undefined;
+      if (!cellHasContent(cell)) continue;
+      minR = Math.min(minR, r);
+      minC = Math.min(minC, c);
+      maxR = Math.max(maxR, r);
+      maxC = Math.max(maxC, c);
+    }
+  }
+
+  return maxR >= 0 ? { s: { r: minR, c: minC }, e: { r: maxR, c: maxC } } : null;
+}
+
+function buildVerticalMergeValueMap(XLSX: XLSXModule, sheet: XLSXModule.WorkSheet): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const merge of sheet["!merges"] ?? []) {
+    if (merge.e.r <= merge.s.r) continue;
+    const anchor = cellToText(sheet[XLSX.utils.encode_cell(merge.s)] as SpreadsheetCell | undefined);
+    if (!anchor) continue;
+    for (let r = merge.s.r; r <= merge.e.r; r++) {
+      for (let c = merge.s.c; c <= merge.e.c; c++) {
+        values.set(XLSX.utils.encode_cell({ r, c }), anchor);
+      }
+    }
+  }
+  return values;
 }
 
 function extractDelimited(bytes: Uint8Array, type: string): string {
