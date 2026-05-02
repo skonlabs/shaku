@@ -65,9 +65,8 @@ export const Route = createFileRoute("/api/datasources/process")({
           .update({ status: "processing" })
           .eq("id", body.file_id);
 
-        // Start processing async — always return 202 immediately regardless of environment.
-        // In CF Workers, use waitUntil so the worker stays alive for the full pipeline.
-        // In dev (non-CF), run the promise without awaiting to avoid blocking the response.
+        // Start processing. Use waitUntil when available; otherwise await so the
+        // work is not cancelled after the response is returned.
         const processPromise = processFileAsync(
           userId,
           body.file_id,
@@ -81,8 +80,7 @@ export const Route = createFileRoute("/api/datasources/process")({
         if (cfCtx?.waitUntil) {
           cfCtx.waitUntil(processPromise);
         } else {
-          // In non-CF environments (dev), still run async but don't block response
-          processPromise.catch(e => console.error("[datasources.process] async error", e));
+          await processPromise;
         }
 
         return new Response(JSON.stringify({ ok: true, status: "processing" }), {
