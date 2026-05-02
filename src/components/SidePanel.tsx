@@ -21,6 +21,11 @@ import {
   ChevronRight,
   ExternalLink,
   File,
+  FileText,
+  FileCode,
+  FileSpreadsheet,
+  FileImage,
+  Folder,
   FolderPlus,
   FolderUp,
   Loader2,
@@ -28,6 +33,8 @@ import {
   Play,
   Upload,
   Sparkles,
+  Eye,
+  ArrowLeft,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
