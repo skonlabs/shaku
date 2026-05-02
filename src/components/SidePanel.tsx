@@ -301,21 +301,29 @@ function ChatsPanel() {
                 ))}
               </Section>
             )}
-            <Section title="Recent">
-              {recent.map((c) => (
-                <ChatItem
-                  key={c.id}
-                  id={c.id}
-                  title={c.title ?? "New chat"}
-                  pinned={false}
-                  activePath={location.pathname}
-                  onPin={(id, pinned) => pinMut.mutate({ id, pinned })}
-                  onDelete={(id) => setPendingDeleteId(id)}
-                  onRename={(id, title) => renameMut.mutate({ id, title })}
-                  onNavigate={() => setActive(null)}
-                />
-              ))}
-            </Section>
+            {groupConversationsByDate(recent).map((group) => (
+              <Section
+                key={group.key}
+                title={group.title}
+                storageKey={`cortex.sidebar.section.${group.key}`}
+                defaultOpen={group.key === "today"}
+                count={group.items.length}
+              >
+                {group.items.map((c) => (
+                  <ChatItem
+                    key={c.id}
+                    id={c.id}
+                    title={c.title ?? "New chat"}
+                    pinned={false}
+                    activePath={location.pathname}
+                    onPin={(id, pinned) => pinMut.mutate({ id, pinned })}
+                    onDelete={(id) => setPendingDeleteId(id)}
+                    onRename={(id, title) => renameMut.mutate({ id, title })}
+                    onNavigate={() => setActive(null)}
+                  />
+                ))}
+              </Section>
+            ))}
           </div>
         )}
       </ScrollArea>
