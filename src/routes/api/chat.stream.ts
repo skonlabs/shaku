@@ -1250,7 +1250,9 @@ export const Route = createFileRoute("/api/chat/stream")({
           // Append a visible truncation note so the user knows the reply was cut.
           let visibleFinal = effectiveVisible;
           if (hitFinalCap) {
-            const note = '\n\n_…response continues — say "continue" for more._';
+            const note = abortedForTime
+              ? '\n\n_…this got long — say "continue" and I\'ll pick up from here._'
+              : '\n\n_…response continues — say "continue" for more._';
             if (!visibleFinal.endsWith(note)) {
               visibleFinal = visibleFinal + note;
               send("delta", { text: note });
