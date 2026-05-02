@@ -428,11 +428,17 @@ export const Route = createFileRoute("/api/chat/stream")({
           .join("\n");
 
         // ---- Model routing ----
+        // Include attachment text in the token estimate so large documents
+        // (spreadsheets, PDFs) push routing toward large-context models
+        // (Gemini 1M+) instead of getting silently truncated to fit a 200k window.
+        const attachmentTextTokens = (body.attachments ?? []).reduce((sum, a) => {
+          return sum + (a.extracted_text ? countTokens(a.extracted_text) : 0);
+        }, 0);
         const estimatedCtxTokens = estimatePreRetrievalTokens(
           countTokens(SYSTEM_PROMPT),
           countTokens(preloadedHistory.map((m) => m.content).join(" ")) +
             preloadedHistory.length * 4,
-          countTokens(currentUserMessage),
+          countTokens(currentUserMessage) + attachmentTextTokens,
         );
 
         // Momentum: avg complexity of last 3 user messages (message length as proxy).
