@@ -39,12 +39,12 @@ export type PanelId =
   | "connectors"
   | "settings"
   | "account"
-  | "document"
-  | "memory";
+  | "document";
 //
-// Removed: "context" and "task". Per-message context now renders inline
-// (BehindAnswerChip) and active task appears as a banner above the chat
-// (ActiveTaskBanner).
+// Removed: "memory" panel — consolidated into the /my-profile (AI Profile)
+// page so memories and persona live in one place.
+// Removed: "context" and "task" — now inline (BehindAnswerChip) and
+// banner (ActiveTaskBanner) respectively.
 const PanelContext = React.createContext<PanelContextValue | null>(null);
 
 export function PanelProvider({ children }: { children: React.ReactNode }) {

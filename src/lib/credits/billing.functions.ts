@@ -9,6 +9,7 @@
  */
 
 import { createServerFn } from "@tanstack/react-start";
+import { logger } from "@/lib/logger";
 import { getRequestHeader } from "@tanstack/react-start/server";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
@@ -309,7 +310,7 @@ export const schedulePlanChange = createServerFn({ method: "POST" })
         });
         stripeCancellationUpdated = true;
       } catch (err) {
-        console.warn("[schedulePlanChange] cancel_at_period_end failed after plan change:", err);
+        logger.warn("[schedulePlanChange] cancel_at_period_end failed after plan change:", err);
       }
     }
 
@@ -358,7 +359,7 @@ export const cancelPendingPlanChange = createServerFn({ method: "POST" })
           cancel_at_period_end: false,
         });
       } catch (err) {
-        console.warn("[cancelPendingPlanChange] reactivate failed:", err);
+        logger.warn("[cancelPendingPlanChange] reactivate failed:", err);
       }
     }
 

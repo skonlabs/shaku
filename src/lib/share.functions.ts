@@ -2,6 +2,7 @@
 // Public page at /share/$shareId requires no auth.
 
 import { createServerFn } from "@tanstack/react-start";
+import { logger } from "@/lib/logger";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
