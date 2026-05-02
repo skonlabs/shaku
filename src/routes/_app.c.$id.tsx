@@ -293,7 +293,9 @@ function ChatPage() {
 
   return (
     <div className="flex h-full w-full">
-      <ChatHistoryRail />
+      <div className="hidden md:contents">
+        <ChatHistoryRail />
+      </div>
       <div
         className="flex h-full min-w-0 flex-1 flex-col transition-opacity duration-150"
         style={{ opacity: showingStale ? 0.6 : 1 }}
