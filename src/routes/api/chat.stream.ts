@@ -846,7 +846,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                     const claudeStream = anthropic.messages.stream(streamArgs);
 
                     let turnText = "";
-                    const isContinuation = turn > 0;
+                    const isContinuation = turn > 0 || resumingFromFallback;
                     const priorTail = isContinuation ? assistantText.slice(-OVERLAP_CHARS) : "";
                     let dedupResolved = !isContinuation;
                     let dedupBuffer = "";
@@ -946,7 +946,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                   for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
                     let turnText = "";
                     let finishedFull = true;
-                    const isContinuation = turn > 0;
+                    const isContinuation = turn > 0 || resumingFromFallback;
                     const priorTail = isContinuation ? assistantText.slice(-OVERLAP_CHARS) : "";
                     let dedupResolved = !isContinuation;
                     let dedupBuffer = "";
@@ -1048,7 +1048,7 @@ export const Route = createFileRoute("/api/chat/stream")({
 
                     let turnText = "";
                     let finishReason: string | null = null;
-                    const isContinuation = turn > 0;
+                    const isContinuation = turn > 0 || resumingFromFallback;
                     const priorTail = isContinuation ? assistantText.slice(-OVERLAP_CHARS) : "";
                     let dedupResolved = !isContinuation;
                     let dedupBuffer = "";
