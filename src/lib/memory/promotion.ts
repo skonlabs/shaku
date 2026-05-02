@@ -6,7 +6,22 @@ import { embed } from "@/lib/embeddings";
 import { extractFullMemory } from "./classifier";
 import { detectContradictions } from "./contradiction";
 import { upsertTask } from "./tasks";
+import { updateUkmFromMemory } from "@/lib/knowledge/ukm";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+const IMPORTANCE_BY_TYPE: Record<string, number> = {
+  correction:      0.9,
+  anti_preference: 0.7,
+  long_term:       0.8,
+  response_style:  0.7,
+  preference:      0.6,
+  behavioral:      0.6,
+  project:         0.6,
+  semantic:        0.5,
+  episodic:        0.5,
+  document:        0.5,
+  short_term:      0.3,
+};
 
 export interface PromotionResult {
   created: string[]; // memory IDs created
@@ -178,7 +193,7 @@ async function saveMemory(
       content: candidate.content,
       source_conversation_id: conversationId,
       confidence: candidate.confidence,
-      importance: 0.5,
+      importance: IMPORTANCE_BY_TYPE[candidate.type] ?? 0.5,
       embedding: embedding ? `[${embedding.join(",")}]` : null,
       search_fallback: !embedding,
     })
@@ -186,6 +201,13 @@ async function saveMemory(
     .single();
 
   if (error || !data) return null;
+
+  // Update the user knowledge model with the correct memory type so the right
+  // provenance level (user_asserted for corrections/long_term, inferred for others)
+  // is applied in the UKM diff. This replaces the raw "episodic" call in chat.stream.ts.
+  updateUkmFromMemory(userId, candidate.content, candidate.type, supabase).catch((e) => {
+    console.error("[promotion] UKM update failed", e);
+  });
 
   // Supersede all contradicting memories (corrections supersede regardless of confidence).
   for (const contra of contradictions) {

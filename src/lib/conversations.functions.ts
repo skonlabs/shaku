@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { checkRateLimit } from "@/lib/utils/rate-limit";
+import { storeFeedbackMemory } from "@/lib/memory/behavioral-learning";
 
 export const listConversations = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -197,7 +198,7 @@ export const setMessageFeedback = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: msg } = await supabase
       .from("messages")
-      .select("id, conversation_id, metadata, conversations!inner(user_id)")
+      .select("id, role, content, conversation_id, metadata, conversations!inner(user_id)")
       .eq("id", data.id)
       .single();
     // @ts-expect-error — Supabase type inference doesn't resolve nested join types yet
@@ -221,6 +222,21 @@ export const setMessageFeedback = createServerFn({ method: "POST" })
       }),
     ]);
     if (updateResult.error) throw new Error("Couldn't save feedback.");
+
+    // Thumbs-down: immediately create an anti_preference memory so the behavioral
+    // learning loop is closed. storeFeedbackMemory skips LLM analysis to keep
+    // the feedback handler fast — deeper mismatch analysis runs via the memory job.
+    if (data.rating === "down" && msg.role === "assistant") {
+      storeFeedbackMemory(
+        userId,
+        msg.conversation_id,
+        msg.content as string,
+        data.reasons ?? [],
+        data.note ?? null,
+        supabase,
+      ).catch((e) => console.error("[setMessageFeedback] storeFeedbackMemory failed", e));
+    }
+
     return { success: true };
   });
 

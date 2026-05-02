@@ -208,6 +208,23 @@ async function createCorrectionMemory(
   });
 }
 
+// Immediate anti-preference memory from thumbs-down feedback.
+// Unlike processNegativeFeedback, this skips the LLM mismatch analysis so it
+// is safe to call inline from the feedback handler without adding latency.
+export async function storeFeedbackMemory(
+  userId: string,
+  conversationId: string,
+  assistantContent: string,
+  reasons: string[],
+  note: string | null,
+  supabase: SupabaseClient,
+): Promise<void> {
+  const reasonSuffix = reasons.length ? ` Reasons: ${reasons.join(", ")}.` : "";
+  const noteSuffix = note ? ` Note: ${note.slice(0, 200)}.` : "";
+  const content = `User rated this response negatively: "${assistantContent.slice(0, 200)}".${reasonSuffix}${noteSuffix}`;
+  await createAntiPreferenceMemory(userId, conversationId, content, supabase);
+}
+
 // Positive feedback: record which response style was liked for routing adjustment
 export async function processPositiveFeedback(
   userId: string,

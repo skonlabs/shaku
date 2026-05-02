@@ -61,7 +61,7 @@ export async function upsertTask(
       p_current_step: update.currentStep ?? null,
       p_completed_steps: update.completedSteps ?? null,
       p_open_questions: update.openQuestions ?? null,
-      p_decisions: update.decisions ? JSON.stringify(update.decisions) : null,
+      p_decisions: update.decisions ?? null,
       p_next_actions: update.nextActions ?? null,
     });
     if (error) return null;

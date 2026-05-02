@@ -114,8 +114,8 @@ extract structured task progress updates.
 Return ONLY valid JSON matching this schema exactly:
 ${EXTRACTION_SCHEMA}
 
-User: ${userMessage.slice(0, 1000)}
-Assistant: ${assistantResponse.slice(0, 600)}`;
+User: ${userMessage.slice(0, 800)}
+Assistant: ${assistantResponse.slice(0, 1500)}`;
 
     let raw = "";
     if (useAnthropic) {

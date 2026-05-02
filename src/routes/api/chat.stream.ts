@@ -35,7 +35,6 @@ import {
   maybeRegenerateSummary,
 } from "@/lib/knowledge/conversation-state";
 import type { ToneState } from "@/lib/knowledge/conversation-state";
-import { updateUkmFromMemory } from "@/lib/knowledge/ukm";
 import { redactText } from "@/lib/utils/pii";
 import { countTokens } from "@/lib/tokens";
 import { InputCleaner } from "@/lib/token-optimization/input-cleaner";
@@ -1514,12 +1513,9 @@ export const Route = createFileRoute("/api/chat/stream")({
                     // Enqueue a durable memory job instead of running promotion inline
                     // (issue #1). The job persists with retries so memory extraction
                     // survives Worker restarts, timeout failures, and LLM API errors.
+                    // UKM is now updated inside promotion.ts with the correct per-memory
+                    // type, so provenance (user_asserted vs inferred) is set accurately.
                     await enqueueMemoryJob(userId, convo.id, projectId, supabase);
-
-                    // Use rawUserMessage for UKM so preference/style signals in the
-                    // original message are not lost after InputCleaner runs (issue #7).
-                    const ukmContext = `User: ${rawUserMessage.slice(0, 500)}\nAssistant: ${visible.slice(0, 1500)}`;
-                    await updateUkmFromMemory(userId, ukmContext, "episodic", supabase);
                   }
 
                   // Drain any backlogged jobs from previous requests while we have the
