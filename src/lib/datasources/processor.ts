@@ -98,7 +98,6 @@ export async function processFile(
     },
     content_hash: contentHash,
     embedding: embeddings?.[i]?.length ? `[${embeddings[i].join(",")}]` : null,
-    needs_embedding: !embeddings, // flag for retry when embedBatch failed
     expires_at: expiresAt,
   }));
 
