@@ -1107,6 +1107,11 @@ export const Route = createFileRoute("/api/chat/stream")({
                       hitFinalCap = true;
                       break;
                     }
+                    if (Date.now() >= turnDeadline) {
+                      hitFinalCap = true;
+                      abortedForTime = true;
+                      break;
+                    }
                     if (needsLongOutput) {
                       currentPass += 1;
                       emitProgress(`Continuing analysis of your ${docNoun}… (pass ${currentPass})`);
