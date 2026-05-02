@@ -10,7 +10,6 @@ import {
   Plus,
   Leaf,
   Receipt,
-  Brain,
 } from "lucide-react";
 import { usePanel, type PanelId } from "@/lib/ui-context";
 import { cn } from "@/lib/utils";
@@ -132,24 +131,7 @@ export function AppSidebar() {
         </div>
 
         <div className="flex flex-col items-center gap-1.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Link
-                to="/my-profile"
-                aria-label="My AI profile"
-                className={cn(
-                  "relative flex h-11 w-11 items-center justify-center rounded-2xl text-sidebar-foreground/65 transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  location.pathname === "/my-profile" && "bg-sidebar-accent text-primary",
-                )}
-              >
-                {location.pathname === "/my-profile" && (
-                  <span className="absolute -left-[14px] top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
-                )}
-                <Brain className="h-[19px] w-[19px]" />
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent side="right">My AI profile</TooltipContent>
-          </Tooltip>
+          {/* AI Profile lives in the top item list now (Sparkles icon). */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Link
