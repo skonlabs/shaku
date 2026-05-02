@@ -182,6 +182,12 @@ export async function streamChat(
                   cb.onCitations?.(parsed.sources);
                 }
               } else if (event === "progress") {
+                // Progress events mean the server has committed to this turn —
+                // long-document processing has begun and may be running for
+                // minutes. Treat the stream as in-flight so a transient
+                // disconnect surfaces as `onInterrupted` rather than triggering
+                // a full retry that would discard the server's accumulated work.
+                receivedAnyToken = true;
                 cb.onProgress?.({
                   stage: parsed.stage,
                   label: parsed.label,
