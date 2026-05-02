@@ -240,110 +240,107 @@ async function extractDocx(bytes: Uint8Array): Promise<string> {
   return result.value.trim();
 }
 
+type XLSXMod = typeof import("xlsx");
+type SpreadsheetCell = { v?: unknown; w?: string; t?: string };
+type SpreadsheetMerge = { s: { r: number; c: number }; e: { r: number; c: number } };
+
 async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<string> {
   const XLSX = await import("xlsx");
-  const wb = XLSX.read(bytes, {
-    type: "array",
-    cellDates: true,
-    cellFormula: true,
-    cellNF: true,
-    sheetStubs: true,
-  });
+  // cellDates:true converts serial numbers to JS Date objects for clean ISO formatting.
+  const wb = XLSX.read(bytes, { type: "array", cellDates: true });
 
-  const parts: string[] = [
-    `--- Workbook: ${name} | Sheets: ${wb.SheetNames.length} ---\n${wb.SheetNames.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+  if (!wb.SheetNames.length) return `(empty workbook: ${name})`;
+
+  const sections: string[] = [
+    `Workbook: ${name}  |  ${wb.SheetNames.length} sheet(s): ${wb.SheetNames.join(", ")}`,
   ];
 
   for (const sheetName of wb.SheetNames) {
     const sheet = wb.Sheets[sheetName];
-    // Chart/macro sheets have no cell grid — skip gracefully
+    // !ref is absent on chart sheets, macro sheets, and dialog sheets
     if (!sheet || !sheet["!ref"]) {
-      parts.push(`--- Sheet: ${sheetName} ---\n(empty)`);
+      sections.push(`\n=== ${sheetName} ===\n(no data grid)`);
       continue;
     }
-
     try {
-      // Build full merge map — propagates anchor value to all cells in every merge region.
-      // sheet_to_json fills non-anchor merge cells with defval; iterating cell-by-cell with
-      // this map is the only way to get accurate data for horizontal and vertical merges.
-      type MergeRange = { s: { r: number; c: number }; e: { r: number; c: number } };
-      const mergeValues = new Map<string, string>();
-      for (const merge of ((sheet["!merges"] as MergeRange[]) ?? [])) {
-        const anchorKey = XLSX.utils.encode_cell(merge.s);
-        const anchorCell = sheet[anchorKey] as { v?: unknown; w?: string } | undefined;
-        const raw = anchorCell?.w ?? anchorCell?.v;
-        if (raw == null) continue;
-        const anchorStr =
-          raw instanceof Date
-            ? raw.toISOString().slice(0, 10)
-            : String(raw).replace(/[\t\r\n]+/g, " ").trim();
-        for (let r = merge.s.r; r <= merge.e.r; r++) {
-          for (let c = merge.s.c; c <= merge.e.c; c++) {
-            mergeValues.set(XLSX.utils.encode_cell({ r, c }), anchorStr);
-          }
-        }
-      }
-
-      // Find actual used range from cell keys — !ref can be stale and miss cells
-      let minR = Infinity, minC = Infinity, maxR = -1, maxC = -1;
-      for (const key of Object.keys(sheet)) {
-        if (key.startsWith("!")) continue;
-        const { r, c } = XLSX.utils.decode_cell(key);
-        minR = Math.min(minR, r);
-        minC = Math.min(minC, c);
-        maxR = Math.max(maxR, r);
-        maxC = Math.max(maxC, c);
-      }
-      // Also extend bounds to cover full merge regions
-      for (const merge of ((sheet["!merges"] as MergeRange[]) ?? [])) {
-        maxR = Math.max(maxR, merge.e.r);
-        maxC = Math.max(maxC, merge.e.c);
-      }
-
-      if (maxR < 0) {
-        parts.push(`--- Sheet: ${sheetName} ---\n(empty)`);
-        continue;
-      }
-
-      const lines: string[] = [];
-      for (let r = minR; r <= maxR; r++) {
-        const cells: string[] = [];
-        let hasValue = false;
-        for (let c = minC; c <= maxC; c++) {
-          const address = XLSX.utils.encode_cell({ r, c });
-          const cell = sheet[address] as { v?: unknown; w?: string } | undefined;
-          let value = "";
-          if (cell) {
-            const cellRaw = cell.w ?? cell.v;
-            if (cellRaw != null) {
-              value =
-                cellRaw instanceof Date
-                  ? cellRaw.toISOString().slice(0, 10)
-                  : String(cellRaw).replace(/[\t\r\n]+/g, " ").trim();
-            }
-          }
-          if (!value) value = mergeValues.get(address) ?? "";
-          if (value) hasValue = true;
-          cells.push(value);
-        }
-        if (hasValue) lines.push(cells.join("\t"));
-      }
-
-      if (lines.length) {
-        parts.push(
-          `--- Sheet: ${sheetName} | Rows: ${lines.length} | Columns: ${maxC - minC + 1} ---\n${lines.join("\n")}`,
-        );
-      } else {
-        parts.push(`--- Sheet: ${sheetName} ---\n(empty)`);
-      }
+      sections.push(spreadsheetSheetToText(XLSX, sheet, sheetName));
     } catch (e) {
-      parts.push(
-        `--- Sheet: ${sheetName} ---\n[Sheet could not be read: ${e instanceof Error ? e.message : "unknown error"}]`,
+      sections.push(
+        `\n=== ${sheetName} ===\n[error: ${e instanceof Error ? e.message : String(e)}]`,
       );
     }
   }
 
-  return parts.length > 1 ? parts.join("\n\n") : `(empty spreadsheet: ${name})`;
+  return sections.join("\n");
+}
+
+function spreadsheetSheetToText(
+  XLSX: XLSXMod,
+  sheet: Record<string, unknown>,
+  sheetName: string,
+): string {
+  const merges: SpreadsheetMerge[] = (sheet["!merges"] as SpreadsheetMerge[]) ?? [];
+
+  // Step 1: bounding box — start from !ref, then extend via cell key scan + merge extents.
+  // Never use content-based filtering: silently drops empty-but-valid columns and rows.
+  const declared = XLSX.utils.decode_range(sheet["!ref"] as string);
+  let minR = declared.s.r, minC = declared.s.c;
+  let maxR = declared.e.r, maxC = declared.e.c;
+
+  for (const key of Object.keys(sheet)) {
+    if (key.startsWith("!")) continue;
+    const { r, c } = XLSX.utils.decode_cell(key);
+    if (r < minR) minR = r;  if (c < minC) minC = c;
+    if (r > maxR) maxR = r;  if (c > maxC) maxC = c;
+  }
+  for (const m of merges) {
+    if (m.s.r < minR) minR = m.s.r;  if (m.s.c < minC) minC = m.s.c;
+    if (m.e.r > maxR) maxR = m.e.r;  if (m.e.c > maxC) maxC = m.e.c;
+  }
+
+  // Step 2: merge value map — every address in every region gets the anchor's display value.
+  // Empty-anchor merges still populate with "" so non-anchor cells aren't mistaken for data.
+  const mergeMap = new Map<string, string>();
+  for (const m of merges) {
+    const anchorVal = spreadsheetCellStr(sheet[XLSX.utils.encode_cell(m.s)] as SpreadsheetCell | undefined);
+    for (let r = m.s.r; r <= m.e.r; r++) {
+      for (let c = m.s.c; c <= m.e.c; c++) {
+        mergeMap.set(XLSX.utils.encode_cell({ r, c }), anchorVal);
+      }
+    }
+  }
+
+  // Step 3: read every cell in the full bounding box
+  const rows: string[] = [];
+  for (let r = minR; r <= maxR; r++) {
+    const cells: string[] = [];
+    let rowHasData = false;
+    for (let c = minC; c <= maxC; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      let val = spreadsheetCellStr(sheet[addr] as SpreadsheetCell | undefined);
+      if (!val && mergeMap.has(addr)) val = mergeMap.get(addr)!;
+      if (val) rowHasData = true;
+      cells.push(val);
+    }
+    // Only skip rows where every cell is blank
+    if (rowHasData) rows.push(cells.join("\t"));
+  }
+
+  return `\n=== ${sheetName} | ${rows.length} rows × ${maxC - minC + 1} cols ===\n${rows.join("\n") || "(empty)"}`;
+}
+
+function spreadsheetCellStr(cell: SpreadsheetCell | undefined): string {
+  if (!cell) return "";
+  // w = the formatted display string exactly as Excel renders it — always prefer
+  if (cell.w != null) {
+    const s = String(cell.w).replace(/[\t\r\n]+/g, " ").trim();
+    if (s) return s;
+  }
+  const v = cell.v;
+  if (v === undefined || v === null || v === "") return "";
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
+  return String(v).replace(/[\t\r\n]+/g, " ").trim();
 }
 
 async function transcribeAudio(bytes: Uint8Array, name: string, mime: string): Promise<string> {
