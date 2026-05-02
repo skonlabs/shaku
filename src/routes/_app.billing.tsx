@@ -9,16 +9,28 @@ import {
   ArrowRight,
   Loader2,
   AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
   getCreditState,
   getCreditLedger,
   getCreditSummary,
+  getCreditByConversation,
+  getCreditEntriesForConversation,
   listPlans,
 } from "@/lib/credits/credits.functions";
 import {
