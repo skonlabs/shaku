@@ -12,7 +12,7 @@ import {
 } from "@/lib/conversations.functions";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/_app/")({
+export const Route = createFileRoute("/_app/app")({
   component: NewChatPage,
 });
 
