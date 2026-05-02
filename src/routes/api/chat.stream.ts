@@ -464,12 +464,18 @@ export const Route = createFileRoute("/api/chat/stream")({
         const reasoningDepth = deriveReasoningDepth(intentResult);
         const precisionRequired = derivePrecisionRequired(intentResult);
         const contextType = inferContextType(currentUserMessage, intentResult.domain, finalChunks);
-        const contextCriticality = inferContextCriticality(
+        let contextCriticality = inferContextCriticality(
           assembled.memoriesUsed,
           assembled.activeTask,
           finalChunks,
           intent,
         );
+        // When the user attaches substantial document text, faithfully using
+        // every sheet/page is critical — bias routing toward high-fidelity,
+        // large-context models.
+        if (attachmentTextTokens > 5_000) {
+          contextCriticality = Math.min(1, Math.max(contextCriticality, 0.85));
+        }
         const routingTaskType = intentToRoutingTaskType(intent, intentResult.domain);
 
         const routingDecision = route({
