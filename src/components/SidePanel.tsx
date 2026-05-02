@@ -285,7 +285,12 @@ function ChatsPanel() {
         ) : (
           <div className="space-y-4 pb-4">
             {pinned.length > 0 && (
-              <Section title="Pinned">
+              <Section
+                title="Pinned"
+                storageKey="cortex.sidebar.section.pinned"
+                defaultOpen
+                count={pinned.length}
+              >
                 {pinned.map((c) => (
                   <ChatItem
                     key={c.id}
