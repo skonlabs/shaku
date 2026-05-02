@@ -1586,6 +1586,12 @@ function messageContentToText(content: unknown): string {
     .join("\n");
 }
 
+function trimContinuationTurn(text: string): string {
+  const MAX_CONTINUATION_ECHO_CHARS = 8_000;
+  if (text.length <= MAX_CONTINUATION_ECHO_CHARS) return text;
+  return `[Previous response segment omitted for context size. Continue after this exact tail:]\n${text.slice(-MAX_CONTINUATION_ECHO_CHARS)}`;
+}
+
 function stripOverlapPrefix(buffer: string, priorTail: string): string | null {
   if (!priorTail) return buffer;
   const MIN_OVERLAP = 24;
