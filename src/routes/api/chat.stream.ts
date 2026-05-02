@@ -674,6 +674,78 @@ export const Route = createFileRoute("/api/chat/stream")({
             (model) => modelHasRuntimeKey(model, runtimeKeys),
           );
 
+          // ---- Long-output (deferred) mode state ----
+          // Hoisted out of the per-model retry loop so a provider error mid-way
+          // doesn't discard buffered work; the next fallback model continues into
+          // the same buffer. Also hoisted: heartbeat timer + global wall-clock guard.
+          //
+          // Trigger covers three signals — large attachments, long pasted text in
+          // the current message, or a heavy retrieval payload — so non-attachment
+          // long-form work also gets the comprehensive cap + auto-continue path.
+          const pastedUserChars = currentUserMessage.length;
+          const retrievalChars = (assembled.retrievalContext ?? "").length;
+          const needsLongOutput =
+            attachmentTextTokens > 5_000 ||
+            pastedUserChars > 20_000 ||
+            retrievalChars > 40_000;
+          const attachedDocCount = (body.attachments ?? []).filter(
+            (a) => a.extracted_text?.trim(),
+          ).length;
+          const docNoun = attachedDocCount > 1 ? "documents" : "document";
+          let deferredBuffer = "";
+          let currentPass = 1;
+          let lastProgressAt = 0;
+          // Hard wall-clock budget: prevents pathological multi-pass loops from
+          // running until the Worker is killed. ~4 min leaves headroom under
+          // typical edge runtime limits while supporting genuinely long jobs.
+          const MAX_TURN_DURATION_MS = 4 * 60 * 1000;
+          const turnDeadline = startTimeMs + MAX_TURN_DURATION_MS;
+          let abortedForTime = false;
+
+          const emitProgress = (label: string, stage = "processing") => {
+            send("progress", {
+              stage,
+              label,
+              pass: currentPass,
+              chars: deferredBuffer.length,
+            });
+          };
+          const sendDelta = (text: string) => {
+            if (!text) return;
+            if (needsLongOutput) {
+              deferredBuffer += text;
+              const now = Date.now();
+              if (now - lastProgressAt > 1500) {
+                lastProgressAt = now;
+                const kchars = Math.floor(deferredBuffer.length / 1000);
+                emitProgress(
+                  `Working through your ${docNoun}… (pass ${currentPass}, ~${kchars}k chars written)`,
+                );
+              }
+            } else {
+              send("delta", { text });
+            }
+          };
+
+          // Independent heartbeat: keeps the SSE connection warm and the user
+          // informed even when the upstream provider stalls (long TTFB on a
+          // continuation, slow tool call). Without this, edge proxies can idle-
+          // close the stream after ~30s of silence.
+          let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+          if (needsLongOutput) {
+            heartbeatTimer = setInterval(() => {
+              const now = Date.now();
+              if (now - lastProgressAt < 1500) return;
+              lastProgressAt = now;
+              const kchars = Math.floor(deferredBuffer.length / 1000);
+              emitProgress(
+                deferredBuffer.length > 0
+                  ? `Still working… (pass ${currentPass}, ~${kchars}k chars written)`
+                  : `Still reading your ${docNoun}…`,
+              );
+            }, 8_000);
+          }
+
           if (runnableModels.length === 0) {
             console.error("[chat.stream] no runnable models", {
               hasAnthropicKey: Boolean(runtimeKeys.anthropic),
@@ -687,84 +759,69 @@ export const Route = createFileRoute("/api/chat/stream")({
               "I can’t connect to the AI service right now. Please try again in a moment.";
             send("delta", { text: assistantText });
           } else {
+            let modelAttemptIdx = 0;
             for (const candidateModel of runnableModels) {
               activeModel = candidateModel;
-              assistantText = "";
               hitFinalCap = false;
+              // In deferred (long-output) mode, KEEP assistantText/deferredBuffer
+              // across fallback attempts so partial work isn't lost when one
+              // provider fails mid-generation. In normal streaming mode, reset
+              // because the next provider produces a fresh visible response.
+              if (!needsLongOutput) {
+                assistantText = "";
+              }
 
               try {
                 // Dynamic output tokens: use task-appropriate cap from BudgetManager spec.
                 // Auto-continue handles longer responses so we don't waste context budget.
                 const taskType = intentToTaskType(intent, intentResult.domain);
                 const taskCap = TASK_OUTPUT_TOKENS[taskType] ?? 800;
-                // When the user attaches substantial document text, they typically
-                // expect comprehensive output (e.g. "process every row/sheet/page").
-                // Lift the per-turn cap to the model's full output capacity so we
-                // don't truncate at ~800 tokens mid-list.
-                const needsLongOutput = attachmentTextTokens > 5_000;
+                // When comprehensive processing is needed, lift the per-turn cap
+                // to the model's full output capacity so we don't truncate at
+                // ~800 tokens mid-list, and enable auto-continue for all providers.
                 const PER_TURN_MAX_TOKENS = needsLongOutput
                   ? candidateModel.maxOutputTokens
                   : Math.min(candidateModel.maxOutputTokens, taskCap);
-                // Allow auto-continue for all providers when long output is needed,
-                // so Gemini/OpenAI can also keep generating past their first cap.
                 const MAX_AUTO_CONTINUES = needsLongOutput
                   ? 24
                   : candidateModel.provider === "anthropic"
                   ? 3
                   : 0;
 
-                // Deferred-output mode: when comprehensive processing is needed
-                // (large attachments → many auto-continues), don't stream
-                // intermediate chunks to the user. Buffer the full response
-                // and emit human-friendly progress events instead, then send
-                // the complete consolidated answer in one shot at the end.
-                let deferredBuffer = "";
-                let lastProgressAt = 0;
-                let currentPass = 1;
-                const attachedDocCount = (body.attachments ?? []).filter(
-                  (a) => a.extracted_text?.trim(),
-                ).length;
-                const docNoun = attachedDocCount > 1 ? "documents" : "document";
-                const emitProgress = (label: string, stage = "processing") => {
-                  send("progress", {
-                    stage,
-                    label,
-                    pass: currentPass,
-                    chars: deferredBuffer.length,
-                  });
-                };
-                const sendDelta = (text: string) => {
-                  if (!text) return;
-                  if (needsLongOutput) {
-                    deferredBuffer += text;
-                    // Heartbeat ~every 1.5s with a varied, non-repetitive label
-                    // so the user can see we're still working through their file.
-                    const now = Date.now();
-                    if (now - lastProgressAt > 1500) {
-                      lastProgressAt = now;
-                      const kchars = Math.floor(deferredBuffer.length / 1000);
-                      emitProgress(
-                        `Working through your ${docNoun}… (pass ${currentPass}, ~${kchars}k chars analyzed)`,
-                      );
-                    }
-                  } else {
-                    send("delta", { text });
-                  }
-                };
-                if (needsLongOutput) {
+                if (needsLongOutput && modelAttemptIdx === 0) {
                   emitProgress(
                     attachedDocCount > 0
                       ? `Reading your ${docNoun} end-to-end…`
                       : "Preparing a thorough answer…",
                     "started",
                   );
+                } else if (needsLongOutput && modelAttemptIdx > 0) {
+                  emitProgress(
+                    `Switched to a backup model — picking up where we left off…`,
+                  );
                 }
+                modelAttemptIdx += 1;
+                // Treat the first turn as a continuation when we're resuming from
+                // a fallback in deferred mode — so overlap-dedup activates against
+                // the work the previous model already produced. Without this, the
+                // new model re-emits content already in deferredBuffer.
+                const resumingFromFallback = needsLongOutput && assistantText.length > 0;
 
                 if (candidateModel.provider === "anthropic") {
                   const apiKey = runtimeKeys.anthropic;
                   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
                   const anthropic = new Anthropic({ apiKey });
                   const turnMessages = [...optimizedMessages];
+                  if (resumingFromFallback) {
+                    turnMessages.push({
+                      role: "assistant",
+                      content: trimContinuationTurn(assistantText),
+                    });
+                    turnMessages.push({
+                      role: "user",
+                      content: "Continue from exactly where you stopped. Do not repeat prior content.",
+                    });
+                  }
                   let stopReason: string | null = null;
 
                   // Build cached system blocks: static SYSTEM_PROMPT is always identical
@@ -799,7 +856,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                     const claudeStream = anthropic.messages.stream(streamArgs);
 
                     let turnText = "";
-                    const isContinuation = turn > 0;
+                    const isContinuation = turn > 0 || resumingFromFallback;
                     const priorTail = isContinuation ? assistantText.slice(-OVERLAP_CHARS) : "";
                     let dedupResolved = !isContinuation;
                     let dedupBuffer = "";
@@ -869,6 +926,11 @@ export const Route = createFileRoute("/api/chat/stream")({
                       hitFinalCap = true;
                       break;
                     }
+                    if (Date.now() >= turnDeadline) {
+                      hitFinalCap = true;
+                      abortedForTime = true;
+                      break;
+                    }
 
                     // Issue #3: don't ask the model to repeat prior content verbatim —
                     // that risks duplication and drift. A simple instruction to continue
@@ -891,27 +953,71 @@ export const Route = createFileRoute("/api/chat/stream")({
                   const gemini = new GeminiProvider(apiKey);
 
                   const turnMessages = [...optimizedMessages];
+                  if (resumingFromFallback) {
+                    turnMessages.push({
+                      role: "assistant",
+                      content: trimContinuationTurn(assistantText),
+                    });
+                    turnMessages.push({
+                      role: "user",
+                      content: "Continue from exactly where you stopped. Do not repeat prior content.",
+                    });
+                  }
                   for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
                     let turnText = "";
                     let finishedFull = true;
+                    const isContinuation = turn > 0 || resumingFromFallback;
+                    const priorTail = isContinuation ? assistantText.slice(-OVERLAP_CHARS) : "";
+                    let dedupResolved = !isContinuation;
+                    let dedupBuffer = "";
+                    const DEDUP_SCAN_BUDGET = OVERLAP_CHARS * 3;
                     for await (const chunk of gemini.generate({
                       model: candidateModel,
                       messages: turnMessages,
                       systemPrompt: optimizedSystemPrompt,
                       maxTokens: PER_TURN_MAX_TOKENS,
                     })) {
-                      const { text: safeChunk } = redactOutputPii(chunk.text, allowedPiiValues);
+                      const raw = chunk.text;
+                      turnText += raw;
+                      let emit = raw;
+                      if (!dedupResolved) {
+                        dedupBuffer += raw;
+                        const stripped = stripOverlapPrefix(dedupBuffer, priorTail);
+                        if (stripped !== null) {
+                          emit = stripped;
+                          dedupResolved = true;
+                        } else if (dedupBuffer.length >= DEDUP_SCAN_BUDGET) {
+                          emit = dedupBuffer;
+                          dedupResolved = true;
+                        } else {
+                          if (chunk.finishReason === "MAX_TOKENS" || chunk.finishReason === "length") {
+                            finishedFull = false;
+                          }
+                          continue;
+                        }
+                      }
+                      const { text: safeChunk } = redactOutputPii(emit, allowedPiiValues);
                       assistantText += safeChunk;
-                      turnText += safeChunk;
                       const visible = stripFollowupsTagPartial(safeChunk, assistantText);
                       if (visible) sendDelta(visible);
                       if (chunk.finishReason === "MAX_TOKENS" || chunk.finishReason === "length") {
                         finishedFull = false;
                       }
                     }
+                    if (!dedupResolved && dedupBuffer.length > 0) {
+                      const { text: safeChunk } = redactOutputPii(dedupBuffer, allowedPiiValues);
+                      assistantText += safeChunk;
+                      const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                      if (visible) sendDelta(visible);
+                    }
                     if (finishedFull) break;
                     if (turn === MAX_AUTO_CONTINUES) {
                       hitFinalCap = true;
+                      break;
+                    }
+                    if (Date.now() >= turnDeadline) {
+                      hitFinalCap = true;
+                      abortedForTime = true;
                       break;
                     }
                     if (needsLongOutput) {
@@ -936,6 +1042,16 @@ export const Route = createFileRoute("/api/chat/stream")({
                       content: messageContentToText(m.content),
                     })),
                   ];
+                  if (resumingFromFallback) {
+                    oaiMessages.push({
+                      role: "assistant",
+                      content: trimContinuationTurn(assistantText),
+                    });
+                    oaiMessages.push({
+                      role: "user",
+                      content: "Continue from exactly where you stopped. Do not repeat prior content.",
+                    });
+                  }
 
                   // OpenAI native web search: gpt-4o family supports a
                   // `-search-preview` variant on Chat Completions that runs
@@ -962,14 +1078,35 @@ export const Route = createFileRoute("/api/chat/stream")({
 
                     let turnText = "";
                     let finishReason: string | null = null;
+                    const isContinuation = turn > 0 || resumingFromFallback;
+                    const priorTail = isContinuation ? assistantText.slice(-OVERLAP_CHARS) : "";
+                    let dedupResolved = !isContinuation;
+                    let dedupBuffer = "";
+                    const DEDUP_SCAN_BUDGET = OVERLAP_CHARS * 3;
                     for await (const chunk of stream) {
                       const text = chunk.choices[0]?.delta?.content ?? "";
                       if (text) {
-                        const { text: safeChunk } = redactOutputPii(text, allowedPiiValues);
-                        assistantText += safeChunk;
-                        turnText += safeChunk;
-                        const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                        if (visible) sendDelta(visible);
+                        turnText += text;
+                        let emit = text;
+                        if (!dedupResolved) {
+                          dedupBuffer += text;
+                          const stripped = stripOverlapPrefix(dedupBuffer, priorTail);
+                          if (stripped !== null) {
+                            emit = stripped;
+                            dedupResolved = true;
+                          } else if (dedupBuffer.length >= DEDUP_SCAN_BUDGET) {
+                            emit = dedupBuffer;
+                            dedupResolved = true;
+                          } else {
+                            emit = "";
+                          }
+                        }
+                        if (emit) {
+                          const { text: safeChunk } = redactOutputPii(emit, allowedPiiValues);
+                          assistantText += safeChunk;
+                          const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                          if (visible) sendDelta(visible);
+                        }
                       }
                       const fr = chunk.choices[0]?.finish_reason;
                       if (fr) finishReason = fr;
@@ -993,10 +1130,21 @@ export const Route = createFileRoute("/api/chat/stream")({
                         totalOutputTokens += chunk.usage.completion_tokens ?? 0;
                       }
                     }
+                    if (!dedupResolved && dedupBuffer.length > 0) {
+                      const { text: safeChunk } = redactOutputPii(dedupBuffer, allowedPiiValues);
+                      assistantText += safeChunk;
+                      const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                      if (visible) sendDelta(visible);
+                    }
 
                     if (finishReason !== "length") break;
                     if (turn === MAX_AUTO_CONTINUES) {
                       hitFinalCap = true;
+                      break;
+                    }
+                    if (Date.now() >= turnDeadline) {
+                      hitFinalCap = true;
+                      abortedForTime = true;
                       break;
                     }
                     if (needsLongOutput) {
@@ -1015,14 +1163,20 @@ export const Route = createFileRoute("/api/chat/stream")({
                 // flush the entire buffered response now — the user sees the
                 // complete answer in one shot, only after 100% of processing
                 // finished (all auto-continues for every tab/section).
+                //
+                // M5: strip the <followups> tag from the buffer BEFORE flushing
+                // so the user never briefly sees the raw JSON tag in the UI.
                 if (needsLongOutput && deferredBuffer.length > 0) {
+                  const { visible: visibleBuffer } = splitFollowups(deferredBuffer);
                   send("progress", {
                     stage: "complete",
                     label: "Done — putting it all together for you.",
                     pass: currentPass,
                     chars: deferredBuffer.length,
                   });
-                  send("delta", { text: deferredBuffer });
+                  if (visibleBuffer.length > 0) {
+                    send("delta", { text: visibleBuffer });
+                  }
                   deferredBuffer = "";
                 }
                 streamError = null;
@@ -1032,16 +1186,43 @@ export const Route = createFileRoute("/api/chat/stream")({
                 streamError = err;
                 recordModelResult(candidateModel.id, true);
                 console.error("[chat.stream] stream error", { model: candidateModel.id, err });
-                // Previously: `if (assistantText.trim().length > 0) break;` —
-                // that delivered truncated replies. Now: surface a `partial` event so the
-                // client knows what was emitted, then continue to the next fallback model
-                // which will resume from a clean slate. Persisted message marks partial=true.
-                if (assistantText.trim().length > 0) {
+                // C1: in deferred-output mode, KEEP the buffer + assistantText so
+                // the next fallback model continues into the same work — partial
+                // analysis from earlier passes isn't discarded. In normal streaming
+                // mode, surface a `partial` event so the client knows what was
+                // emitted; the next model produces a fresh visible response.
+                if (!needsLongOutput && assistantText.trim().length > 0) {
                   send("partial", { text: assistantText, model: candidateModel.id });
                 }
                 // Fall through to next candidateModel (do NOT break).
               }
             }
+          }
+
+          // Stop the heartbeat timer regardless of how the loop exited.
+          if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+          }
+
+          // C1 + C4: in deferred-output mode, if the success-path flush didn't run
+          // (all fallbacks errored, or wall-clock deadline triggered), flush whatever
+          // partial work we accumulated so the user gets something useful instead of
+          // only the always-respond fallback. Followups are stripped before the flush.
+          if (needsLongOutput && deferredBuffer.length > 0) {
+            const { visible: visibleBuffer } = splitFollowups(deferredBuffer);
+            send("progress", {
+              stage: "complete",
+              label: abortedForTime
+                ? "Stopping here so I can return what I have."
+                : "Done — putting it all together for you.",
+              pass: currentPass,
+              chars: deferredBuffer.length,
+            });
+            if (visibleBuffer.length > 0) {
+              send("delta", { text: visibleBuffer });
+            }
+            deferredBuffer = "";
           }
 
           // ---- Output validation ----
@@ -1104,7 +1285,9 @@ export const Route = createFileRoute("/api/chat/stream")({
           // Append a visible truncation note so the user knows the reply was cut.
           let visibleFinal = effectiveVisible;
           if (hitFinalCap) {
-            const note = '\n\n_…response continues — say "continue" for more._';
+            const note = abortedForTime
+              ? '\n\n_…this got long — say "continue" and I\'ll pick up from here._'
+              : '\n\n_…response continues — say "continue" for more._';
             if (!visibleFinal.endsWith(note)) {
               visibleFinal = visibleFinal + note;
               send("delta", { text: note });
