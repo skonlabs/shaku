@@ -419,9 +419,15 @@ export const Route = createFileRoute("/api/chat/stream")({
         );
         const formatHint = detectFormatHint(currentUserMessage);
 
+        const hasAttachmentText = (body.attachments ?? []).some((a) => a.extracted_text?.trim());
+        const attachmentDirective = hasAttachmentText
+          ? `\n## Attachment processing\nThe user has attached one or more documents. Their full extracted content is included in the user turn under "--- Attached: ... ---" markers. You MUST:\n- Read EVERY section, sheet, page, and row of every attachment before responding.\n- For spreadsheets: process each \`=== SheetName ===\` block. Do not skip sheets.\n- For multi-page documents: process every page.\n- If the user asks you to act on each item/row/sheet/test case, produce output for ALL of them — never a partial sample unless explicitly asked.\n- If content was truncated to fit context, say so explicitly and tell the user which parts were cut.`
+          : "";
+
         const finalSystemPrompt = [
           assembled.systemPrompt,
           systemAdditions ? `\n## Response guidance\n${systemAdditions}` : "",
+          attachmentDirective,
           formatHint ? `\n## Format\n${formatHint}` : "",
         ]
           .filter(Boolean)
