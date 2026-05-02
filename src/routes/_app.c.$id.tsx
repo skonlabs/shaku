@@ -78,7 +78,7 @@ function ChatPage() {
         onDelta: (chunk) => {
           setStreamingMessages((cur) =>
             cur.map((m) =>
-              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false } : m,
+              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false, progress: undefined } : m,
             ),
           );
         },
@@ -87,6 +87,15 @@ function ChatPage() {
             cur.map((m) =>
               m.id === tempAsstId
                 ? { ...m, metadata: { ...(m.metadata ?? {}), web_citations: sources, web_grounded: true } }
+                : m,
+            ),
+          );
+        },
+        onProgress: ({ stage, label }) => {
+          setStreamingMessages((cur) =>
+            cur.map((m) =>
+              m.id === tempAsstId
+                ? { ...m, progress: stage === "complete" ? undefined : label }
                 : m,
             ),
           );
@@ -144,7 +153,7 @@ function ChatPage() {
         onDelta: (chunk) => {
           setStreamingMessages((cur) =>
             cur.map((m) =>
-              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false } : m,
+              m.id === tempAsstId ? { ...m, content: m.content + chunk, pending: false, progress: undefined } : m,
             ),
           );
         },
@@ -153,6 +162,15 @@ function ChatPage() {
             cur.map((m) =>
               m.id === tempAsstId
                 ? { ...m, metadata: { ...(m.metadata ?? {}), web_citations: sources, web_grounded: true } }
+                : m,
+            ),
+          );
+        },
+        onProgress: ({ stage, label }) => {
+          setStreamingMessages((cur) =>
+            cur.map((m) =>
+              m.id === tempAsstId
+                ? { ...m, progress: stage === "complete" ? undefined : label }
                 : m,
             ),
           );

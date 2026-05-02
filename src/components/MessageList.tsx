@@ -39,6 +39,12 @@ export interface DisplayMessage {
   is_edited?: boolean;
   metadata?: Message["metadata"];
   pending?: boolean;
+  /**
+   * Friendly status line shown beneath the typing dots while we're processing
+   * a long document end-to-end (e.g. "Working through your spreadsheet…").
+   * Cleared when the final consolidated answer arrives.
+   */
+  progress?: string;
 }
 
 interface Props {
@@ -280,10 +286,17 @@ function MessageRow({
           {message.content ? (
             <MessageContent content={fullContent} />
           ) : (
-            <div className="flex gap-1.5 py-2">
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground" />
+            <div className="space-y-1.5 py-2">
+              <div className="flex gap-1.5">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground" />
+              </div>
+              {message.progress && (
+                <p className="text-xs text-muted-foreground/90 italic">
+                  {message.progress}
+                </p>
+              )}
             </div>
           )}
         </div>

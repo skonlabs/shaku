@@ -17,10 +17,27 @@ export interface UpgradeRequiredInfo {
   upgradeUrl: string;
 }
 
+export interface ProgressInfo {
+  /** Lifecycle stage: started | processing | complete */
+  stage: "started" | "processing" | "complete";
+  /** Friendly user-facing message, e.g. "Reading your document end-to-end…" */
+  label?: string;
+  /** Which auto-continue pass we're on (1-indexed). */
+  pass?: number;
+  /** Approx total characters of buffered output so far. */
+  chars?: number;
+}
+
 export interface StreamCallbacks {
   onUserMessage: (id: string, createdAt: string) => void;
   onDelta: (text: string) => void;
   onCitations?: (sources: CitationSource[]) => void;
+  /**
+   * Fires during long-running document processing. The server buffers the
+   * model's output and emits friendly progress updates so the UI can show
+   * "what's happening" without revealing partial answers.
+   */
+  onProgress?: (info: ProgressInfo) => void;
   onDone: (info: {
     assistantMessageId?: string;
     followups?: string[];
@@ -164,6 +181,13 @@ export async function streamChat(
                 if (Array.isArray(parsed.sources)) {
                   cb.onCitations?.(parsed.sources);
                 }
+              } else if (event === "progress") {
+                cb.onProgress?.({
+                  stage: parsed.stage,
+                  label: parsed.label,
+                  pass: parsed.pass,
+                  chars: parsed.chars,
+                });
               } else if (event === "done") {
                 sawDoneEvent = true;
                 cb.onDone({

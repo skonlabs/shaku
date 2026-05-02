@@ -712,33 +712,48 @@ export const Route = createFileRoute("/api/chat/stream")({
                 // Deferred-output mode: when comprehensive processing is needed
                 // (large attachments → many auto-continues), don't stream
                 // intermediate chunks to the user. Buffer the full response
-                // and emit a single delta after 100% of the work completes.
-                // This prevents the user from seeing a partial answer that
-                // updates as each tab/section is processed.
+                // and emit human-friendly progress events instead, then send
+                // the complete consolidated answer in one shot at the end.
                 let deferredBuffer = "";
                 let lastProgressAt = 0;
+                let currentPass = 1;
+                const attachedDocCount = (body.attachments ?? []).filter(
+                  (a) => a.extracted_text?.trim(),
+                ).length;
+                const docNoun = attachedDocCount > 1 ? "documents" : "document";
+                const emitProgress = (label: string, stage = "processing") => {
+                  send("progress", {
+                    stage,
+                    label,
+                    pass: currentPass,
+                    chars: deferredBuffer.length,
+                  });
+                };
                 const sendDelta = (text: string) => {
                   if (!text) return;
                   if (needsLongOutput) {
                     deferredBuffer += text;
-                    // Heartbeat so the UI knows we're still working — emit a
-                    // lightweight progress event roughly every 2s. The client
-                    // can show a "Processing your document…" indicator without
-                    // revealing partial output.
+                    // Heartbeat ~every 1.5s with a varied, non-repetitive label
+                    // so the user can see we're still working through their file.
                     const now = Date.now();
-                    if (now - lastProgressAt > 2000) {
+                    if (now - lastProgressAt > 1500) {
                       lastProgressAt = now;
-                      send("progress", {
-                        stage: "processing",
-                        chars: deferredBuffer.length,
-                      });
+                      const kchars = Math.floor(deferredBuffer.length / 1000);
+                      emitProgress(
+                        `Working through your ${docNoun}… (pass ${currentPass}, ~${kchars}k chars analyzed)`,
+                      );
                     }
                   } else {
                     send("delta", { text });
                   }
                 };
                 if (needsLongOutput) {
-                  send("progress", { stage: "started" });
+                  emitProgress(
+                    attachedDocCount > 0
+                      ? `Reading your ${docNoun} end-to-end…`
+                      : "Preparing a thorough answer…",
+                    "started",
+                  );
                 }
 
                 if (candidateModel.provider === "anthropic") {
@@ -855,6 +870,10 @@ export const Route = createFileRoute("/api/chat/stream")({
                     // that risks duplication and drift. A simple instruction to continue
                     // is more reliable. Token counts are tracked per turn via separate
                     // message_start events so cost logs remain accurate.
+                    if (needsLongOutput) {
+                      currentPass += 1;
+                      emitProgress(`Continuing analysis of your ${docNoun}… (pass ${currentPass})`);
+                    }
                     turnMessages.push({ role: "assistant", content: trimContinuationTurn(turnText) });
                     turnMessages.push({
                       role: "user",
@@ -890,6 +909,10 @@ export const Route = createFileRoute("/api/chat/stream")({
                     if (turn === MAX_AUTO_CONTINUES) {
                       hitFinalCap = true;
                       break;
+                    }
+                    if (needsLongOutput) {
+                      currentPass += 1;
+                      emitProgress(`Continuing analysis of your ${docNoun}… (pass ${currentPass})`);
                     }
                     turnMessages.push({ role: "assistant", content: trimContinuationTurn(turnText) });
                     turnMessages.push({
@@ -972,6 +995,10 @@ export const Route = createFileRoute("/api/chat/stream")({
                       hitFinalCap = true;
                       break;
                     }
+                    if (needsLongOutput) {
+                      currentPass += 1;
+                      emitProgress(`Continuing analysis of your ${docNoun}… (pass ${currentPass})`);
+                    }
                     oaiMessages.push({ role: "assistant", content: trimContinuationTurn(turnText) });
                     oaiMessages.push({
                       role: "user",
@@ -985,7 +1012,12 @@ export const Route = createFileRoute("/api/chat/stream")({
                 // complete answer in one shot, only after 100% of processing
                 // finished (all auto-continues for every tab/section).
                 if (needsLongOutput && deferredBuffer.length > 0) {
-                  send("progress", { stage: "complete" });
+                  send("progress", {
+                    stage: "complete",
+                    label: "Done — putting it all together for you.",
+                    pass: currentPass,
+                    chars: deferredBuffer.length,
+                  });
                   send("delta", { text: deferredBuffer });
                   deferredBuffer = "";
                 }
