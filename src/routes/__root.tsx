@@ -12,7 +12,6 @@ import { ThemeProvider } from "@/lib/theme-context";
 import { KbHelpProvider, PanelProvider } from "@/lib/ui-context";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
-import { SiteGate } from "@/components/SiteGate";
 
 import appCss from "../styles.css?url";
 
@@ -57,17 +56,22 @@ export const Route = createRootRouteWithContext<RouterCtx>()({
       {
         name: "description",
         content:
-          "Ekonomical is your personal AI assistant that remembers, learns, and helps you get things done.",
+          "Cortex is your personal AI assistant that remembers, learns, and helps you get things done.",
       },
       { property: "og:title", content: "Ekonomical — Your personal AI" },
       {
         property: "og:description",
         content:
-          "Ekonomical is your personal AI assistant that remembers, learns, and helps you get things done.",
+          "Cortex is your personal AI assistant that remembers, learns, and helps you get things done.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "robots", content: "noindex, nofollow" },
+      { name: "twitter:title", content: "Ekonomical — Your personal AI" },
+      { name: "description", content: "Ekonomical is a consumer AI intelligence platform that acts as a personal assistant, connecting to your data and learning over time." },
+      { property: "og:description", content: "Ekonomical is a consumer AI intelligence platform that acts as a personal assistant, connecting to your data and learning over time." },
+      { name: "twitter:description", content: "Ekonomical is a consumer AI intelligence platform that acts as a personal assistant, connecting to your data and learning over time." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/dd45cd87-5c01-4d11-a557-07bdc8716eeb/id-preview-4cf6c59a--20cb2f0c-2f09-469c-bb65-aa855f85b760.lovable.app-1777732690460.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/dd45cd87-5c01-4d11-a557-07bdc8716eeb/id-preview-4cf6c59a--20cb2f0c-2f09-469c-bb65-aa855f85b760.lovable.app-1777732690460.png" },
     ],
     links: [{ rel: "stylesheet", href: appCss }],
   }),
@@ -85,7 +89,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                var t = localStorage.getItem('ekonomical.theme') || 'system';
+                var t = localStorage.getItem('cortex.theme') || 'system';
                 var d = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
                 if (d) document.documentElement.classList.add('dark');
               } catch(e) {}
@@ -106,18 +110,16 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <SiteGate>
-          <AuthProvider>
-            <PanelProvider>
-              <KbHelpProvider>
-                <KeyboardShortcuts />
-                <KeyboardShortcutsDialog />
-                <Outlet />
-                <Toaster richColors closeButton position="top-right" />
-              </KbHelpProvider>
-            </PanelProvider>
-          </AuthProvider>
-        </SiteGate>
+        <AuthProvider>
+          <PanelProvider>
+            <KbHelpProvider>
+              <KeyboardShortcuts />
+              <KeyboardShortcutsDialog />
+              <Outlet />
+              <Toaster richColors closeButton position="top-right" />
+            </KbHelpProvider>
+          </PanelProvider>
+        </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );
