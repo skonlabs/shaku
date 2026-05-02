@@ -1734,13 +1734,34 @@ function DatasourcesPanel() {
 
   async function handleFilesSelected(fileList: FileList | null) {
     if (!fileList || !user) return;
-    const files = Array.from(fileList).filter((f) => f.size > 0);
-    if (files.length === 0) return;
+    const allFiles = Array.from(fileList).filter((f) => f.size > 0);
+    if (allFiles.length === 0) return;
 
-    // Filter out files that are too large
+    const ALLOWED = new Set([
+      "pdf","docx","doc","txt","md","rtf","xlsx","xls","csv","tsv",
+      "pptx","ppt","png","jpg","jpeg","gif","webp",
+      "py","js","ts","tsx","jsx","java","cpp","c","h","hpp",
+      "cs","go","rs","rb","php","swift","kt","html","htm","css",
+      "scss","sh","sql","json","xml","yaml","yml","toml",
+    ]);
     const maxBytes = 50 * 1024 * 1024;
-    const tooLarge = files.filter((f) => f.size > maxBytes);
-    const valid = files.filter((f) => f.size <= maxBytes);
+
+    const unsupported = allFiles.filter((f) => {
+      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+      return !ALLOWED.has(ext);
+    });
+    const supported = allFiles.filter((f) => {
+      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+      return ALLOWED.has(ext);
+    });
+    const tooLarge = supported.filter((f) => f.size > maxBytes);
+    const valid = supported.filter((f) => f.size <= maxBytes);
+
+    if (unsupported.length > 0) {
+      toast.info(
+        `${unsupported.length} unsupported file${unsupported.length === 1 ? "" : "s"} skipped.`,
+      );
+    }
     if (tooLarge.length > 0) {
       toast.error(
         `${tooLarge.length} file${tooLarge.length === 1 ? "" : "s"} exceed 50 MB and were skipped.`,
