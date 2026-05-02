@@ -3,10 +3,17 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { HAIKU_MODEL_ID } from "@/lib/llm/registry";
 import { getRuntimeEnv } from "@/lib/runtime-env";
+import { processExtractedContent } from "@/lib/datasources/processor";
 
 const HARD_MAX_BYTES = 25 * 1024 * 1024; // 25 MB ceiling
 const BUCKET = "chat-uploads";
-const MAX_EXTRACTED_CHARS = 1_500_000; // stored in DB; LLM context budget governs what's actually sent
+
+// How many chars to include verbatim in every chat request (≈ 25K tokens).
+// Content beyond this is still fully indexed for semantic retrieval.
+const MAX_DIRECT_CHARS = 100_000;
+// Files with more content than this are vectorized in the background so the
+// upload response is not delayed by embedding API latency.
+const BACKGROUND_VECTORIZE_THRESHOLD = 50_000;
 
 /**
  * Upload a file to Supabase Storage AND extract its text content (when possible).
@@ -86,10 +93,36 @@ export const uploadChatFile = createServerFn({ method: "POST" })
       extractionError = e instanceof Error ? e.message : "Extraction failed";
     }
 
-    if (extractedText && extractedText.length > MAX_EXTRACTED_CHARS) {
+    // Auto-vectorize so retrieval can find any part of the file regardless of size.
+    // Small files: await inline (few chunks, fast). Large files: fire-and-forget so
+    // the upload response is not delayed by embedding API latency.
+    if (extractedText) {
+      const ext = data.name.split(".").pop()?.toLowerCase() ?? "";
+      const vectorizeOpts = {
+        sourceType: "conversation_upload" as const,
+        sourceId: path,
+        conversationId: data.conversation_id,
+        expiresInDays: 30,
+        metadata: { file_name: data.name, file_type: ext },
+      };
+      if (extractedText.length <= BACKGROUND_VECTORIZE_THRESHOLD) {
+        try {
+          await processExtractedContent(userId, extractedText, data.name, ext, vectorizeOpts, supabase);
+        } catch (e) {
+          console.warn("[uploadChatFile] vectorization failed:", e);
+        }
+      } else {
+        void processExtractedContent(userId, extractedText, data.name, ext, vectorizeOpts, supabase)
+          .catch((e) => console.warn("[uploadChatFile] background vectorization failed:", e));
+      }
+    }
+
+    // Truncate what is sent in every chat request. Anything beyond MAX_DIRECT_CHARS
+    // is already indexed above and will surface through semantic retrieval.
+    if (extractedText && extractedText.length > MAX_DIRECT_CHARS) {
       extractedText =
-        extractedText.slice(0, MAX_EXTRACTED_CHARS) +
-        `\n\n[…truncated; showing first ${MAX_EXTRACTED_CHARS.toLocaleString()} characters of ${extractedText.length.toLocaleString()}.]`;
+        extractedText.slice(0, MAX_DIRECT_CHARS) +
+        `\n\n[…file continues — full content indexed for search. Ask specific questions to retrieve any section.]`;
     }
 
     // ---- Upload to storage (can fail independently of parsing) ----

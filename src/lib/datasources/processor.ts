@@ -152,6 +152,74 @@ export async function processUrl(
   return { chunkCount };
 }
 
+// Process pre-extracted text content: chunk → embed → index.
+// Used by the chat upload pipeline to avoid re-extracting content that has
+// already been parsed (saves time and avoids double-parsing binary formats).
+export async function processExtractedContent(
+  userId: string,
+  content: string,
+  fileName: string,
+  fileType: string,
+  opts: ProcessingOptions,
+  supabase: any,
+): Promise<{ chunkCount: number; contentHash: string; skipped?: boolean }> {
+  const contentHash = await hashContent(content);
+
+  const { count: existingCount } = await supabase
+    .from("chunks")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("source_type", opts.sourceType)
+    .eq("content_hash", contentHash)
+    .eq("source_id", opts.sourceId);
+
+  if ((existingCount ?? 0) > 0) {
+    return { chunkCount: 0, contentHash, skipped: true };
+  }
+
+  if (!content.trim()) return { chunkCount: 0, contentHash };
+
+  const chunks = chunkByFileType(content, fileType);
+  if (!chunks.length) return { chunkCount: 0, contentHash };
+
+  let embeddings: number[][] | null = null;
+  try {
+    embeddings = await embedBatch(chunks);
+  } catch (e) {
+    console.error("[processExtractedContent] embedBatch failed, inserting with needs_embedding flag", e);
+  }
+
+  const expiresAt = opts.expiresInDays
+    ? new Date(Date.now() + opts.expiresInDays * 86400 * 1000).toISOString()
+    : null;
+
+  const records = chunks.map((chunk, i) => ({
+    user_id: userId,
+    source_type: opts.sourceType,
+    source_id: opts.sourceId,
+    source_item_id: opts.sourceItemId ?? null,
+    content: chunk,
+    chunk_index: i,
+    chunk_total: chunks.length,
+    token_count: Math.ceil(chunk.length / 4),
+    document_name: fileName,
+    metadata: { ...opts.metadata, file_name: fileName, file_type: fileType },
+    content_hash: contentHash,
+    embedding: embeddings?.[i]?.length ? `[${embeddings[i].join(",")}]` : null,
+    needs_embedding: !embeddings,
+    expires_at: expiresAt,
+  }));
+
+  const BATCH = 50;
+  for (let i = 0; i < records.length; i += BATCH) {
+    const batch = records.slice(i, i + BATCH);
+    const { error } = await supabase.from("chunks").insert(batch);
+    if (error) throw new Error(`Failed to index chunks: ${error.message}`);
+  }
+
+  return { chunkCount: chunks.length, contentHash };
+}
+
 // SHA-256 hash of bytes (CF Workers has native crypto.subtle)
 async function hashBytes(bytes: Uint8Array): Promise<string> {
   const data = new ArrayBuffer(bytes.byteLength);
@@ -160,4 +228,9 @@ async function hashBytes(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+async function hashContent(content: string): Promise<string> {
+  const bytes = new TextEncoder().encode(content);
+  return hashBytes(bytes);
 }
