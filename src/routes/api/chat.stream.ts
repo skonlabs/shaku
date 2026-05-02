@@ -709,6 +709,38 @@ export const Route = createFileRoute("/api/chat/stream")({
                   ? 3
                   : 0;
 
+                // Deferred-output mode: when comprehensive processing is needed
+                // (large attachments → many auto-continues), don't stream
+                // intermediate chunks to the user. Buffer the full response
+                // and emit a single delta after 100% of the work completes.
+                // This prevents the user from seeing a partial answer that
+                // updates as each tab/section is processed.
+                let deferredBuffer = "";
+                let lastProgressAt = 0;
+                const sendDelta = (text: string) => {
+                  if (!text) return;
+                  if (needsLongOutput) {
+                    deferredBuffer += text;
+                    // Heartbeat so the UI knows we're still working — emit a
+                    // lightweight progress event roughly every 2s. The client
+                    // can show a "Processing your document…" indicator without
+                    // revealing partial output.
+                    const now = Date.now();
+                    if (now - lastProgressAt > 2000) {
+                      lastProgressAt = now;
+                      send("progress", {
+                        stage: "processing",
+                        chars: deferredBuffer.length,
+                      });
+                    }
+                  } else {
+                    send("delta", { text });
+                  }
+                };
+                if (needsLongOutput) {
+                  send("progress", { stage: "started" });
+                }
+
                 if (candidateModel.provider === "anthropic") {
                   const apiKey = runtimeKeys.anthropic;
                   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
