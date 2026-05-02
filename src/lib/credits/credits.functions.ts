@@ -513,7 +513,7 @@ export const getCreditEntriesForConversation = createServerFn({ method: "POST" }
       .limit(500);
 
     if (isCreditsSchemaMissing(error)) {
-      return { entries: [], setupRequired: true };
+      return { entries: [] as Array<{ id: string; delta: number; reason: string; balance_after: number; request_id: string | null; metadata: unknown; created_at: string; }>, setupRequired: true };
     }
     if (error) throw error;
 
