@@ -352,3 +352,129 @@ export const requestPlanAccess = createServerFn({ method: "POST" })
     if (error) throw error;
     return { ok: true };
   });
+
+// ---------------------------------------------------------------------------
+// Per-conversation credit usage (groups chat-reason ledger entries by conversation)
+// ---------------------------------------------------------------------------
+const ConvoUsageSchema = z.object({
+  days: z.number().int().min(1).max(365).default(30),
+  limit: z.number().int().min(1).max(100).default(50),
+});
+
+export const getCreditByConversation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => ConvoUsageSchema.parse(data ?? {}))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const since = new Date(Date.now() - data.days * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: rows, error } = await supabase
+      .from("credits_ledger")
+      .select("id, delta, metadata, created_at")
+      .eq("user_id", userId)
+      .eq("reason", "chat")
+      .lt("delta", 0)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(2000);
+
+    if (isCreditsSchemaMissing(error)) {
+      return { conversations: [], setupRequired: true };
+    }
+    if (error) throw error;
+
+    type Agg = {
+      conversation_id: string;
+      total_spent: number;
+      message_count: number;
+      last_at: string;
+      first_at: string;
+    };
+    const map = new Map<string, Agg>();
+    for (const r of rows ?? []) {
+      const meta = (r as { metadata: unknown }).metadata;
+      const convId =
+        typeof meta === "object" && meta !== null && typeof (meta as Record<string, unknown>).conversation_id === "string"
+          ? ((meta as Record<string, string>).conversation_id)
+          : null;
+      if (!convId) continue;
+      const entry = map.get(convId);
+      const spent = Math.abs((r as { delta: number }).delta);
+      const created = (r as { created_at: string }).created_at;
+      if (entry) {
+        entry.total_spent += spent;
+        entry.message_count += 1;
+        if (created > entry.last_at) entry.last_at = created;
+        if (created < entry.first_at) entry.first_at = created;
+      } else {
+        map.set(convId, {
+          conversation_id: convId,
+          total_spent: spent,
+          message_count: 1,
+          last_at: created,
+          first_at: created,
+        });
+      }
+    }
+
+    const aggregated = Array.from(map.values()).sort((a, b) => b.total_spent - a.total_spent);
+    const ids = aggregated.slice(0, data.limit).map((a) => a.conversation_id);
+
+    let titleMap = new Map<string, string | null>();
+    if (ids.length > 0) {
+      const { data: convos } = await supabase
+        .from("conversations")
+        .select("id, title")
+        .eq("user_id", userId)
+        .in("id", ids);
+      titleMap = new Map((convos ?? []).map((c: { id: string; title: string | null }) => [c.id, c.title]));
+    }
+
+    return {
+      conversations: aggregated.slice(0, data.limit).map((a) => ({
+        ...a,
+        title: titleMap.get(a.conversation_id) ?? null,
+      })),
+      setupRequired: false,
+    };
+  });
+
+// ---------------------------------------------------------------------------
+// Detail view: every ledger entry for a single conversation
+// ---------------------------------------------------------------------------
+const ConvoDetailSchema = z.object({
+  conversation_id: z.string().uuid(),
+  days: z.number().int().min(1).max(365).default(90),
+});
+
+export const getCreditEntriesForConversation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => ConvoDetailSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const since = new Date(Date.now() - data.days * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: rows, error } = await supabase
+      .from("credits_ledger")
+      .select("id, delta, reason, balance_after, metadata, created_at")
+      .eq("user_id", userId)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(500);
+
+    if (isCreditsSchemaMissing(error)) {
+      return { entries: [], setupRequired: true };
+    }
+    if (error) throw error;
+
+    const filtered = (rows ?? []).filter((r) => {
+      const meta = (r as { metadata: unknown }).metadata;
+      return (
+        typeof meta === "object" &&
+        meta !== null &&
+        (meta as Record<string, unknown>).conversation_id === data.conversation_id
+      );
+    });
+
+    return { entries: filtered, setupRequired: false };
+  });
