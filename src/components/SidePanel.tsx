@@ -1567,13 +1567,13 @@ function fmtBytes(n: number): string {
 function safeStorageRelativePath(path: string): string {
   return path
     .split("/")
-    .map(
-      (part) =>
-        part
-          .trim()
-          .replace(/[\\?#%\u0000-\u001F]/g, "-")
-          .replace(/^\.+$/, "-") || "file",
-    )
+    .map((part) => {
+      const cleaned = Array.from(part.trim())
+        .map((ch) => (ch.charCodeAt(0) < 32 || ["\\", "?", "#", "%"].includes(ch) ? "-" : ch))
+        .join("")
+        .replace(/^\.+$/, "-");
+      return cleaned || "file";
+    })
     .filter((part) => part !== "." && part !== "..")
     .join("/");
 }
