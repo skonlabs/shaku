@@ -44,14 +44,7 @@ function LoginPage() {
     }
   };
 
-  const onGoogle = async () => {
-    setSubmitting(true);
-    const { error } = await signInWithGoogle();
-    if (error) {
-      toast.error(error);
-      setSubmitting(false);
-    }
-  };
+
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background px-6">
