@@ -98,7 +98,6 @@ export async function processFile(
     },
     content_hash: contentHash,
     embedding: embeddings?.[i]?.length ? `[${embeddings[i].join(",")}]` : null,
-    needs_embedding: !embeddings, // flag for retry when embedBatch failed
     expires_at: expiresAt,
   }));
 
@@ -212,7 +211,6 @@ export async function processExtractedContent(
     metadata: { ...opts.metadata, file_name: fileName, file_type: fileType },
     content_hash: contentHash,
     embedding: embeddings?.[i]?.length ? `[${embeddings[i].join(",")}]` : null,
-    needs_embedding: !embeddings,
     expires_at: expiresAt,
   }));
 
