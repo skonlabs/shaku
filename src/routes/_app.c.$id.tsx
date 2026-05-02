@@ -344,6 +344,7 @@ function ChatPage() {
             : undefined
         }
       />
+      </div>
     </div>
   );
 }
