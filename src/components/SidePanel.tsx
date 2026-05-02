@@ -128,11 +128,22 @@ export function SidePanel({ side = "left" }: { side?: "left" | "right" }) {
   if (side === "left" && isDoc) return null;
 
   return (
+    <>
+      {/* Mobile backdrop — tap to dismiss */}
+      <button
+        type="button"
+        aria-label="Close panel"
+        onClick={() => setActive(null)}
+        className="fixed inset-0 z-30 bg-foreground/30 backdrop-blur-sm md:hidden"
+      />
     <div
       className={cn(
-        "z-20 flex h-svh shrink-0 animate-fade-in flex-col bg-sidebar/80 backdrop-blur-xl",
-        side === "right" ? "border-l border-border" : "border-r border-border",
-        isDoc ? "w-[480px]" : "w-[320px]",
+        // Mobile: fixed overlay drawer pinned to the right of the 56px sidebar.
+        // Desktop: in-flow column with explicit width.
+        "fixed inset-y-0 left-[56px] right-0 z-40 flex animate-fade-in flex-col bg-sidebar/95 backdrop-blur-xl",
+        "md:static md:left-auto md:right-auto md:z-20 md:h-svh md:shrink-0 md:bg-sidebar/80",
+        side === "right" ? "md:border-l md:border-border" : "md:border-r md:border-border",
+        isDoc ? "md:w-[480px]" : "md:w-[320px]",
       )}
     >
       <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-4">
