@@ -24,9 +24,14 @@ export async function extractContent(
 
     case "xlsx":
     case "xls":
+    case "xlsm":
+    case "xlsb":
+    case "ods":
+      return extractSpreadsheet(bytes, fileName);
+
     case "csv":
     case "tsv":
-      return extractSpreadsheet(bytes, fileName);
+      return extractDelimited(bytes, type);
 
     case "pptx":
     case "ppt":
@@ -109,13 +114,56 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
 
 async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<string> {
   const XLSX = await import("xlsx");
-  const wb = XLSX.read(bytes, { type: "array" });
+  // cellDates: parse Excel serial dates to JS Date; cellNF: keep number formats
+  const wb = XLSX.read(bytes, { type: "array", cellDates: true, cellNF: false });
   const parts: string[] = [];
+
   for (const sheetName of wb.SheetNames) {
-    const csv = XLSX.utils.sheet_to_csv(wb.Sheets[sheetName]);
-    if (csv.trim()) parts.push(`--- ${sheetName} ---\n${csv.trim()}`);
+    const sheet = wb.Sheets[sheetName];
+    if (!sheet || !sheet["!ref"]) {
+      parts.push(`--- Sheet: ${sheetName} ---\n(empty)`);
+      continue;
+    }
+
+    // Convert to AOA so we can render a readable, aligned table per tab.
+    // blankrows:false drops fully empty rows; defval:"" keeps column alignment.
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      blankrows: false,
+      defval: "",
+      raw: false, // use formatted strings (dates, percents, currency) when available
+    });
+
+    if (!rows.length) {
+      parts.push(`--- Sheet: ${sheetName} ---\n(empty)`);
+      continue;
+    }
+
+    // Render as TSV-style rows. Tabs preserve cell boundaries better than CSV
+    // for LLM consumption and avoid quoting issues with commas inside cells.
+    const lines: string[] = [];
+    for (const row of rows) {
+      const cells = (row as unknown[]).map((c) => {
+        if (c === null || c === undefined) return "";
+        if (c instanceof Date) return c.toISOString().slice(0, 10);
+        return String(c).replace(/[\t\r\n]+/g, " ").trim();
+      });
+      // Skip rows that became fully empty after normalization
+      if (cells.some((c) => c.length > 0)) lines.push(cells.join("\t"));
+    }
+
+    parts.push(`--- Sheet: ${sheetName} (${lines.length} rows) ---\n${lines.join("\n")}`);
   }
+
   return parts.length ? parts.join("\n\n") : `(empty spreadsheet: ${name})`;
+}
+
+function extractDelimited(bytes: Uint8Array, type: string): string {
+  const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes).trim();
+  if (!text) return "";
+  // Return as-is; chunker handles row splitting. Label so the LLM knows the format.
+  const label = type === "tsv" ? "TSV" : "CSV";
+  return `--- ${label} ---\n${text}`;
 }
 
 // PPTX: ZIP containing OpenXML slide files (ppt/slides/slideN.xml)
