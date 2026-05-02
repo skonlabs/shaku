@@ -343,10 +343,10 @@ function BillingPage() {
       />
 
       {/* Plan + balance card */}
-      <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-card to-card/60 p-6 shadow-[0_10px_40px_-20px_oklch(0.50_0.07_150/0.35)]">
-        <div className="flex flex-wrap items-start justify-between gap-6">
+      <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-card to-card/60 p-5 shadow-[0_10px_40px_-20px_oklch(0.50_0.07_150/0.35)] sm:p-6">
+        <div className="flex flex-col gap-5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0">
-            <div className="mb-1 flex items-center gap-2">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
               <Badge variant="secondary" className="rounded-full bg-primary/10 text-primary">
                 {(state?.plan ?? "—").toUpperCase()} plan
               </Badge>
@@ -356,9 +356,9 @@ function BillingPage() {
                 </Badge>
               )}
             </div>
-            <h2 className="font-display text-2xl font-semibold">
+            <h2 className="font-display text-xl font-semibold sm:text-2xl">
               {balance.toLocaleString()}{" "}
-              <span className="text-base font-normal text-muted-foreground">
+              <span className="text-sm font-normal text-muted-foreground sm:text-base">
                 of {quota.toLocaleString()} credits left
               </span>
             </h2>
@@ -378,7 +378,7 @@ function BillingPage() {
                 size="lg"
                 onClick={startCheckout}
                 disabled={checkoutMut.isPending || setupRequired}
-                className="rounded-full"
+                className="w-full rounded-full sm:w-auto"
               >
                 {checkoutMut.isPending ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -391,7 +391,7 @@ function BillingPage() {
           </div>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-5 sm:mt-6">
           <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
             <span>{used.toLocaleString()} used this month</span>
             <span>{balance.toLocaleString()} remaining</span>
