@@ -2464,7 +2464,7 @@ function DatasourcesPanel() {
                   (s) => !connectedStorage.some((c) => c.service === s.service),
                 ).map((s) => {
                   const isConfigured = availability[s.service] ?? false;
-                  const isPremiumOnly = s.service !== "google_drive";
+                  const isPremiumOnly = true;
                   const canConnect = s.implemented && isConfigured && !isPremiumOnly;
                   return (
                     <div
