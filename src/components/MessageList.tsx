@@ -39,6 +39,12 @@ export interface DisplayMessage {
   is_edited?: boolean;
   metadata?: Message["metadata"];
   pending?: boolean;
+  /**
+   * Friendly status line shown beneath the typing dots while we're processing
+   * a long document end-to-end (e.g. "Working through your spreadsheet…").
+   * Cleared when the final consolidated answer arrives.
+   */
+  progress?: string;
 }
 
 interface Props {
