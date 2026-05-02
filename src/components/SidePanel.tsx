@@ -278,11 +278,7 @@ function ChatsPanel() {
               <div key={i} className="h-8 animate-pulse rounded-md bg-muted/60" />
             ))}
           </div>
-        ) : conversations.length === 0 ? (
-          <div className="px-3 py-8 text-center text-xs text-muted-foreground">
-            No chats yet. Start one above.
-          </div>
-        ) : (
+        ) : conversations.length === 0 ? null : (
           <div className="space-y-4 pb-4">
             {pinned.length > 0 && (
               <Section
