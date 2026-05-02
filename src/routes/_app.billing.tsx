@@ -401,7 +401,7 @@ function BillingPage() {
       </Card>
 
       {/* This month breakdown */}
-      <section className="mt-10">
+      <section className="mt-8 sm:mt-10">
         <h3 className="mb-3 text-sm font-medium text-muted-foreground">
           Where your credits go (last 30 days)
         </h3>
@@ -582,7 +582,7 @@ function BillingPage() {
       </section>
 
       {/* Ledger */}
-      <section className="mt-10">
+      <section className="mt-8 sm:mt-10">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-medium text-muted-foreground">Recent activity</h3>
           <button
@@ -631,7 +631,7 @@ function BillingPage() {
 
       {/* Full activity dialog */}
       <Dialog open={allActivityOpen} onOpenChange={setAllActivityOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>All credit activity</DialogTitle>
             <DialogDescription>
@@ -739,7 +739,7 @@ function BillingPage() {
       </Dialog>
 
       {/* Plans */}
-      <section className="mt-10 mb-12">
+      <section className="mt-8 mb-10 sm:mt-10 sm:mb-12">
         <h3 className="mb-3 text-sm font-medium text-muted-foreground">Available plans</h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {((plansQ.data?.plans ?? []) as BillingPlan[])
