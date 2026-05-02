@@ -709,6 +709,38 @@ export const Route = createFileRoute("/api/chat/stream")({
                   ? 3
                   : 0;
 
+                // Deferred-output mode: when comprehensive processing is needed
+                // (large attachments → many auto-continues), don't stream
+                // intermediate chunks to the user. Buffer the full response
+                // and emit a single delta after 100% of the work completes.
+                // This prevents the user from seeing a partial answer that
+                // updates as each tab/section is processed.
+                let deferredBuffer = "";
+                let lastProgressAt = 0;
+                const sendDelta = (text: string) => {
+                  if (!text) return;
+                  if (needsLongOutput) {
+                    deferredBuffer += text;
+                    // Heartbeat so the UI knows we're still working — emit a
+                    // lightweight progress event roughly every 2s. The client
+                    // can show a "Processing your document…" indicator without
+                    // revealing partial output.
+                    const now = Date.now();
+                    if (now - lastProgressAt > 2000) {
+                      lastProgressAt = now;
+                      send("progress", {
+                        stage: "processing",
+                        chars: deferredBuffer.length,
+                      });
+                    }
+                  } else {
+                    send("delta", { text });
+                  }
+                };
+                if (needsLongOutput) {
+                  send("progress", { stage: "started" });
+                }
+
                 if (candidateModel.provider === "anthropic") {
                   const apiKey = runtimeKeys.anthropic;
                   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not configured");
@@ -781,7 +813,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                         const { text: safeChunk } = redactOutputPii(emit, allowedPiiValues);
                         assistantText += safeChunk;
                         const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                        if (visible) send("delta", { text: visible });
+                        if (visible) sendDelta(visible);
                       } else if (event.type === "message_start") {
                         totalInputTokens += event.message.usage?.input_tokens ?? 0;
                       } else if (event.type === "message_delta") {
@@ -810,7 +842,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                       const { text: safeChunk } = redactOutputPii(dedupBuffer, allowedPiiValues);
                       assistantText += safeChunk;
                       const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                      if (visible) send("delta", { text: visible });
+                      if (visible) sendDelta(visible);
                     }
 
                     if (stopReason !== "max_tokens") break;
@@ -849,7 +881,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                       assistantText += safeChunk;
                       turnText += safeChunk;
                       const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                      if (visible) send("delta", { text: visible });
+                      if (visible) sendDelta(visible);
                       if (chunk.finishReason === "MAX_TOKENS" || chunk.finishReason === "length") {
                         finishedFull = false;
                       }
@@ -910,7 +942,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                         assistantText += safeChunk;
                         turnText += safeChunk;
                         const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                        if (visible) send("delta", { text: visible });
+                        if (visible) sendDelta(visible);
                       }
                       const fr = chunk.choices[0]?.finish_reason;
                       if (fr) finishReason = fr;
@@ -948,6 +980,15 @@ export const Route = createFileRoute("/api/chat/stream")({
                   }
                 }
 
+                // Successful end-to-end generation. In deferred-output mode,
+                // flush the entire buffered response now — the user sees the
+                // complete answer in one shot, only after 100% of processing
+                // finished (all auto-continues for every tab/section).
+                if (needsLongOutput && deferredBuffer.length > 0) {
+                  send("progress", { stage: "complete" });
+                  send("delta", { text: deferredBuffer });
+                  deferredBuffer = "";
+                }
                 streamError = null;
                 recordModelResult(candidateModel.id, false);
                 break;
