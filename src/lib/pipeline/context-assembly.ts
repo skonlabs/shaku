@@ -239,6 +239,7 @@ function buildTaskBlock(task: ActiveTask): string {
   const parts: string[] = [`Goal: ${task.goal || task.title}`];
   if (task.currentStep) parts.push(`Current step: ${task.currentStep}`);
   if (task.completedSteps.length) parts.push(`Completed: ${task.completedSteps.join("; ")}`);
+  if (task.decisions.length) parts.push(`Decisions made: ${task.decisions.join("; ")}`);
   if (task.nextActions.length) parts.push(`Next: ${task.nextActions.join("; ")}`);
   if (task.openQuestions.length) parts.push(`Open questions: ${task.openQuestions.join("; ")}`);
   return parts.join(". ");
@@ -354,7 +355,7 @@ export async function updateConversationState(
     .eq("conversation_id", conversationId)
     .maybeSingle();
 
-  const facts = [...(existing?.conversation_facts ?? []), ...newFacts].slice(-20);
+  const facts = [...new Set([...(existing?.conversation_facts ?? []), ...newFacts])].slice(-20);
   const topics = [...new Set([...(existing?.active_topics ?? []), ...newTopics])].slice(-10);
 
   await supabase.from("conversation_states").upsert({

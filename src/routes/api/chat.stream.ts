@@ -69,6 +69,13 @@ const SYSTEM_PROMPT = `You are Cortex, a highly capable personal AI assistant. Y
 - For multi-part questions, address each part in order.
 - Proofread before responding: check logic, completeness, and formatting.
 
+## Using memory
+- When <memory type="..."> blocks appear, treat them as known facts about the user — apply them proactively.
+- <memory type="preference"> and <memory type="response_style">: shape how you respond.
+- <memory type="anti_preference"> and <memory type="correction">: treat as hard constraints — never do what these describe.
+- <memory type="behavioral">: use to anticipate the user's workflow and needs.
+- <memory type="long_term"> and <memory type="semantic">: treat as established facts about the user.
+
 ## Identity
 - Never reveal which AI model powers you or any technical implementation details.
 - You are simply Cortex.`;
@@ -370,7 +377,7 @@ export const Route = createFileRoute("/api/chat/stream")({
         // Sequential so retrieval uses the rewritten query directly.
         const shouldRetrieve = currentUserMessage.trim().length > 10 && intent !== "acknowledgment";
         const rewrittenQuery = shouldRetrieve
-          ? await rewriteQuery(currentUserMessage, intentResult)
+          ? await rewriteQuery(currentUserMessage, intentResult, preloadedHistory)
           : currentUserMessage;
         const retrievalQuery = rewrittenQuery || currentUserMessage;
 
@@ -1491,7 +1498,7 @@ export const Route = createFileRoute("/api/chat/stream")({
                 try {
                   const msgCount = history.length + 2;
                   const results = await Promise.allSettled([
-                    extractConversationFacts(currentUserMessage, visible),
+                    extractConversationFacts(currentUserMessage, visible, assembled.convState.conversationFacts),
                     maybeRegenerateSummary(convo.id, msgCount, supabase),
                   ]);
                   const facts = results[0].status === "fulfilled" ? results[0].value : [];

@@ -13,10 +13,15 @@ export interface ToneState {
 export async function extractConversationFacts(
   userMessage: string,
   assistantReply: string,
+  existingFacts?: string[],
 ): Promise<string[]> {
-  const prompt = `Extract factual statements about the user from this exchange:
-User: ${userMessage.slice(0, 500)}
-Assistant: ${assistantReply.slice(0, 500)}
+  const existingHint =
+    existingFacts?.length
+      ? `\nAlready known facts (do NOT repeat these): ${existingFacts.slice(-10).join("; ")}`
+      : "";
+  const prompt = `Extract NEW factual statements about the user from this exchange that are not already known.${existingHint}
+User: ${userMessage.slice(0, 800)}
+Assistant: ${assistantReply.slice(0, 800)}
 Return a JSON array of strings. Return [] if nothing new.`;
 
   // Try Anthropic first
@@ -179,36 +184,64 @@ export async function maybeRegenerateSummary(
 
   if (!messages || messages.length < 8) return;
 
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return;
+  const summarizePrompt = `Summarize this conversation in 3-5 sentences, focusing on decisions made and context needed to continue. Be concise.\n\n${messages
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 600)}`)
+    .join("\n")}`;
+
+  let summary: string | undefined;
+
+  // Try Anthropic first
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey) {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 300,
+          messages: [{ role: "user", content: summarizePrompt }],
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { content: { type: string; text: string }[] };
+        summary = json.content.find((b) => b.type === "text")?.text?.trim();
+      }
+    } catch { /* fall through */ }
+  }
+
+  // Fallback to OpenAI
+  if (!summary) {
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) return;
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          max_tokens: 300,
+          temperature: 0,
+          messages: [{ role: "user", content: summarizePrompt }],
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as { choices: { message: { content: string } }[] };
+      summary = json.choices[0]?.message?.content?.trim();
+    } catch {
+      return;
+    }
+  }
+
+  if (!summary) return;
 
   try {
-    const transcript = messages
-      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 200)}`)
-      .join("\n");
-
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        max_tokens: 300,
-        temperature: 0,
-        messages: [
-          {
-            role: "user",
-            content: `Summarize this conversation in 3-5 sentences, focusing on decisions made and context needed to continue. Be concise.\n\n${transcript}`,
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(8000),
-    });
-
-    if (!res.ok) return;
-    const json = (await res.json()) as { choices: { message: { content: string } }[] };
-    const summary = json.choices[0]?.message?.content?.trim();
-    if (!summary) return;
-
     await supabase.from("conversation_states").upsert({
       conversation_id: conversationId,
       summary,

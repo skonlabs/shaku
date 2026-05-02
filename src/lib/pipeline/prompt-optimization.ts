@@ -12,7 +12,7 @@ export interface PromptOptimizationResult {
 export async function rewriteQuery(
   originalQuery: string,
   intent: IntentResult,
-  followUpContext?: string,
+  recentHistory?: { role: string; content: string }[],
 ): Promise<string> {
   if (intent.intent === "acknowledgment" || intent.intent === "casual_chat") {
     return originalQuery;
@@ -23,9 +23,14 @@ export async function rewriteQuery(
   if (!key) return originalQuery;
 
   try {
-    const contextHint = followUpContext
-      ? `\nConversation context: ${followUpContext.slice(0, 200)}`
-      : "";
+    // Include last 2 turns (up to 4 messages) to resolve pronouns and follow-up references
+    const historyHint =
+      recentHistory && recentHistory.length > 0
+        ? `\nRecent conversation:\n${recentHistory
+            .slice(-4)
+            .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 300)}`)
+            .join("\n")}`
+        : "";
 
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -37,7 +42,7 @@ export async function rewriteQuery(
         messages: [
           {
             role: "user",
-            content: `Rewrite this query to be more specific and searchable. Do NOT change what is being asked — only add specificity. Return ONLY the rewritten query, nothing else.${contextHint}
+            content: `Rewrite this query to be more specific and searchable. Resolve any pronouns or references using the conversation history. Do NOT change what is being asked — only add specificity. Return ONLY the rewritten query, nothing else.${historyHint}
 Original: ${originalQuery}`,
           },
         ],

@@ -187,7 +187,7 @@ Allowed fields: identity (name/role/company/team), expertise (array), activeProj
         },
         body: JSON.stringify({
           model: HAIKU_MODEL_ID,
-          max_tokens: 300,
+          max_tokens: 500,
           messages: [{ role: "user", content: prompt }],
         }),
         signal: AbortSignal.timeout(5000),
@@ -212,7 +212,7 @@ Allowed fields: identity (name/role/company/team), expertise (array), activeProj
       headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        max_tokens: 300,
+        max_tokens: 500,
         temperature: 0,
         messages: [{ role: "user", content: prompt }],
       }),
@@ -288,7 +288,10 @@ export function compressUkmForPrompt(ukm: UserKnowledgeModel, currentMessage?: s
   if (style.verbosity) parts.push(`${style.verbosity} responses`);
 
   if (ukm.expertise.length) {
-    parts.push(`Expertise: ${ukm.expertise.slice(0, 3).join(", ")}`);
+    const expertise = currentMessage
+      ? rankProjectsByRelevance(ukm.expertise, currentMessage).slice(0, 3)
+      : ukm.expertise.slice(0, 3);
+    parts.push(`Expertise: ${expertise.join(", ")}`);
   }
 
   // Surface chronic correction rate so model knows to be extra careful
