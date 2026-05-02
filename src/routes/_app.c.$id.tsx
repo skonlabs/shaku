@@ -265,7 +265,7 @@ function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, isLoading]);
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-sm text-muted-foreground">Loading…</div>
@@ -273,6 +273,9 @@ function ChatPage() {
     );
   }
   if (!data?.conversation) throw notFound();
+  // While placeholder data is shown for a different conversation id, render
+  // a soft fade rather than swapping in a stale chat.
+  const showingStale = isFetching && data?.conversation?.id !== id;
 
   const isRateLimited =
     rateLimitedUntil !== null && new Date(rateLimitedUntil).getTime() > Date.now();
