@@ -128,11 +128,12 @@ async function searchConversationHistory(
   if (keywords.length === 0) return [];
 
   // RLS scopes to the authenticated user's conversations automatically.
+  const orFilter = keywords.map((k) => `content.ilike.%${k}%`).join(",");
   const { data } = await supabase
     .from("messages")
     .select("id, content, conversation_id, role, created_at")
     .eq("is_active", true)
-    .ilike("content", `%${keywords[0]}%`)
+    .or(orFilter)
     .limit(15);
 
   if (!data?.length) return [];
@@ -164,11 +165,13 @@ async function searchAllMemories(
   query: string,
   supabase: SupabaseClient,
 ): Promise<RetrievedChunk[]> {
+  const now = new Date().toISOString();
   const { data } = await supabase
     .from("memories")
     .select("id, type, content, confidence")
     .eq("user_id", userId)
     .is("superseded_by", null)
+    .or(`expires_at.is.null,expires_at.gt.${now}`)
     .textSearch("search_vector", query, { config: "english" })
     .limit(10);
 

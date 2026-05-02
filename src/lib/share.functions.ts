@@ -80,11 +80,9 @@ export const getSharedResponse = createServerFn({ method: "POST" })
     if (error || !shared) throw new Error("Shared response not found.");
 
     // Atomic view count increment (avoids read-modify-write race condition)
-    void supabase
-      .rpc("increment_shared_view_count", { share_id: data.share_id })
-      .then(({ error: viewErr }) => {
-        if (viewErr) console.error("[increment_shared_view_count] failed:", viewErr);
-      });
+    const { error: viewErr } = await supabase
+      .rpc("increment_shared_view_count", { share_id: data.share_id });
+    if (viewErr) console.error("[increment_shared_view_count] failed:", viewErr);
 
     return { response: shared };
   });

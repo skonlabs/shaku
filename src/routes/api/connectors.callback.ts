@@ -35,12 +35,14 @@ export const Route = createFileRoute("/api/connectors/callback")({
         );
 
         try {
-          // Validate CSRF state: look up connector with this state (no user_id filter needed
-          // since the state UUID is unguessable and acts as the auth token)
+          // Atomically consume the OAuth state: the UPDATE only matches if oauth_state equals
+          // the expected value, then immediately clears it. Only one concurrent request can win
+          // this race — a second request with the same state finds no row.
           const { data: connector } = await serviceSupabase
             .from("connectors")
-            .select("id, service, user_id, oauth_state")
+            .update({ oauth_state: null })
             .eq("oauth_state", state)
+            .select("id, service, user_id")
             .maybeSingle();
 
           if (!connector) {

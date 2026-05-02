@@ -61,17 +61,15 @@ export const Route = createFileRoute("/api/webhooks/slack")({
               .eq("status", "connected");
 
             // Only trigger syncs for connectors belonging to the workspace that sent this event.
-            // Connector metadata should store team_id (set during OAuth exchange).
-            // If team_id isn't stored yet, fall back to syncing only the first connector to
-            // avoid hammering all workspaces on every message.
+            // Drop events without a team_id — falling back to an arbitrary connector would
+            // risk cross-tenant data leakage.
             if (!teamId) {
-              console.warn("[webhooks.slack] team_id not found in event, falling back to first connector");
+              console.warn("[webhooks.slack] team_id not found in event, dropping");
+              return new Response("OK", { status: 200 });
             }
-            const matching = teamId
-              ? (connectors ?? []).filter(
-                  (c) => (c.metadata as Record<string, unknown> | null)?.team_id === teamId,
-                )
-              : (connectors ?? []).slice(0, 1);
+            const matching = (connectors ?? []).filter(
+              (c) => (c.metadata as Record<string, unknown> | null)?.team_id === teamId,
+            );
 
             for (const connector of matching) {
               const syncPromise = (async () => {

@@ -117,7 +117,8 @@ export function wrapUserMessage(content: string): string {
 }
 
 export function wrapSource(name: string, type: string, content: string): string {
-  return `<source name="${name}" type="${type}">${content}</source>`;
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  return `<source name="${esc(name)}" type="${esc(type)}">${content}</source>`;
 }
 
 export function wrapMemory(type: string, content: string): string {

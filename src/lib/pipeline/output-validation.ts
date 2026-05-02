@@ -90,7 +90,7 @@ export function verifyCitations(
 
   const citationRe = /\[([^\]]+)\]/g;
   const matches = [...responseText.matchAll(citationRe)];
-  if (matches.length === 0) return 1; // no citations = no unverified claims
+  if (matches.length === 0) return 0; // no citations in a sourced response = 0 verified
 
   let verified = 0;
   for (const m of matches) {

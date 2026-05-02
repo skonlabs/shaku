@@ -268,6 +268,7 @@ function chunkByCodeStructure(content: string): string[] {
 // Fixed-size chunking with overlap
 function chunkFixed(text: string, size: number, overlap: number): string[] {
   if (!text.trim()) return [];
+  const safeOverlap = Math.min(overlap, Math.max(0, size - 1)); // prevent infinite loop
   const chunks: string[] = [];
   let start = 0;
 
@@ -275,7 +276,7 @@ function chunkFixed(text: string, size: number, overlap: number): string[] {
     const end = start + size;
     chunks.push(text.slice(start, end).trim());
     if (end >= text.length) break;
-    start = end - overlap;
+    start = end - safeOverlap;
   }
 
   return chunks.filter((c) => c.length > 20);

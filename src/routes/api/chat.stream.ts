@@ -103,7 +103,7 @@ const BodySchema = z.object({
         size: z.number().nonnegative(),
         type: z.string().max(120),
         kind: z.string().max(20).optional(),
-        extracted_text: z.string().nullable().optional(),
+        extracted_text: z.string().max(120_000).nullable().optional(),
         extraction_error: z.string().nullable().optional(),
         storage_error: z.string().nullable().optional(),
       }),
@@ -194,9 +194,13 @@ export const Route = createFileRoute("/api/chat/stream")({
         // Load credit state (plan + balance + features) — used for plan enforcement
         // before routing, and for the upfront balance gate.
         {
-          const { data: stateRaw } = await supabase
+          const { data: stateRaw, error: creditsErr } = await supabase
             .rpc("credits_get_state", { p_user_id: userId })
             .maybeSingle();
+          if (creditsErr) {
+            console.error("[chat.stream] credits_get_state failed:", creditsErr);
+            return jsonError("Service temporarily unavailable", 503);
+          }
           const state = stateRaw as
             | { plan: string; balance: number; features: PlanFeatures }
             | null;
@@ -1190,11 +1194,10 @@ export const Route = createFileRoute("/api/chat/stream")({
             }
 
             // ---- Charge credits (atomic, idempotent on assistant message id) ----
-            // Uses observed token counts → calculateCredits → credits_deduct RPC.
-            // If the stream errored before any output, we skip the charge entirely.
-            // The DB function is idempotent on (user_id, request_id) so retries
-            // never double-charge.
-            if (assistantId && (totalInputTokens > 0 || totalOutputTokens > 0) && !streamError) {
+            // Awaited directly (not via runAfterResponse) so it cannot be dropped by a
+            // CF Worker shutdown. Uses assistantId when available; falls back to a stable
+            // per-request key so the deduction fires even when message insert failed (H9).
+            if ((totalInputTokens > 0 || totalOutputTokens > 0) && !streamError) {
               const breakdown = calculateCredits({
                 modelId: activeModel.id,
                 inputTokens: totalInputTokens,
@@ -1202,28 +1205,24 @@ export const Route = createFileRoute("/api/chat/stream")({
                 memoryRead: assembled.memoriesUsed.length > 0,
                 documentRead: finalChunks.length > 0,
               });
-              runAfterResponse(
-                (async () => {
-                  const { error: creditErr } = await supabase.rpc("credits_deduct", {
-                    p_user_id: userId,
-                    p_amount: breakdown.total,
-                    p_reason: "chat",
-                    p_request_id: assistantId,
-                    p_metadata: {
-                      model: activeModel.id,
-                      tokens_in: Math.round(totalInputTokens),
-                      tokens_out: Math.round(totalOutputTokens),
-                      cost_usd: costUsd,
-                      breakdown: {
-                        multiplier: breakdown.model.multiplier,
-                        contextMult: breakdown.contextMult,
-                        addOns: breakdown.addOns,
-                      },
-                    },
-                  });
-                  if (creditErr) console.error("[credits_deduct] failed:", creditErr);
-                })(),
-              );
+              const { error: creditErr } = await supabase.rpc("credits_deduct", {
+                p_user_id: userId,
+                p_amount: breakdown.total,
+                p_reason: "chat",
+                p_request_id: assistantId ?? `${convo.id}-${startTimeMs}`,
+                p_metadata: {
+                  model: activeModel.id,
+                  tokens_in: Math.round(totalInputTokens),
+                  tokens_out: Math.round(totalOutputTokens),
+                  cost_usd: costUsd,
+                  breakdown: {
+                    multiplier: breakdown.model.multiplier,
+                    contextMult: breakdown.contextMult,
+                    addOns: breakdown.addOns,
+                  },
+                },
+              });
+              if (creditErr) console.error("[credits_deduct] failed:", creditErr);
             }
 
             // Insert context log for observability (fire-and-forget)

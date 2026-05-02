@@ -51,25 +51,30 @@ export const Route = createFileRoute("/api/webhooks/stripe")({
           auth: { persistSession: false, autoRefreshToken: false },
         });
 
-        // Idempotency check: have we already processed this event?
-        const { error: insertEventErr } = await supabase
-          .from("stripe_events")
-          .insert({ event_id: event.id, type: event.type, payload: event as unknown as object });
-        if (insertEventErr) {
-          // 23505 = unique_violation — already processed
-          if ((insertEventErr as { code?: string }).code === "23505") {
-            return ok();
-          }
-          console.error("[webhooks.stripe] failed to record event:", insertEventErr);
-          // Fall through and try to process anyway — DB-level grant idempotency protects us.
-        }
-
+        // Process the event first, THEN record it as processed.
+        // Recording first caused silent credit loss: if the handler threw a transient
+        // error after the idempotency row was inserted, Stripe's next retry would be
+        // deduped and the user would never receive their credits.
         const stripe = new Stripe(stripeKey);
         try {
           await handleStripeEvent(event, stripe, supabase);
         } catch (e) {
           console.error(`[webhooks.stripe] handler error for ${event.type} ${event.id}:`, e);
-          // Return 200 so Stripe doesn't retry the same broken payload forever.
+          // Return 500 so Stripe retries until the handler actually succeeds.
+          // Do NOT record the event yet — we haven't successfully processed it.
+          return new Response(JSON.stringify({ error: "handler failed, will retry" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        // Mark event as processed only after successful handler execution.
+        const { error: insertEventErr } = await supabase
+          .from("stripe_events")
+          .insert({ event_id: event.id, type: event.type, payload: event as unknown as object });
+        if (insertEventErr && (insertEventErr as { code?: string }).code !== "23505") {
+          // Non-duplicate error: log but return 200 — the event was already processed successfully.
+          console.error("[webhooks.stripe] failed to record processed event:", insertEventErr);
         }
         return ok();
       },

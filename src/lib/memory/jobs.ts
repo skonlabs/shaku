@@ -51,7 +51,7 @@ export async function processMemoryJob(
     .eq("status", "pending")
     .lte("scheduled_at", new Date().toISOString())
     .select("user_id, conversation_id, project_id, retries, max_retries")
-    .single();
+    .maybeSingle();
 
   if (claimErr || !job) return; // already claimed or not yet due
 

@@ -32,7 +32,7 @@ export const getMemoriesByIds = createServerFn({ method: "POST" })
     if (data.ids.length === 0) return { memories: [] };
     const { data: rows, error } = await supabase
       .from("memories")
-      .select("id, content, type, confidence, source")
+      .select("id, content, type, confidence")
       .eq("user_id", userId)
       .in("id", data.ids);
     if (error) return { memories: [] };
@@ -42,7 +42,6 @@ export const getMemoriesByIds = createServerFn({ method: "POST" })
         content: (r.content as string) ?? "",
         type: (r.type as string) ?? "fact",
         confidence: (r.confidence as number) ?? 0,
-        source: (r.source as string) ?? "",
       })),
     };
   });

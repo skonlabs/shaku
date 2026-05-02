@@ -107,7 +107,13 @@ export async function processFile(
   for (let i = 0; i < records.length; i += BATCH) {
     const batch = records.slice(i, i + BATCH);
     const { error } = await supabase.from("chunks").insert(batch);
-    if (error) throw new Error(`Failed to index chunks: ${error.message}`);
+    if (error) {
+      // Unique constraint violation: a concurrent request already indexed this content.
+      if ((error as { code?: string }).code === "23505") {
+        return { chunkCount: 0, contentHash, skipped: true };
+      }
+      throw new Error(`Failed to index chunks: ${error.message}`);
+    }
   }
 
   return { chunkCount: chunks.length, contentHash };
@@ -214,7 +220,12 @@ export async function processExtractedContent(
   for (let i = 0; i < records.length; i += BATCH) {
     const batch = records.slice(i, i + BATCH);
     const { error } = await supabase.from("chunks").insert(batch);
-    if (error) throw new Error(`Failed to index chunks: ${error.message}`);
+    if (error) {
+      if ((error as { code?: string }).code === "23505") {
+        return { chunkCount: 0, contentHash, skipped: true };
+      }
+      throw new Error(`Failed to index chunks: ${error.message}`);
+    }
   }
 
   return { chunkCount: chunks.length, contentHash };

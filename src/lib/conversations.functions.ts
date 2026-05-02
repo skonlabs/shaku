@@ -162,12 +162,14 @@ export const editMessageAndTrim = createServerFn({ method: "POST" })
       .eq("id", data.id);
     if (updateErr) throw new Error("Couldn't save the edit.");
 
-    // Soft-delete subsequent messages
+    // Soft-delete subsequent messages. Use >= to catch same-millisecond inserts,
+    // and exclude the just-edited message itself to avoid deactivating it.
     const { error: trimErr } = await supabase
       .from("messages")
       .update({ is_active: false })
       .eq("conversation_id", msg.conversation_id)
-      .gt("created_at", msg.created_at);
+      .gte("created_at", msg.created_at)
+      .neq("id", msg.id);
     if (trimErr) throw new Error("Couldn't trim follow-up messages.");
 
     return { success: true, conversation_id: msg.conversation_id, content: data.content };
