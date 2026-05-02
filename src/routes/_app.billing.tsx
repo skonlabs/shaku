@@ -762,3 +762,47 @@ function formatRelativeMonthly(iso: string): string {
   next.setMonth(next.getMonth() + 1);
   return `on ${next.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
 }
+
+function LedgerRow({
+  entry,
+}: {
+  entry: {
+    id: string;
+    delta: number;
+    reason: string;
+    balance_after: number;
+    metadata: unknown;
+    created_at: string;
+  };
+}) {
+  const meta =
+    typeof entry.metadata === "object" && entry.metadata !== null
+      ? (entry.metadata as Record<string, unknown>)
+      : {};
+  const model = typeof meta.model === "string" ? meta.model : null;
+  return (
+    <li className="flex items-center justify-between gap-4 px-5 py-3 text-sm">
+      <div className="min-w-0">
+        <div className="font-medium">{REASON_LABELS[entry.reason] ?? entry.reason}</div>
+        <div className="truncate text-xs text-muted-foreground">
+          {new Date(entry.created_at).toLocaleString()}
+          {model ? ` · ${model}` : ""}
+        </div>
+      </div>
+      <div className="text-right">
+        <div
+          className={
+            "font-mono text-sm tabular-nums " +
+            (entry.delta < 0 ? "text-foreground" : "text-primary")
+          }
+        >
+          {entry.delta < 0 ? "−" : "+"}
+          {Math.abs(entry.delta).toLocaleString()}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          bal {entry.balance_after.toLocaleString()}
+        </div>
+      </div>
+    </li>
+  );
+}
