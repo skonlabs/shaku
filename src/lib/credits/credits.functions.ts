@@ -518,13 +518,14 @@ export const getCreditEntriesForConversation = createServerFn({ method: "POST" }
     if (error) throw error;
 
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
     type Row = {
       id: string;
       delta: number;
       reason: string;
       balance_after: number;
       request_id: string | null;
-      metadata: unknown;
+      metadata: JsonValue;
       created_at: string;
     };
     const list = (rows ?? []) as unknown as Row[];
