@@ -37,12 +37,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { HelpCircle } from "lucide-react";
 import {
   DropdownMenu,
@@ -446,11 +441,7 @@ export function Section({
         className="group flex w-full items-center gap-1 rounded-md px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
         aria-expanded={open}
       >
-        {open ? (
-          <ChevronDown className="h-3 w-3" />
-        ) : (
-          <ChevronRight className="h-3 w-3" />
-        )}
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         <span>{title}</span>
         {typeof count === "number" && (
           <span className="ml-1 text-muted-foreground/70">({count})</span>
@@ -633,57 +624,57 @@ function SettingsPanel() {
           <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Appearance
           </p>
-        <div className="grid grid-cols-3 gap-1.5">
-          {(
-            [
-              { v: "light", icon: Sun, label: "Light" },
-              { v: "dark", icon: Moon, label: "Dark" },
-              { v: "system", icon: Monitor, label: "System" },
-            ] as const
-          ).map((opt) => {
-            const Icon = opt.icon;
-            return (
-              <button
-                key={opt.v}
-                onClick={() => setTheme(opt.v)}
-                className={cn(
-                  "flex flex-col items-center gap-1 rounded-md border border-border px-2 py-3 text-xs transition",
-                  theme === opt.v ? "border-primary bg-accent" : "hover:bg-accent/60",
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div>
-        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Uploads
-        </p>
-        <label className="flex items-center justify-between gap-3 text-sm">
-          <span>Max file size</span>
-          <div className="flex items-center gap-1.5">
-            <input
-              type="number"
-              min={1}
-              max={HARD_UPLOAD_MAX_MB}
-              value={maxMb}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isFinite(n)) setMaxMb(n);
-              }}
-              className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm outline-none focus:border-ring/60"
-            />
-            <span className="text-xs text-muted-foreground">MB</span>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(
+              [
+                { v: "light", icon: Sun, label: "Light" },
+                { v: "dark", icon: Moon, label: "Dark" },
+                { v: "system", icon: Monitor, label: "System" },
+              ] as const
+            ).map((opt) => {
+              const Icon = opt.icon;
+              return (
+                <button
+                  key={opt.v}
+                  onClick={() => setTheme(opt.v)}
+                  className={cn(
+                    "flex flex-col items-center gap-1 rounded-md border border-border px-2 py-3 text-xs transition",
+                    theme === opt.v ? "border-primary bg-accent" : "hover:bg-accent/60",
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
-        </label>
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          Per-file limit, 1–{HARD_UPLOAD_MAX_MB} MB. Default 1 MB.
-        </p>
-      </div>
-      <TokenUsageSection />
+        </div>
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Uploads
+          </p>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>Max file size</span>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min={1}
+                max={HARD_UPLOAD_MAX_MB}
+                value={maxMb}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n)) setMaxMb(n);
+                }}
+                className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm outline-none focus:border-ring/60"
+              />
+              <span className="text-xs text-muted-foreground">MB</span>
+            </div>
+          </label>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Per-file limit, 1–{HARD_UPLOAD_MAX_MB} MB. Default 1 MB.
+          </p>
+        </div>
+        <TokenUsageSection />
       </div>
     </ScrollArea>
   );
@@ -737,23 +728,23 @@ function MemoryPreferencesSection() {
                 <p className="mb-1 font-medium">Examples</p>
                 <ul className="space-y-1.5 text-muted-foreground">
                   <li>
-                    <b className="text-foreground">Eager —</b> "I think I'd like to learn
-                    French someday" gets saved. You'll see more reminders, some off-base.
+                    <b className="text-foreground">Eager —</b> "I think I'd like to learn French
+                    someday" gets saved. You'll see more reminders, some off-base.
                   </li>
                   <li>
-                    <b className="text-foreground">Balanced —</b> "I'm learning French" gets
-                    saved. Casual asides usually don't.
+                    <b className="text-foreground">Balanced —</b> "I'm learning French" gets saved.
+                    Casual asides usually don't.
                   </li>
                   <li>
-                    <b className="text-foreground">Cautious —</b> only clear statements like
-                    "My name is Sam" or "I live in Berlin" stick.
+                    <b className="text-foreground">Cautious —</b> only clear statements like "My
+                    name is Sam" or "I live in Berlin" stick.
                   </li>
                 </ul>
               </HelpTip>
             </p>
             <p className="mb-2 text-[12px] leading-snug text-muted-foreground">
-              Higher means fewer, more reliable memories. Lower means more memories but some may
-              be wrong.
+              Higher means fewer, more reliable memories. Lower means more memories but some may be
+              wrong.
             </p>
             <div className="grid grid-cols-3 gap-1.5">
               {(
@@ -765,14 +756,10 @@ function MemoryPreferencesSection() {
               ).map((opt) => (
                 <button
                   key={opt.v}
-                  onClick={() =>
-                    updateMut.mutate({ min_confidence_threshold: confValue[opt.v] })
-                  }
+                  onClick={() => updateMut.mutate({ min_confidence_threshold: confValue[opt.v] })}
                   className={cn(
                     "rounded-md border border-border px-2 py-2 text-center text-xs transition",
-                    confPreset === opt.v
-                      ? "border-primary bg-accent"
-                      : "hover:bg-accent/60",
+                    confPreset === opt.v ? "border-primary bg-accent" : "hover:bg-accent/60",
                   )}
                 >
                   <div className="font-medium">{opt.label}</div>
@@ -799,12 +786,12 @@ function MemoryPreferencesSection() {
                       planning chat, Cortex might only save "trip to Lisbon in June."
                     </li>
                     <li>
-                      <b className="text-foreground">5–8 (Recommended) —</b> also saves
-                      "traveling with partner," "wants museums and food," "budget €1500."
+                      <b className="text-foreground">5–8 (Recommended) —</b> also saves "traveling
+                      with partner," "wants museums and food," "budget €1500."
                     </li>
                     <li>
-                      <b className="text-foreground">15–20 (Capture everything) —</b> adds
-                      smaller details like preferred neighborhoods and dietary notes.
+                      <b className="text-foreground">15–20 (Capture everything) —</b> adds smaller
+                      details like preferred neighborhoods and dietary notes.
                     </li>
                   </ul>
                 </HelpTip>
@@ -814,17 +801,15 @@ function MemoryPreferencesSection() {
               </span>
             </div>
             <p className="mb-2 text-[12px] leading-snug text-muted-foreground">
-              Most chats produce 1–3 useful facts. A higher limit lets Cortex capture more from
-              long conversations.
+              Most chats produce 1–3 useful facts. A higher limit lets Cortex capture more from long
+              conversations.
             </p>
             <Slider
               min={1}
               max={20}
               step={1}
               value={[Math.min(prefs.maxMemoriesPerCall, 20)]}
-              onValueChange={(vals) =>
-                updateMut.mutate({ max_memories_per_call: vals[0] })
-              }
+              onValueChange={(vals) => updateMut.mutate({ max_memories_per_call: vals[0] })}
             />
             <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
               <span>Just essentials</span>
@@ -1262,9 +1247,8 @@ function ProjectsPanel() {
           <div className="space-y-1">
             <p className="text-xs font-medium text-foreground">What's a space?</p>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              A space groups chats and memories around a topic — like a job search,
-              a trip, or a long project. Cortex remembers context across every chat
-              inside it.
+              A space groups chats and memories around a topic — like a job search, a trip, or a
+              long project. Cortex remembers context across every chat inside it.
             </p>
           </div>
         </div>
@@ -1329,8 +1313,7 @@ function ProjectsPanel() {
             <FolderPlus className="mx-auto mb-2 h-6 w-6 text-primary/40" />
             <p className="text-xs font-medium text-foreground">No spaces yet</p>
             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Try one for something you'll keep coming back to — Cortex will get
-              smarter every time.
+              Try one for something you'll keep coming back to — Cortex will get smarter every time.
             </p>
             <Button
               size="sm"
@@ -1515,11 +1498,18 @@ function ProjectRow({
           {/* What's in this space — mini-card */}
           <div className="mb-1.5 mt-1 flex items-center gap-3 rounded-md bg-accent/30 px-2 py-1.5 text-[11px] text-muted-foreground">
             <span title="Chats in this space" className="flex items-center gap-1">
-              <span className="font-medium text-foreground">{chatCount}</span> chat{chatCount === 1 ? "" : "s"}
+              <span className="font-medium text-foreground">{chatCount}</span> chat
+              {chatCount === 1 ? "" : "s"}
             </span>
-            <span aria-hidden className="opacity-30">·</span>
-            <span title="Memories saved from chats in this space" className="flex items-center gap-1">
-              <span className="font-medium text-foreground">{memCount}</span> memor{memCount === 1 ? "y" : "ies"}
+            <span aria-hidden className="opacity-30">
+              ·
+            </span>
+            <span
+              title="Memories saved from chats in this space"
+              className="flex items-center gap-1"
+            >
+              <span className="font-medium text-foreground">{memCount}</span> memor
+              {memCount === 1 ? "y" : "ies"}
             </span>
           </div>
 
@@ -1574,16 +1564,89 @@ function fmtBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+function safeStorageRelativePath(path: string): string {
+  return path
+    .split("/")
+    .map((part) => {
+      const cleaned = Array.from(part.trim())
+        .map((ch) => (ch.charCodeAt(0) < 32 || ["\\", "?", "#", "%"].includes(ch) ? "-" : ch))
+        .join("")
+        .replace(/^\.+$/, "-");
+      return cleaned || "file";
+    })
+    .filter((part) => part !== "." && part !== "..")
+    .join("/");
+}
+
+function formatDatasourceUploadError(error: { message?: string; statusCode?: string }): string {
+  const msg = (error.message || "").toLowerCase();
+  if (msg.includes("bucket") || msg.includes("not found")) {
+    return "Data source storage is not ready yet. Please retry after the latest update finishes applying.";
+  }
+  if (msg.includes("row-level security") || msg.includes("violates row-level security policy")) {
+    return "File uploads are blocked by storage permissions right now.";
+  }
+  if (msg.includes("size") || msg.includes("too large") || error.statusCode === "413") {
+    return "That file exceeds the storage size limit.";
+  }
+  return error.message || "Upload failed.";
+}
+
 const CLOUD_STORAGE_SERVICES = [
-  { service: "google_drive", name: "Google Drive", desc: "Sync Docs, Sheets, Slides and files", implemented: true },
-  { service: "google_docs", name: "Google Docs", desc: "Index your Google Docs documents", implemented: true },
-  { service: "google_sheets", name: "Google Sheets", desc: "Index your Google Sheets spreadsheets", implemented: true },
-  { service: "google_slides", name: "Google Slides", desc: "Index your Google Slides presentations", implemented: true },
-  { service: "onedrive", name: "OneDrive", desc: "Sync files from Microsoft OneDrive", implemented: true },
-  { service: "microsoft_word", name: "Microsoft Word", desc: "Index .docx files from OneDrive", implemented: true },
-  { service: "microsoft_excel", name: "Microsoft Excel", desc: "Index .xlsx files from OneDrive", implemented: true },
-  { service: "microsoft_powerpoint", name: "Microsoft PowerPoint", desc: "Index .pptx files from OneDrive", implemented: true },
-  { service: "microsoft_onenote", name: "Microsoft OneNote", desc: "Index OneNote notebooks and pages", implemented: true },
+  {
+    service: "google_drive",
+    name: "Google Drive",
+    desc: "Sync Docs, Sheets, Slides and files",
+    implemented: true,
+  },
+  {
+    service: "google_docs",
+    name: "Google Docs",
+    desc: "Index your Google Docs documents",
+    implemented: true,
+  },
+  {
+    service: "google_sheets",
+    name: "Google Sheets",
+    desc: "Index your Google Sheets spreadsheets",
+    implemented: true,
+  },
+  {
+    service: "google_slides",
+    name: "Google Slides",
+    desc: "Index your Google Slides presentations",
+    implemented: true,
+  },
+  {
+    service: "onedrive",
+    name: "OneDrive",
+    desc: "Sync files from Microsoft OneDrive",
+    implemented: true,
+  },
+  {
+    service: "microsoft_word",
+    name: "Microsoft Word",
+    desc: "Index .docx files from OneDrive",
+    implemented: true,
+  },
+  {
+    service: "microsoft_excel",
+    name: "Microsoft Excel",
+    desc: "Index .xlsx files from OneDrive",
+    implemented: true,
+  },
+  {
+    service: "microsoft_powerpoint",
+    name: "Microsoft PowerPoint",
+    desc: "Index .pptx files from OneDrive",
+    implemented: true,
+  },
+  {
+    service: "microsoft_onenote",
+    name: "Microsoft OneNote",
+    desc: "Index OneNote notebooks and pages",
+    implemented: true,
+  },
 ];
 
 function DatasourcesPanel() {
@@ -1678,11 +1741,13 @@ function DatasourcesPanel() {
     if (!user) return { ok: false, error: "Not signed in" };
     try {
       const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
+      const relativePath =
+        (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
       const { file: record } = await createDatasourceFile({
-        data: { name: file.name, file_type: ext, file_size_bytes: file.size },
+        data: { name: relativePath, file_type: ext, file_size_bytes: file.size },
       });
       const fileId = record.id;
-      const storagePath = `${user.id}/${fileId}/${file.name}`;
+      const storagePath = `${user.id}/${fileId}/${safeStorageRelativePath(relativePath)}`;
 
       const { error: upErr } = await supabase.storage
         .from("datasource-files")
@@ -1690,7 +1755,7 @@ function DatasourcesPanel() {
 
       if (upErr) {
         await deleteDatasourceFile({ data: { id: fileId } });
-        return { ok: false, error: upErr.message };
+        return { ok: false, error: formatDatasourceUploadError(upErr) };
       }
 
       const { error: pathUpdateErr } = await supabase
@@ -1704,27 +1769,31 @@ function DatasourcesPanel() {
 
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
-      if (token) {
-        const res = await fetch("/api/datasources/process", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            file_id: fileId,
-            storage_path: storagePath,
-            file_type: ext,
-            file_name: file.name,
-          }),
-        });
-        if (!res.ok) {
-          let errMsg = "Processing failed.";
-          try {
-            const body = await res.json();
-            errMsg = body?.error ?? body?.message ?? errMsg;
-          } catch {
-            /* noop */
-          }
-          return { ok: false, error: errMsg };
+      if (!token) {
+        await deleteDatasourceFile({ data: { id: fileId } });
+        return { ok: false, error: "Please sign in again and retry." };
+      }
+
+      const res = await fetch("/api/datasources/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          file_id: fileId,
+          storage_path: storagePath,
+          file_type: ext,
+          file_name: relativePath,
+        }),
+      });
+      if (!res.ok) {
+        let errMsg = "Processing failed.";
+        try {
+          const body = await res.json();
+          errMsg = body?.error ?? body?.message ?? errMsg;
+        } catch {
+          /* noop */
         }
+        await deleteDatasourceFile({ data: { id: fileId } });
+        return { ok: false, error: errMsg };
       }
       return { ok: true };
     } catch (err) {
@@ -1732,17 +1801,57 @@ function DatasourcesPanel() {
     }
   }
 
-  async function handleFilesSelected(fileList: FileList | null) {
+  async function handleFilesSelected(fileList: FileList | File[] | null) {
     if (!fileList || !user) return;
     const allFiles = Array.from(fileList).filter((f) => f.size > 0);
     if (allFiles.length === 0) return;
 
     const ALLOWED = new Set([
-      "pdf","docx","doc","txt","md","rtf","xlsx","xls","csv","tsv",
-      "pptx","ppt","png","jpg","jpeg","gif","webp",
-      "py","js","ts","tsx","jsx","java","cpp","c","h","hpp",
-      "cs","go","rs","rb","php","swift","kt","html","htm","css",
-      "scss","sh","sql","json","xml","yaml","yml","toml",
+      "pdf",
+      "docx",
+      "doc",
+      "txt",
+      "md",
+      "rtf",
+      "xlsx",
+      "xls",
+      "csv",
+      "tsv",
+      "pptx",
+      "ppt",
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "webp",
+      "py",
+      "js",
+      "ts",
+      "tsx",
+      "jsx",
+      "java",
+      "cpp",
+      "c",
+      "h",
+      "hpp",
+      "cs",
+      "go",
+      "rs",
+      "rb",
+      "php",
+      "swift",
+      "kt",
+      "html",
+      "htm",
+      "css",
+      "scss",
+      "sh",
+      "sql",
+      "json",
+      "xml",
+      "yaml",
+      "yml",
+      "toml",
     ]);
     const maxBytes = 50 * 1024 * 1024;
 
@@ -1803,22 +1912,16 @@ function DatasourcesPanel() {
     qc.invalidateQueries({ queryKey: ["ds-files"] });
 
     if (succeeded > 0 && failures.length === 0) {
-      toast.success(
-        succeeded === 1
-          ? "File is processing."
-          : `${succeeded} files are processing.`,
-      );
+      toast.success(succeeded === 1 ? "File is processing." : `${succeeded} files are processing.`);
     } else if (succeeded > 0 && failures.length > 0) {
-      toast.warning(
-        `${succeeded} uploaded, ${failures.length} failed. ${failures[0]}`,
-      );
+      toast.warning(`${succeeded} uploaded, ${failures.length} failed. ${failures[0]}`);
     } else {
       toast.error(`Upload failed: ${failures[0] ?? "unknown error"}`);
     }
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
+    const files = e.target.files ? Array.from(e.target.files) : [];
     e.target.value = "";
     await handleFilesSelected(files);
   }
@@ -2188,10 +2291,22 @@ const CONNECTOR_GROUPS: { label: string; services: string[]; desc: string }[] = 
 
 const CONNECTOR_META: Record<string, { name: string; desc: string; implemented: boolean }> = {
   slack: { name: "Slack", desc: "Index channel messages, threads and files", implemented: true },
-  microsoft_teams: { name: "Microsoft Teams", desc: "Index Teams messages and channels", implemented: true },
+  microsoft_teams: {
+    name: "Microsoft Teams",
+    desc: "Index Teams messages and channels",
+    implemented: true,
+  },
   gmail: { name: "Gmail", desc: "Index email threads and attachments", implemented: true },
-  microsoft_outlook: { name: "Microsoft Outlook", desc: "Index Outlook email threads", implemented: true },
-  google_calendar: { name: "Google Calendar", desc: "Index events from your primary calendar", implemented: true },
+  microsoft_outlook: {
+    name: "Microsoft Outlook",
+    desc: "Index Outlook email threads",
+    implemented: true,
+  },
+  google_calendar: {
+    name: "Google Calendar",
+    desc: "Index events from your primary calendar",
+    implemented: true,
+  },
 };
 
 function ConnectorsPanel() {
@@ -2485,8 +2600,8 @@ function MemoryPanel() {
               <p className="text-xs font-medium text-foreground">Cortex learns as you chat</p>
               <p className="text-[11px] leading-relaxed text-muted-foreground">
                 Mention things naturally — like <span className="italic">"I'm vegetarian"</span> or{" "}
-                <span className="italic">"keep answers short"</span> — and Cortex remembers.
-                Both your memories and persona below are built from these chats.
+                <span className="italic">"keep answers short"</span> — and Cortex remembers. Both
+                your memories and persona below are built from these chats.
               </p>
             </div>
           </div>
@@ -2528,7 +2643,8 @@ function MemoryPanel() {
       <ScrollArea className="flex-1">
         {!memoryEnabled && (
           <div className="mx-3 mt-3 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
-            Learning is paused. Cortex won't add to your memories or persona until you turn it back on. Existing entries are kept.
+            Learning is paused. Cortex won't add to your memories or persona until you turn it back
+            on. Existing entries are kept.
           </div>
         )}
         {tab === "memories" && (
@@ -2547,7 +2663,11 @@ function MemoryPanel() {
           />
         )}
         {tab === "persona" && (
-          <PersonaTab ukm={ukmData?.ukm ?? null} recentSignals={recentSignals} isLoading={ukmLoading} />
+          <PersonaTab
+            ukm={ukmData?.ukm ?? null}
+            recentSignals={recentSignals}
+            isLoading={ukmLoading}
+          />
         )}
         {tab === "insights" && (
           <InsightsTab
@@ -2608,7 +2728,6 @@ function MemoriesTab({
   onDelete: (id: string) => void;
   onRefresh: () => void;
 }) {
-
   return (
     <div className="space-y-4 px-3 py-3">
       {/* Granular memory preferences (only meaningful when learning is on) */}
@@ -2637,9 +2756,16 @@ function MemoriesTab({
                 Recent signals
               </p>
               {recentSignals.map((signal, index) => (
-                <div key={`${signal.createdAt}-${index}`} className="rounded-md bg-accent/40 px-3 py-2">
-                  <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">{signal.content}</p>
-                  <p className="mt-1 text-[10px] text-muted-foreground">{relativeTime(signal.createdAt)}</p>
+                <div
+                  key={`${signal.createdAt}-${index}`}
+                  className="rounded-md bg-accent/40 px-3 py-2"
+                >
+                  <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">
+                    {signal.content}
+                  </p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    {relativeTime(signal.createdAt)}
+                  </p>
                 </div>
               ))}
             </>
@@ -2828,17 +2954,24 @@ function PersonaTab({
         <div className="rounded-lg border border-border bg-card p-3">
           <p className="text-sm font-medium text-foreground/80">Persona is still learning</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            I haven&apos;t found enough clear preferences to build a full profile yet, but your recent
-            conversation signals are below.
+            I haven&apos;t found enough clear preferences to build a full profile yet, but your
+            recent conversation signals are below.
           </p>
         </div>
         {recentSignals.length > 0 ? (
           <PersonaSection title="Recent signals">
             <div className="space-y-2">
               {recentSignals.map((signal, index) => (
-                <div key={`${signal.createdAt}-${index}`} className="rounded-md bg-accent/40 px-3 py-2">
-                  <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">{signal.content}</p>
-                  <p className="mt-1 text-[10px] text-muted-foreground">{relativeTime(signal.createdAt)}</p>
+                <div
+                  key={`${signal.createdAt}-${index}`}
+                  className="rounded-md bg-accent/40 px-3 py-2"
+                >
+                  <p className="line-clamp-3 text-xs leading-relaxed text-foreground/85">
+                    {signal.content}
+                  </p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    {relativeTime(signal.createdAt)}
+                  </p>
                 </div>
               ))}
             </div>

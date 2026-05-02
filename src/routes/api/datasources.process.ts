@@ -3,13 +3,12 @@
 // Uses waitUntil for async processing so response returns quickly.
 
 import { createFileRoute } from "@tanstack/react-router";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? (import.meta.env.VITE_SUPABASE_URL as string);
 const SUPABASE_KEY =
-  process.env.SUPABASE_PUBLISHABLE_KEY ??
-  (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
+  process.env.SUPABASE_PUBLISHABLE_KEY ?? (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
 
 const BodySchema = z.object({
   file_id: z.string().uuid(),
@@ -65,9 +64,8 @@ export const Route = createFileRoute("/api/datasources/process")({
           .update({ status: "processing" })
           .eq("id", body.file_id);
 
-        // Start processing async — always return 202 immediately regardless of environment.
-        // In CF Workers, use waitUntil so the worker stays alive for the full pipeline.
-        // In dev (non-CF), run the promise without awaiting to avoid blocking the response.
+        // Start processing. Use waitUntil when available; otherwise await so the
+        // work is not cancelled after the response is returned.
         const processPromise = processFileAsync(
           userId,
           body.file_id,
@@ -77,12 +75,13 @@ export const Route = createFileRoute("/api/datasources/process")({
           supabase,
         );
 
-        const cfCtx = (globalThis as Record<string, unknown>).__cfContext as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+        const cfCtx = (globalThis as Record<string, unknown>).__cfContext as
+          | { waitUntil?: (p: Promise<unknown>) => void }
+          | undefined;
         if (cfCtx?.waitUntil) {
           cfCtx.waitUntil(processPromise);
         } else {
-          // In non-CF environments (dev), still run async but don't block response
-          processPromise.catch(e => console.error("[datasources.process] async error", e));
+          await processPromise;
         }
 
         return new Response(JSON.stringify({ ok: true, status: "processing" }), {
@@ -100,7 +99,7 @@ async function processFileAsync(
   storagePath: string,
   fileType: string,
   fileName: string,
-  supabase: any,
+  supabase: SupabaseClient,
 ): Promise<void> {
   try {
     // Download from Supabase Storage.
@@ -116,24 +115,37 @@ async function processFileAsync(
     const bytes = new Uint8Array(await fileData.arrayBuffer());
     const { processFile } = await import("@/lib/datasources/processor");
 
-    const result = await processFile(userId, bytes, fileName, fileType, {
-      sourceType: "datasource",
-      sourceId: fileId,
-      metadata: { file_name: fileName, file_type: fileType },
-    }, supabase);
+    const result = await processFile(
+      userId,
+      bytes,
+      fileName,
+      fileType,
+      {
+        sourceType: "datasource",
+        sourceId: fileId,
+        metadata: { file_name: fileName, file_type: fileType },
+      },
+      supabase,
+    );
 
-    await supabase.from("datasource_files").update({
-      status: "ready",
-      chunk_count: result.chunkCount,
-      content_hash: result.contentHash,
-      last_refreshed_at: new Date().toISOString(),
-    }).eq("id", fileId);
+    await supabase
+      .from("datasource_files")
+      .update({
+        status: "ready",
+        chunk_count: result.chunkCount,
+        content_hash: result.contentHash,
+        last_refreshed_at: new Date().toISOString(),
+      })
+      .eq("id", fileId);
   } catch (e) {
     console.error("[datasources.process] processing failed:", e);
-    await supabase.from("datasource_files").update({
-      status: "error",
-      error_message: e instanceof Error ? e.message : "Processing failed",
-    }).eq("id", fileId);
+    await supabase
+      .from("datasource_files")
+      .update({
+        status: "error",
+        error_message: e instanceof Error ? e.message : "Processing failed",
+      })
+      .eq("id", fileId);
   }
 }
 
