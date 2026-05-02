@@ -74,7 +74,7 @@ export function ChatHistoryRail() {
   }
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-border/60 bg-background/40">
+    <aside className="flex h-full w-56 shrink-0 flex-col border-r border-border/60 bg-background/40 sm:w-64">
       <div className="flex items-center gap-1 px-2 pt-2">
         <Link
           to="/app"
