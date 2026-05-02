@@ -147,7 +147,7 @@ async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<stri
 
       const lines: string[] = [];
       const columnCount = usedRange.e.c - usedRange.s.c + 1;
-      const verticalMergeValues = buildVerticalMergeValueMap(XLSX, sheet);
+      const mergeValues = buildMergeValueMap(XLSX, sheet);
 
       for (let r = usedRange.s.r; r <= usedRange.e.r; r++) {
         const cells: string[] = [];
@@ -156,7 +156,7 @@ async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<stri
           const address = XLSX.utils.encode_cell({ r, c });
           const value =
             cellToText((sheet?.[address] as SpreadsheetCell | undefined) ?? undefined) ||
-            verticalMergeValues.get(address) ||
+            mergeValues.get(address) ||
             "";
           if (value) hasValue = true;
           cells.push(value);
@@ -183,34 +183,34 @@ function findActualUsedRange(
   XLSX: XLSXModule,
   sheet: SpreadsheetSheet | undefined,
 ): SpreadsheetRange | null {
-  if (!sheet?.["!ref"]) return null;
-  const declared = XLSX.utils.decode_range(sheet["!ref"]);
+  if (!sheet) return null;
   let minR = Number.POSITIVE_INFINITY;
   let minC = Number.POSITIVE_INFINITY;
   let maxR = -1;
   let maxC = -1;
 
-  for (let r = declared.s.r; r <= declared.e.r; r++) {
-    for (let c = declared.s.c; c <= declared.e.c; c++) {
-      const cell = sheet[XLSX.utils.encode_cell({ r, c })] as SpreadsheetCell | undefined;
-      if (!cellHasContent(cell)) continue;
-      minR = Math.min(minR, r);
-      minC = Math.min(minC, c);
-      maxR = Math.max(maxR, r);
-      maxC = Math.max(maxC, c);
-    }
+  // Scan actual cell keys rather than !ref bounds — !ref can be stale and under-report
+  for (const key of Object.keys(sheet)) {
+    if (key.startsWith("!")) continue;
+    const cell = sheet[key] as SpreadsheetCell | undefined;
+    if (!cellHasContent(cell)) continue;
+    const { r, c } = XLSX.utils.decode_cell(key);
+    minR = Math.min(minR, r);
+    minC = Math.min(minC, c);
+    maxR = Math.max(maxR, r);
+    maxC = Math.max(maxC, c);
   }
 
   return maxR >= 0 ? { s: { r: minR, c: minC }, e: { r: maxR, c: maxC } } : null;
 }
 
-function buildVerticalMergeValueMap(
+function buildMergeValueMap(
   XLSX: XLSXModule,
   sheet: SpreadsheetSheet,
 ): Map<string, string> {
   const values = new Map<string, string>();
   for (const merge of sheet["!merges"] ?? []) {
-    if (merge.e.r <= merge.s.r) continue;
+    // No row/column guard — propagate value for ALL merges (horizontal, vertical, or both)
     const anchor = cellToText(
       sheet[XLSX.utils.encode_cell(merge.s)] as SpreadsheetCell | undefined,
     );

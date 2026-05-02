@@ -6,7 +6,7 @@ import { getRuntimeEnv } from "@/lib/runtime-env";
 
 const HARD_MAX_BYTES = 25 * 1024 * 1024; // 25 MB ceiling
 const BUCKET = "chat-uploads";
-const MAX_EXTRACTED_CHARS = 120_000; // cap to keep prompt size sane
+const MAX_EXTRACTED_CHARS = 400_000; // cap to keep prompt size sane
 
 /**
  * Upload a file to Supabase Storage AND extract its text content (when possible).
@@ -244,52 +244,106 @@ async function extractSpreadsheet(bytes: Uint8Array, name: string): Promise<stri
   const XLSX = await import("xlsx");
   const wb = XLSX.read(bytes, {
     type: "array",
-    cellDates: true,    // parse date cells as Date objects → formatted strings
-    cellFormula: false, // use computed cell values, not formula strings
-    cellHTML: false,
+    cellDates: true,
+    cellFormula: true,
+    cellNF: true,
+    sheetStubs: true,
   });
 
-  const parts: string[] = [];
+  const parts: string[] = [
+    `--- Workbook: ${name} | Sheets: ${wb.SheetNames.length} ---\n${wb.SheetNames.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+  ];
 
   for (const sheetName of wb.SheetNames) {
     const sheet = wb.Sheets[sheetName];
-    // Chart sheets, macro sheets, and dialog sheets have no cell grid (!ref is absent)
-    if (!sheet || !sheet["!ref"]) continue;
+    // Chart/macro sheets have no cell grid — skip gracefully
+    if (!sheet || !sheet["!ref"]) {
+      parts.push(`--- Sheet: ${sheetName} ---\n(empty)`);
+      continue;
+    }
 
     try {
-      // sheet_to_json with header:1 returns an array of rows as arrays.
-      // raw:false applies number/date formatting; defval:"" fills sparse cells.
-      const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-        header: 1,
-        raw: false,
-        defval: "",
-        blankrows: false,
-      }) as string[][];
+      // Build full merge map — propagates anchor value to all cells in every merge region.
+      // sheet_to_json fills non-anchor merge cells with defval; iterating cell-by-cell with
+      // this map is the only way to get accurate data for horizontal and vertical merges.
+      type MergeRange = { s: { r: number; c: number }; e: { r: number; c: number } };
+      const mergeValues = new Map<string, string>();
+      for (const merge of ((sheet["!merges"] as MergeRange[]) ?? [])) {
+        const anchorKey = XLSX.utils.encode_cell(merge.s);
+        const anchorCell = sheet[anchorKey] as { v?: unknown; w?: string } | undefined;
+        const raw = anchorCell?.w ?? anchorCell?.v;
+        if (raw == null) continue;
+        const anchorStr =
+          raw instanceof Date
+            ? raw.toISOString().slice(0, 10)
+            : String(raw).replace(/[\t\r\n]+/g, " ").trim();
+        for (let r = merge.s.r; r <= merge.e.r; r++) {
+          for (let c = merge.s.c; c <= merge.e.c; c++) {
+            mergeValues.set(XLSX.utils.encode_cell({ r, c }), anchorStr);
+          }
+        }
+      }
 
-      if (!rows.length) continue;
+      // Find actual used range from cell keys — !ref can be stale and miss cells
+      let minR = Infinity, minC = Infinity, maxR = -1, maxC = -1;
+      for (const key of Object.keys(sheet)) {
+        if (key.startsWith("!")) continue;
+        const { r, c } = XLSX.utils.decode_cell(key);
+        minR = Math.min(minR, r);
+        minC = Math.min(minC, c);
+        maxR = Math.max(maxR, r);
+        maxC = Math.max(maxC, c);
+      }
+      // Also extend bounds to cover full merge regions
+      for (const merge of ((sheet["!merges"] as MergeRange[]) ?? [])) {
+        maxR = Math.max(maxR, merge.e.r);
+        maxC = Math.max(maxC, merge.e.c);
+      }
 
-      // Serialize to CSV with proper quoting (handles commas/quotes/newlines in cells)
-      const csv = rows
-        .map((row) =>
-          row
-            .map((cell) => {
-              const s = cell == null ? "" : String(cell);
-              return s.includes(",") || s.includes('"') || s.includes("\n")
-                ? `"${s.replace(/"/g, '""')}"`
-                : s;
-            })
-            .join(","),
-        )
-        .join("\n");
+      if (maxR < 0) {
+        parts.push(`--- Sheet: ${sheetName} ---\n(empty)`);
+        continue;
+      }
 
-      if (csv.trim()) parts.push(`--- Sheet: ${sheetName} ---\n${csv.trim()}`);
-    } catch {
-      // Non-data sheets (charts, macros) may still be listed in SheetNames; skip them
-      parts.push(`--- Sheet: ${sheetName} ---\n[Sheet could not be read]`);
+      const lines: string[] = [];
+      for (let r = minR; r <= maxR; r++) {
+        const cells: string[] = [];
+        let hasValue = false;
+        for (let c = minC; c <= maxC; c++) {
+          const address = XLSX.utils.encode_cell({ r, c });
+          const cell = sheet[address] as { v?: unknown; w?: string } | undefined;
+          let value = "";
+          if (cell) {
+            const cellRaw = cell.w ?? cell.v;
+            if (cellRaw != null) {
+              value =
+                cellRaw instanceof Date
+                  ? cellRaw.toISOString().slice(0, 10)
+                  : String(cellRaw).replace(/[\t\r\n]+/g, " ").trim();
+            }
+          }
+          if (!value) value = mergeValues.get(address) ?? "";
+          if (value) hasValue = true;
+          cells.push(value);
+        }
+        if (hasValue) lines.push(cells.join("\t"));
+      }
+
+      if (lines.length) {
+        parts.push(
+          `--- Sheet: ${sheetName} | Rows: ${lines.length} | Columns: ${maxC - minC + 1} ---\n${lines.join("\n")}`,
+        );
+      } else {
+        parts.push(`--- Sheet: ${sheetName} ---\n(empty)`);
+      }
+    } catch (e) {
+      parts.push(
+        `--- Sheet: ${sheetName} ---\n[Sheet could not be read: ${e instanceof Error ? e.message : "unknown error"}]`,
+      );
     }
   }
 
-  return parts.length ? parts.join("\n\n") : `(empty spreadsheet: ${name})`;
+  return parts.length > 1 ? parts.join("\n\n") : `(empty spreadsheet: ${name})`;
 }
 
 async function transcribeAudio(bytes: Uint8Array, name: string, mime: string): Promise<string> {
