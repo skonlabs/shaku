@@ -1673,11 +1673,8 @@ function DatasourcesPanel() {
   const [pendingDeleteFileId, setPendingDeleteFileId] = useState<string | null>(null);
   const [pendingDisconnectId, setPendingDisconnectId] = useState<string | null>(null);
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    e.target.value = "";
-    setUploading(true);
+  async function uploadSingleFile(file: File): Promise<{ ok: boolean; error?: string }> {
+    if (!user) return { ok: false, error: "Not signed in" };
     try {
       const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
       const { file: record } = await createDatasourceFile({
@@ -1692,7 +1689,7 @@ function DatasourcesPanel() {
 
       if (upErr) {
         await deleteDatasourceFile({ data: { id: fileId } });
-        throw new Error(upErr.message);
+        return { ok: false, error: upErr.message };
       }
 
       const { error: pathUpdateErr } = await supabase
@@ -1700,10 +1697,8 @@ function DatasourcesPanel() {
         .update({ storage_path: storagePath })
         .eq("id", fileId);
       if (pathUpdateErr) {
-        // Surface error to user rather than proceeding to process with missing path
-        toast.error("Failed to record file path. Please try again.");
         await deleteDatasourceFile({ data: { id: fileId } });
-        return;
+        return { ok: false, error: "Failed to record file path" };
       }
 
       const { data: sessionData } = await supabase.auth.getSession();
@@ -1727,17 +1722,83 @@ function DatasourcesPanel() {
           } catch {
             /* noop */
           }
-          toast.error(errMsg);
+          return { ok: false, error: errMsg };
         }
       }
-
-      qc.invalidateQueries({ queryKey: ["ds-files"] });
-      toast.success(`"${file.name}" is processing.`);
+      return { ok: true };
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed.");
-    } finally {
-      setUploading(false);
+      return { ok: false, error: err instanceof Error ? err.message : "Upload failed" };
     }
+  }
+
+  async function handleFilesSelected(fileList: FileList | null) {
+    if (!fileList || !user) return;
+    const files = Array.from(fileList).filter((f) => f.size > 0);
+    if (files.length === 0) return;
+
+    // Filter out files that are too large
+    const maxBytes = 50 * 1024 * 1024;
+    const tooLarge = files.filter((f) => f.size > maxBytes);
+    const valid = files.filter((f) => f.size <= maxBytes);
+    if (tooLarge.length > 0) {
+      toast.error(
+        `${tooLarge.length} file${tooLarge.length === 1 ? "" : "s"} exceed 50 MB and were skipped.`,
+      );
+    }
+    if (valid.length === 0) {
+      return;
+    }
+
+    setUploading(true);
+    setUploadProgress({ done: 0, total: valid.length });
+
+    let succeeded = 0;
+    const failures: string[] = [];
+
+    // Limit concurrency to 3 to avoid overwhelming the browser/server
+    const CONCURRENCY = 3;
+    let idx = 0;
+    const workers = Array.from({ length: Math.min(CONCURRENCY, valid.length) }, async () => {
+      while (idx < valid.length) {
+        const myIdx = idx++;
+        const file = valid[myIdx];
+        const result = await uploadSingleFile(file);
+        if (result.ok) {
+          succeeded++;
+        } else {
+          failures.push(`${file.name}: ${result.error ?? "failed"}`);
+        }
+        setUploadProgress((p) =>
+          p ? { done: p.done + 1, total: p.total } : { done: 1, total: valid.length },
+        );
+        qc.invalidateQueries({ queryKey: ["ds-files"] });
+      }
+    });
+    await Promise.all(workers);
+
+    setUploading(false);
+    setUploadProgress(null);
+    qc.invalidateQueries({ queryKey: ["ds-files"] });
+
+    if (succeeded > 0 && failures.length === 0) {
+      toast.success(
+        succeeded === 1
+          ? "File is processing."
+          : `${succeeded} files are processing.`,
+      );
+    } else if (succeeded > 0 && failures.length > 0) {
+      toast.warning(
+        `${succeeded} uploaded, ${failures.length} failed. ${failures[0]}`,
+      );
+    } else {
+      toast.error(`Upload failed: ${failures[0] ?? "unknown error"}`);
+    }
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    e.target.value = "";
+    await handleFilesSelected(files);
   }
 
   const connectedStorage = (connData?.connected ?? []).filter((c) =>
