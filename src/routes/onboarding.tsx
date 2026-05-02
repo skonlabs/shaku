@@ -22,7 +22,7 @@ function OnboardingPage() {
   useEffect(() => {
     if (loading) return;
     if (!user) void navigate({ to: "/login" });
-    else if (profile?.has_completed_onboarding) void navigate({ to: "/" });
+    else if (profile?.has_completed_onboarding) void navigate({ to: "/app" });
     else if (profile?.name && !name) setName(profile.name);
   }, [loading, user, profile, navigate, name]);
 
@@ -31,7 +31,7 @@ function OnboardingPage() {
     try {
       await completeOnboarding({ data: { name: name.trim() || undefined } });
       await refreshProfile();
-      void navigate({ to: "/" });
+      void navigate({ to: "/app" });
     } catch {
       toast.error("Hmm, that didn't save. Mind trying again?");
     } finally {

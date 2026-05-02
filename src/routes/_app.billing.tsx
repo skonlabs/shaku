@@ -214,7 +214,7 @@ function BillingPage() {
             Track your monthly credits, see where they go, and upgrade when you need more.
           </p>
         </div>
-        <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">
+        <Link to="/app" className="text-sm text-muted-foreground hover:text-foreground">
           ← Back to chat
         </Link>
       </header>
