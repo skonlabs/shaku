@@ -22,6 +22,7 @@ import {
   ExternalLink,
   File,
   FolderPlus,
+  FolderUp,
   Loader2,
   Pause,
   Play,
