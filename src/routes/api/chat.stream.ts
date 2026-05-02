@@ -687,8 +687,21 @@ export const Route = createFileRoute("/api/chat/stream")({
                 // Auto-continue handles longer responses so we don't waste context budget.
                 const taskType = intentToTaskType(intent, intentResult.domain);
                 const taskCap = TASK_OUTPUT_TOKENS[taskType] ?? 800;
-                const PER_TURN_MAX_TOKENS = Math.min(candidateModel.maxOutputTokens, taskCap);
-                const MAX_AUTO_CONTINUES = candidateModel.provider === "anthropic" ? 3 : 0;
+                // When the user attaches substantial document text, they typically
+                // expect comprehensive output (e.g. "process every row/sheet/page").
+                // Lift the per-turn cap to the model's full output capacity so we
+                // don't truncate at ~800 tokens mid-list.
+                const needsLongOutput = attachmentTextTokens > 5_000;
+                const PER_TURN_MAX_TOKENS = needsLongOutput
+                  ? candidateModel.maxOutputTokens
+                  : Math.min(candidateModel.maxOutputTokens, taskCap);
+                // Allow auto-continue for all providers when long output is needed,
+                // so Gemini/OpenAI can also keep generating past their first cap.
+                const MAX_AUTO_CONTINUES = needsLongOutput
+                  ? 5
+                  : candidateModel.provider === "anthropic"
+                  ? 3
+                  : 0;
 
                 if (candidateModel.provider === "anthropic") {
                   const apiKey = runtimeKeys.anthropic;
@@ -816,24 +829,43 @@ export const Route = createFileRoute("/api/chat/stream")({
                   const { GeminiProvider } = await import("@/lib/llm/gemini");
                   const gemini = new GeminiProvider(apiKey);
 
-                  for await (const chunk of gemini.generate({
-                    model: candidateModel,
-                    messages: optimizedMessages,
-                    systemPrompt: optimizedSystemPrompt,
-                    maxTokens: PER_TURN_MAX_TOKENS,
-                  })) {
-                    const { text: safeChunk } = redactOutputPii(chunk.text, allowedPiiValues);
-                    assistantText += safeChunk;
-                    const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                    if (visible) send("delta", { text: visible });
+                  const turnMessages = [...optimizedMessages];
+                  for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
+                    let turnText = "";
+                    let finishedFull = true;
+                    for await (const chunk of gemini.generate({
+                      model: candidateModel,
+                      messages: turnMessages,
+                      systemPrompt: optimizedSystemPrompt,
+                      maxTokens: PER_TURN_MAX_TOKENS,
+                    })) {
+                      const { text: safeChunk } = redactOutputPii(chunk.text, allowedPiiValues);
+                      assistantText += safeChunk;
+                      turnText += safeChunk;
+                      const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                      if (visible) send("delta", { text: visible });
+                      if (chunk.finishReason === "MAX_TOKENS" || chunk.finishReason === "length") {
+                        finishedFull = false;
+                      }
+                    }
+                    if (finishedFull) break;
+                    if (turn === MAX_AUTO_CONTINUES) {
+                      hitFinalCap = true;
+                      break;
+                    }
+                    turnMessages.push({ role: "assistant", content: turnText });
+                    turnMessages.push({
+                      role: "user",
+                      content: "Continue from exactly where you stopped. Do not repeat prior content.",
+                    });
                   }
                 } else {
                   const apiKey = runtimeKeys.openai;
                   if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
                   const openai = new OpenAI({ apiKey });
 
-                  const oaiMessages = [
-                    { role: "system" as const, content: optimizedSystemPrompt },
+                  const oaiMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+                    { role: "system", content: optimizedSystemPrompt },
                     ...optimizedMessages.map((m) => ({
                       role: m.role as "user" | "assistant",
                       content: messageContentToText(m.content),
@@ -852,44 +884,61 @@ export const Route = createFileRoute("/api/chat/stream")({
                       ? "gpt-4o-mini-search-preview"
                       : candidateModel.id;
 
-                  const stream = await openai.chat.completions.create({
-                    model: oaiModelId,
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    messages: oaiMessages as any,
-                    stream: true,
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    stream_options: { include_usage: true } as any,
-                    max_tokens: PER_TURN_MAX_TOKENS,
-                  });
+                  for (let turn = 0; turn <= MAX_AUTO_CONTINUES; turn++) {
+                    const stream = await openai.chat.completions.create({
+                      model: oaiModelId,
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      messages: oaiMessages as any,
+                      stream: true,
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      stream_options: { include_usage: true } as any,
+                      max_tokens: PER_TURN_MAX_TOKENS,
+                    });
 
-                  for await (const chunk of stream) {
-                    const text = chunk.choices[0]?.delta?.content ?? "";
-                    if (text) {
-                      const { text: safeChunk } = redactOutputPii(text, allowedPiiValues);
-                      assistantText += safeChunk;
-                      const visible = stripFollowupsTagPartial(safeChunk, assistantText);
-                      if (visible) send("delta", { text: visible });
-                    }
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const annotations: any[] | undefined = (chunk.choices[0]?.delta as any)
-                      ?.annotations;
-                    if (Array.isArray(annotations)) {
-                      let added = false;
-                      for (const a of annotations) {
-                        const url = a?.url_citation?.url ?? a?.url;
-                        const title = a?.url_citation?.title ?? a?.title ?? url;
-                        if (url && !webCitations.some((c) => c.url === url)) {
-                          webCitations.push({ title, url });
-                          added = true;
-                        }
+                    let turnText = "";
+                    let finishReason: string | null = null;
+                    for await (const chunk of stream) {
+                      const text = chunk.choices[0]?.delta?.content ?? "";
+                      if (text) {
+                        const { text: safeChunk } = redactOutputPii(text, allowedPiiValues);
+                        assistantText += safeChunk;
+                        turnText += safeChunk;
+                        const visible = stripFollowupsTagPartial(safeChunk, assistantText);
+                        if (visible) send("delta", { text: visible });
                       }
-                      if (added) send("citations", { sources: webCitations });
+                      const fr = chunk.choices[0]?.finish_reason;
+                      if (fr) finishReason = fr;
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const annotations: any[] | undefined = (chunk.choices[0]?.delta as any)
+                        ?.annotations;
+                      if (Array.isArray(annotations)) {
+                        let added = false;
+                        for (const a of annotations) {
+                          const url = a?.url_citation?.url ?? a?.url;
+                          const title = a?.url_citation?.title ?? a?.title ?? url;
+                          if (url && !webCitations.some((c) => c.url === url)) {
+                            webCitations.push({ title, url });
+                            added = true;
+                          }
+                        }
+                        if (added) send("citations", { sources: webCitations });
+                      }
+                      if (chunk.usage) {
+                        totalInputTokens += chunk.usage.prompt_tokens ?? 0;
+                        totalOutputTokens += chunk.usage.completion_tokens ?? 0;
+                      }
                     }
-                    if (chunk.usage) {
-                      // Accumulate (not overwrite) so prior fallback attempts are preserved.
-                      totalInputTokens += chunk.usage.prompt_tokens ?? 0;
-                      totalOutputTokens += chunk.usage.completion_tokens ?? 0;
+
+                    if (finishReason !== "length") break;
+                    if (turn === MAX_AUTO_CONTINUES) {
+                      hitFinalCap = true;
+                      break;
                     }
+                    oaiMessages.push({ role: "assistant", content: turnText });
+                    oaiMessages.push({
+                      role: "user",
+                      content: "Continue from exactly where you stopped. Do not repeat prior content.",
+                    });
                   }
                 }
 
