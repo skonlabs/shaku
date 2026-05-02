@@ -66,7 +66,7 @@ export const listFiles = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     let query = supabase
       .from("datasource_files")
-      .select("id, folder_id, name, file_type, file_size_bytes, status, chunk_count, last_refreshed_at, created_at")
+      .select("id, folder_id, name, file_type, file_size_bytes, status, chunk_count, last_refreshed_at, created_at, storage_path")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
