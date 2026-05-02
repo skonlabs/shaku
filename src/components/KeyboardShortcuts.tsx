@@ -23,7 +23,7 @@ export function KeyboardShortcuts() {
         setActive("chats");
       } else if (mod && e.key.toLowerCase() === "n") {
         e.preventDefault();
-        void navigate({ to: "/" });
+        void navigate({ to: "/app" });
       } else if (mod && e.shiftKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
         setActive("settings");
