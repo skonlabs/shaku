@@ -6,7 +6,7 @@ import {
   Plug,
   Settings,
   User,
-  Sparkles,
+  Brain,
   Plus,
   Leaf,
   Receipt,
@@ -34,7 +34,7 @@ const items: SidebarItem[] = [
   { kind: "panel", id: "projects", icon: FolderHeart, label: "Spaces" },
   { kind: "panel", id: "datasources", icon: BookOpen, label: "My library (data sources)" },
   { kind: "panel", id: "connectors", icon: Plug, label: "Connections" },
-  { kind: "link", to: "/my-profile", icon: Sparkles, label: "AI Profile (memories & persona)", matchPath: "/my-profile" },
+  { kind: "link", to: "/my-profile", icon: Brain, label: "AI Profile (memories & persona)", matchPath: "/my-profile" },
 ];
 
 export function AppSidebar() {
