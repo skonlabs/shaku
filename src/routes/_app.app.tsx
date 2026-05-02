@@ -123,7 +123,7 @@ function NewChatPage() {
         className="pointer-events-none absolute inset-x-0 top-0 -z-0 h-[420px] bg-[radial-gradient(ellipse_at_top,oklch(0.88_0.04_130/0.55),transparent_70%)]"
       />
       <div className="relative flex-1 overflow-y-auto">
-        <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-4 py-12 text-center">
+        <div className="mx-auto flex min-h-full max-w-3xl flex-col items-center justify-center px-4 py-8 text-center sm:py-12">
           <div className="animate-fade-rise mb-7 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-[oklch(0.62_0.08_145)] to-[oklch(0.50_0.07_150)] text-primary-foreground shadow-[0_10px_30px_-10px_oklch(0.50_0.07_150/0.5)]">
             <Leaf className="h-8 w-8" />
           </div>
