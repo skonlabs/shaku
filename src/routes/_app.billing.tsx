@@ -371,27 +371,191 @@ function BillingPage() {
               No spend yet — start a chat to see usage here.
             </div>
           ) : (
-            (summaryQ.data?.breakdown ?? []).map((row) => (
-              <div key={row.reason} className="flex items-center justify-between px-5 py-3 text-sm">
-                <div>
-                  <div className="font-medium">{REASON_LABELS[row.reason] ?? row.reason}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {row.request_count.toLocaleString()} request
-                    {row.request_count === 1 ? "" : "s"}
-                  </div>
+            (summaryQ.data?.breakdown ?? []).map((row) => {
+              const isChat = row.reason === "chat";
+              const isOpen = isChat && conversationsExpanded;
+              return (
+                <div key={row.reason}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isChat) return;
+                      setConversationsExpanded((v) => !v);
+                      setExpandedConvoId(null);
+                    }}
+                    className={
+                      "flex w-full items-center justify-between gap-3 px-5 py-3 text-left text-sm " +
+                      (isChat ? "cursor-pointer hover:bg-accent/30" : "cursor-default")
+                    }
+                    disabled={!isChat}
+                    aria-expanded={isOpen}
+                  >
+                    <div className="flex items-center gap-2">
+                      {isChat &&
+                        (isOpen ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        ))}
+                      <div>
+                        <div className="font-medium">
+                          {REASON_LABELS[row.reason] ?? row.reason}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {row.request_count.toLocaleString()} request
+                          {row.request_count === 1 ? "" : "s"}
+                          {isChat && !isOpen ? " · click to break down by conversation" : ""}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="font-mono text-sm tabular-nums">
+                      −{row.total_spent.toLocaleString()}
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div className="border-t border-border/60 bg-muted/20">
+                      {convoUsageQ.isLoading ? (
+                        <div className="px-5 py-4 text-xs text-muted-foreground">
+                          Loading conversations…
+                        </div>
+                      ) : (convoUsageQ.data?.conversations ?? []).length === 0 ? (
+                        <div className="px-5 py-4 text-xs text-muted-foreground">
+                          No conversation-level data yet. New chats will appear here as they
+                          consume credits.
+                        </div>
+                      ) : (
+                        <ul className="divide-y divide-border/40">
+                          {convoUsageQ.data!.conversations.map((c) => {
+                            const isThisOpen = expandedConvoId === c.conversation_id;
+                            return (
+                              <li key={c.conversation_id}>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedConvoId((id) =>
+                                      id === c.conversation_id ? null : c.conversation_id,
+                                    )
+                                  }
+                                  className="flex w-full items-center justify-between gap-3 px-5 py-2.5 text-left text-sm hover:bg-accent/40"
+                                  aria-expanded={isThisOpen}
+                                >
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    {isThisOpen ? (
+                                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                    ) : (
+                                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                    )}
+                                    <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                    <div className="min-w-0">
+                                      <div className="truncate font-medium">
+                                        {c.title ?? "Untitled conversation"}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {c.message_count} message
+                                        {c.message_count === 1 ? "" : "s"} ·{" "}
+                                        {new Date(c.last_at).toLocaleDateString()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-3 shrink-0">
+                                    <div className="font-mono text-sm tabular-nums">
+                                      −{c.total_spent.toLocaleString()}
+                                    </div>
+                                    <Link
+                                      to="/c/$id"
+                                      params={{ id: c.conversation_id }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="text-xs text-primary hover:underline"
+                                    >
+                                      Open
+                                    </Link>
+                                  </div>
+                                </button>
+
+                                {isThisOpen && (
+                                  <div className="border-t border-border/40 bg-background/60 px-5 py-3">
+                                    {convoDetailQ.isLoading ? (
+                                      <div className="text-xs text-muted-foreground">
+                                        Loading events…
+                                      </div>
+                                    ) : (convoDetailQ.data?.entries ?? []).length === 0 ? (
+                                      <div className="text-xs text-muted-foreground">
+                                        No event details available.
+                                      </div>
+                                    ) : (
+                                      <ul className="space-y-1.5">
+                                        {convoDetailQ.data!.entries.map((ev) => {
+                                          const m =
+                                            typeof ev.metadata === "object" &&
+                                            ev.metadata !== null
+                                              ? (ev.metadata as Record<string, unknown>)
+                                              : {};
+                                          const model =
+                                            typeof m.model === "string" ? m.model : null;
+                                          const tIn =
+                                            typeof m.tokens_in === "number" ? m.tokens_in : null;
+                                          const tOut =
+                                            typeof m.tokens_out === "number"
+                                              ? m.tokens_out
+                                              : null;
+                                          return (
+                                            <li
+                                              key={ev.id}
+                                              className="flex items-center justify-between gap-3 text-xs"
+                                            >
+                                              <div className="min-w-0">
+                                                <div className="text-muted-foreground">
+                                                  {new Date(ev.created_at).toLocaleString()}
+                                                </div>
+                                                <div className="truncate text-muted-foreground/80">
+                                                  {model ? `${model}` : "—"}
+                                                  {tIn !== null && tOut !== null
+                                                    ? ` · ${tIn.toLocaleString()} in / ${tOut.toLocaleString()} out tokens`
+                                                    : ""}
+                                                </div>
+                                              </div>
+                                              <div className="font-mono tabular-nums">
+                                                −{Math.abs(ev.delta).toLocaleString()}
+                                              </div>
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                    )}
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="font-mono text-sm tabular-nums">
-                  −{row.total_spent.toLocaleString()}
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </Card>
       </section>
 
       {/* Ledger */}
       <section className="mt-10">
-        <h3 className="mb-3 text-sm font-medium text-muted-foreground">Recent activity</h3>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-medium text-muted-foreground">Recent activity</h3>
+          <button
+            type="button"
+            onClick={() => {
+              setAllActivityOpen(true);
+              if (allActivityEntries.length === 0) {
+                void loadAllActivity(null);
+              }
+            }}
+            className="text-xs text-primary hover:underline"
+          >
+            View all activity
+          </button>
+        </div>
         <Card>
           {ledgerQ.isLoading ? (
             <div className="px-5 py-6 text-sm text-muted-foreground">Loading…</div>
@@ -399,45 +563,53 @@ function BillingPage() {
             <div className="px-5 py-6 text-sm text-muted-foreground">No activity yet.</div>
           ) : (
             <ul className="divide-y divide-border/60">
-              {ledgerQ.data!.entries.map((e) => {
-                const meta =
-                  typeof e.metadata === "object" && e.metadata !== null
-                    ? (e.metadata as Record<string, unknown>)
-                    : {};
-                const model = typeof meta.model === "string" ? meta.model : null;
-                return (
-                  <li
-                    key={e.id}
-                    className="flex items-center justify-between gap-4 px-5 py-3 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-medium">{REASON_LABELS[e.reason] ?? e.reason}</div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {new Date(e.created_at).toLocaleString()}
-                        {model ? ` · ${model}` : ""}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div
-                        className={
-                          "font-mono text-sm tabular-nums " +
-                          (e.delta < 0 ? "text-foreground" : "text-primary")
-                        }
-                      >
-                        {e.delta < 0 ? "−" : "+"}
-                        {Math.abs(e.delta).toLocaleString()}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        bal {e.balance_after.toLocaleString()}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
+              {ledgerQ.data!.entries.slice(0, 5).map((e) => (
+                <LedgerRow key={e.id} entry={e} />
+              ))}
             </ul>
           )}
         </Card>
       </section>
+
+      {/* Full activity dialog */}
+      <Dialog open={allActivityOpen} onOpenChange={setAllActivityOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>All credit activity</DialogTitle>
+            <DialogDescription>
+              Every credit transaction on your account, newest first.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto">
+            {allActivityEntries.length === 0 && !loadingMoreActivity ? (
+              <div className="px-2 py-6 text-sm text-muted-foreground">No activity yet.</div>
+            ) : (
+              <ul className="divide-y divide-border/60">
+                {allActivityEntries.map((e) => (
+                  <LedgerRow key={e.id} entry={e} />
+                ))}
+              </ul>
+            )}
+            {loadingMoreActivity && (
+              <div className="py-3 text-center text-xs text-muted-foreground">
+                <Loader2 className="inline h-3.5 w-3.5 animate-spin" /> Loading…
+              </div>
+            )}
+          </div>
+          {allActivityCursor && (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => loadAllActivity(allActivityCursor)}
+                disabled={loadingMoreActivity}
+              >
+                Load more
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Plans */}
       <section className="mt-10 mb-12">
