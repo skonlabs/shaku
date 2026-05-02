@@ -1835,27 +1835,55 @@ function DatasourcesPanel() {
 
       {tab === "files" && (
         <>
-          <div className="flex shrink-0 items-center px-4 py-2">
+          <div className="flex shrink-0 flex-col gap-1.5 px-4 py-2">
             <input
               ref={fileRef}
               type="file"
+              multiple
               className="sr-only"
               onChange={handleFileChange}
               accept=".pdf,.docx,.doc,.txt,.md,.rtf,.xlsx,.xls,.csv,.pptx,.ppt,.png,.jpg,.jpeg,.gif,.webp,.py,.js,.ts,.tsx,.jsx,.java,.cpp,.c,.rs,.go,.rb,.php,.swift,.kt,.html,.css,.json,.yaml,.sql"
             />
-            <p className="text-[11px] text-muted-foreground">PDFs, Docs, Code, Spreadsheets</p>
-            <button
-              disabled={uploading}
-              onClick={() => fileRef.current?.click()}
-              className="ml-auto flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
-            >
-              {uploading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Upload className="h-3.5 w-3.5" />
-              )}
-              {uploading ? "Uploading…" : "Upload file"}
-            </button>
+            <input
+              ref={folderRef}
+              type="file"
+              multiple
+              className="sr-only"
+              onChange={handleFileChange}
+              // @ts-expect-error - non-standard but widely supported
+              webkitdirectory=""
+              directory=""
+            />
+            <div className="flex items-center gap-2">
+              <p className="flex-1 text-[11px] text-muted-foreground">
+                PDFs, Docs, Code, Spreadsheets
+              </p>
+              <button
+                disabled={uploading}
+                onClick={() => fileRef.current?.click()}
+                className="flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
+              >
+                {uploading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" />
+                )}
+                {uploading ? "Uploading…" : "Upload files"}
+              </button>
+              <button
+                disabled={uploading}
+                onClick={() => folderRef.current?.click()}
+                className="flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
+              >
+                <FolderUp className="h-3.5 w-3.5" />
+                Folder
+              </button>
+            </div>
+            {uploadProgress && uploadProgress.total > 1 && (
+              <p className="text-[11px] text-muted-foreground">
+                Uploading {uploadProgress.done} of {uploadProgress.total}…
+              </p>
+            )}
           </div>
           <ScrollArea className="flex-1">
             {isLoading && (
