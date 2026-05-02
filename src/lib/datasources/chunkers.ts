@@ -20,9 +20,12 @@ export function chunkByFileType(content: string, fileType: string): string[] {
 
     case "xlsx":
     case "xls":
+    case "xlsm":
+    case "xlsb":
+    case "ods":
     case "csv":
     case "tsv":
-      return chunkByRows(content, 30);
+      return chunkByRows(content, 80);
 
     case "pptx":
     case "ppt":
@@ -105,9 +108,8 @@ function chunkByRows(content: string, rowsPerChunk: number): string[] {
   if (!content.trim()) return [];
 
   // Split on sheet header markers but keep them attached to their block.
-  // Matches headers produced by the extractor: "--- Sheet: NAME (N rows) ---"
-  // and the simpler "--- CSV ---" / "--- TSV ---" forms.
-  const sheetHeaderRe = /^--- (?:Sheet: .+?|CSV|TSV)(?: \(\d+ rows\))? ---$/m;
+  // Matches headers produced by the extractor, including workbook/sheet metadata.
+  const sheetHeaderRe = /^--- (?:Workbook: .+?|Sheet: .+?|CSV|TSV)(?: \(\d+ rows\))?(?: \| .+?)? ---$/m;
   const blocks: { header: string; body: string }[] = [];
 
   const lines = content.split("\n");
@@ -144,7 +146,7 @@ function chunkByRows(content: string, rowsPerChunk: number): string[] {
     // repeated in every chunk for context. This preserves column meaning
     // across row batches and is critical for accurate retrieval.
     const columnHeader = rows[0];
-    const dataRows = rows.slice(1);
+    const dataRows = header.startsWith("--- Workbook:") ? rows : rows.slice(1);
 
     // If a sheet has only a header row, still emit a chunk for it.
     if (!dataRows.length) {
