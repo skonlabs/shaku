@@ -1678,11 +1678,13 @@ function DatasourcesPanel() {
     if (!user) return { ok: false, error: "Not signed in" };
     try {
       const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
+      const relativePath =
+        (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
       const { file: record } = await createDatasourceFile({
-        data: { name: file.name, file_type: ext, file_size_bytes: file.size },
+        data: { name: relativePath, file_type: ext, file_size_bytes: file.size },
       });
       const fileId = record.id;
-      const storagePath = `${user.id}/${fileId}/${file.name}`;
+      const storagePath = `${user.id}/${fileId}/${safeStorageRelativePath(relativePath)}`;
 
       const { error: upErr } = await supabase.storage
         .from("datasource-files")
@@ -1690,7 +1692,7 @@ function DatasourcesPanel() {
 
       if (upErr) {
         await deleteDatasourceFile({ data: { id: fileId } });
-        return { ok: false, error: upErr.message };
+        return { ok: false, error: formatDatasourceUploadError(upErr) };
       }
 
       const { error: pathUpdateErr } = await supabase
@@ -1704,27 +1706,31 @@ function DatasourcesPanel() {
 
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
-      if (token) {
-        const res = await fetch("/api/datasources/process", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            file_id: fileId,
-            storage_path: storagePath,
-            file_type: ext,
-            file_name: file.name,
-          }),
-        });
-        if (!res.ok) {
-          let errMsg = "Processing failed.";
-          try {
-            const body = await res.json();
-            errMsg = body?.error ?? body?.message ?? errMsg;
-          } catch {
-            /* noop */
-          }
-          return { ok: false, error: errMsg };
+      if (!token) {
+        await deleteDatasourceFile({ data: { id: fileId } });
+        return { ok: false, error: "Please sign in again and retry." };
+      }
+
+      const res = await fetch("/api/datasources/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          file_id: fileId,
+          storage_path: storagePath,
+          file_type: ext,
+          file_name: relativePath,
+        }),
+      });
+      if (!res.ok) {
+        let errMsg = "Processing failed.";
+        try {
+          const body = await res.json();
+          errMsg = body?.error ?? body?.message ?? errMsg;
+        } catch {
+          /* noop */
         }
+        await deleteDatasourceFile({ data: { id: fileId } });
+        return { ok: false, error: errMsg };
       }
       return { ok: true };
     } catch (err) {
