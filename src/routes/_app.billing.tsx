@@ -272,22 +272,33 @@ function BillingPage() {
   }, [checkoutSessionId, queryClient]);
 
   return (
-    <div className="mx-auto w-full max-w-5xl overflow-y-auto px-6 py-10">
-      <header className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-card/80 px-3 py-1 text-xs text-muted-foreground">
-            <Receipt className="h-3.5 w-3.5" /> Billing &amp; usage
-          </div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">
-            Your plan &amp; credits
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Track your monthly credits, see where they go, and upgrade when you need more.
-          </p>
-        </div>
-        <Link to="/app" className="text-sm text-muted-foreground hover:text-foreground">
+    <div className="mx-auto w-full max-w-5xl overflow-y-auto px-4 py-6 sm:px-6 sm:py-10">
+      <header className="mb-6 sm:mb-8">
+        <Link
+          to="/app"
+          className="mb-3 inline-flex text-sm text-muted-foreground hover:text-foreground sm:hidden"
+        >
           ← Back to chat
         </Link>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-card/80 px-3 py-1 text-xs text-muted-foreground">
+              <Receipt className="h-3.5 w-3.5" /> Billing &amp; usage
+            </div>
+            <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+              Your plan &amp; credits
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Track your monthly credits, see where they go, and upgrade when you need more.
+            </p>
+          </div>
+          <Link
+            to="/app"
+            className="hidden shrink-0 text-sm text-muted-foreground hover:text-foreground sm:inline"
+          >
+            ← Back to chat
+          </Link>
+        </div>
       </header>
 
       {setupRequired && (
@@ -332,10 +343,10 @@ function BillingPage() {
       />
 
       {/* Plan + balance card */}
-      <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-card to-card/60 p-6 shadow-[0_10px_40px_-20px_oklch(0.50_0.07_150/0.35)]">
-        <div className="flex flex-wrap items-start justify-between gap-6">
+      <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-card to-card/60 p-5 shadow-[0_10px_40px_-20px_oklch(0.50_0.07_150/0.35)] sm:p-6">
+        <div className="flex flex-col gap-5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0">
-            <div className="mb-1 flex items-center gap-2">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
               <Badge variant="secondary" className="rounded-full bg-primary/10 text-primary">
                 {(state?.plan ?? "—").toUpperCase()} plan
               </Badge>
@@ -345,9 +356,9 @@ function BillingPage() {
                 </Badge>
               )}
             </div>
-            <h2 className="font-display text-2xl font-semibold">
+            <h2 className="font-display text-xl font-semibold sm:text-2xl">
               {balance.toLocaleString()}{" "}
-              <span className="text-base font-normal text-muted-foreground">
+              <span className="text-sm font-normal text-muted-foreground sm:text-base">
                 of {quota.toLocaleString()} credits left
               </span>
             </h2>
@@ -367,7 +378,7 @@ function BillingPage() {
                 size="lg"
                 onClick={startCheckout}
                 disabled={checkoutMut.isPending || setupRequired}
-                className="rounded-full"
+                className="w-full rounded-full sm:w-auto"
               >
                 {checkoutMut.isPending ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -380,7 +391,7 @@ function BillingPage() {
           </div>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-5 sm:mt-6">
           <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
             <span>{used.toLocaleString()} used this month</span>
             <span>{balance.toLocaleString()} remaining</span>
@@ -390,7 +401,7 @@ function BillingPage() {
       </Card>
 
       {/* This month breakdown */}
-      <section className="mt-10">
+      <section className="mt-8 sm:mt-10">
         <h3 className="mb-3 text-sm font-medium text-muted-foreground">
           Where your credits go (last 30 days)
         </h3>
@@ -571,7 +582,7 @@ function BillingPage() {
       </section>
 
       {/* Ledger */}
-      <section className="mt-10">
+      <section className="mt-8 sm:mt-10">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-medium text-muted-foreground">Recent activity</h3>
           <button
@@ -620,7 +631,7 @@ function BillingPage() {
 
       {/* Full activity dialog */}
       <Dialog open={allActivityOpen} onOpenChange={setAllActivityOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>All credit activity</DialogTitle>
             <DialogDescription>
@@ -728,7 +739,7 @@ function BillingPage() {
       </Dialog>
 
       {/* Plans */}
-      <section className="mt-10 mb-12">
+      <section className="mt-8 mb-10 sm:mt-10 sm:mb-12">
         <h3 className="mb-3 text-sm font-medium text-muted-foreground">Available plans</h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {((plansQ.data?.plans ?? []) as BillingPlan[])
