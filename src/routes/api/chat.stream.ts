@@ -1395,6 +1395,8 @@ export const Route = createFileRoute("/api/chat/stream")({
                 p_request_id: assistantId ?? `${convo.id}-${startTimeMs}`,
                 p_metadata: {
                   model: activeModel.id,
+                  conversation_id: convo.id,
+                  message_id: assistantId,
                   tokens_in: Math.round(totalInputTokens),
                   tokens_out: Math.round(totalOutputTokens),
                   cost_usd: costUsd,
