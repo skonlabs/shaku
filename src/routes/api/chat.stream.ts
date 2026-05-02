@@ -1128,14 +1128,20 @@ export const Route = createFileRoute("/api/chat/stream")({
                 // flush the entire buffered response now — the user sees the
                 // complete answer in one shot, only after 100% of processing
                 // finished (all auto-continues for every tab/section).
+                //
+                // M5: strip the <followups> tag from the buffer BEFORE flushing
+                // so the user never briefly sees the raw JSON tag in the UI.
                 if (needsLongOutput && deferredBuffer.length > 0) {
+                  const { visible: visibleBuffer } = splitFollowups(deferredBuffer);
                   send("progress", {
                     stage: "complete",
                     label: "Done — putting it all together for you.",
                     pass: currentPass,
                     chars: deferredBuffer.length,
                   });
-                  send("delta", { text: deferredBuffer });
+                  if (visibleBuffer.length > 0) {
+                    send("delta", { text: visibleBuffer });
+                  }
                   deferredBuffer = "";
                 }
                 streamError = null;
@@ -1145,16 +1151,23 @@ export const Route = createFileRoute("/api/chat/stream")({
                 streamError = err;
                 recordModelResult(candidateModel.id, true);
                 console.error("[chat.stream] stream error", { model: candidateModel.id, err });
-                // Previously: `if (assistantText.trim().length > 0) break;` —
-                // that delivered truncated replies. Now: surface a `partial` event so the
-                // client knows what was emitted, then continue to the next fallback model
-                // which will resume from a clean slate. Persisted message marks partial=true.
-                if (assistantText.trim().length > 0) {
+                // C1: in deferred-output mode, KEEP the buffer + assistantText so
+                // the next fallback model continues into the same work — partial
+                // analysis from earlier passes isn't discarded. In normal streaming
+                // mode, surface a `partial` event so the client knows what was
+                // emitted; the next model produces a fresh visible response.
+                if (!needsLongOutput && assistantText.trim().length > 0) {
                   send("partial", { text: assistantText, model: candidateModel.id });
                 }
                 // Fall through to next candidateModel (do NOT break).
               }
             }
+          }
+
+          // Stop the heartbeat timer regardless of how the loop exited.
+          if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
           }
 
           // ---- Output validation ----
