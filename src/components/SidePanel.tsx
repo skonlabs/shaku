@@ -412,7 +412,7 @@ function SearchResults({
   );
 }
 
-function Section({
+export function Section({
   title,
   children,
   storageKey,
