@@ -911,6 +911,11 @@ export const Route = createFileRoute("/api/chat/stream")({
                       hitFinalCap = true;
                       break;
                     }
+                    if (Date.now() >= turnDeadline) {
+                      hitFinalCap = true;
+                      abortedForTime = true;
+                      break;
+                    }
 
                     // Issue #3: don't ask the model to repeat prior content verbatim —
                     // that risks duplication and drift. A simple instruction to continue
