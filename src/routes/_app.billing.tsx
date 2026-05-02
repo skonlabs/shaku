@@ -85,6 +85,21 @@ function BillingPage() {
   const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null);
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [conversationsExpanded, setConversationsExpanded] = useState(false);
+  const [expandedConvoId, setExpandedConvoId] = useState<string | null>(null);
+  const [allActivityOpen, setAllActivityOpen] = useState(false);
+  const [allActivityCursor, setAllActivityCursor] = useState<string | null>(null);
+  const [allActivityEntries, setAllActivityEntries] = useState<
+    Array<{
+      id: string;
+      delta: number;
+      reason: string;
+      balance_after: number;
+      metadata: unknown;
+      created_at: string;
+    }>
+  >([]);
+  const [loadingMoreActivity, setLoadingMoreActivity] = useState(false);
 
   const stateQ = useQuery({
     queryKey: ["credit-state"],
