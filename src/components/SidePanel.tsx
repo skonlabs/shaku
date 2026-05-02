@@ -1531,18 +1531,30 @@ function ProjectRow({
               No chats yet. Click + to start one — Cortex will remember what you discuss here.
             </p>
           ) : (
-            convs.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => {
-                  navigate({ to: "/c/$id", params: { id: c.id } });
-                  setActive(null);
-                }}
-                className="block w-full truncate rounded px-1 py-0.5 text-left text-xs text-muted-foreground hover:bg-accent/40 hover:text-foreground"
-              >
-                {c.title ?? "Untitled chat"}
-              </button>
-            ))
+            <div className="space-y-1">
+              {groupConversationsByDate(convs).map((group) => (
+                <Section
+                  key={group.key}
+                  title={group.title}
+                  storageKey={`cortex.project.${project.id}.section.${group.key}`}
+                  defaultOpen={group.key === "today"}
+                  count={group.items.length}
+                >
+                  {group.items.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        navigate({ to: "/c/$id", params: { id: c.id } });
+                        setActive(null);
+                      }}
+                      className="block w-full truncate rounded px-1 py-0.5 text-left text-xs text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+                    >
+                      {c.title ?? "Untitled chat"}
+                    </button>
+                  ))}
+                </Section>
+              ))}
+            </div>
           )}
         </div>
       )}
