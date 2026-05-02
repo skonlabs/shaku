@@ -21,6 +21,11 @@ import {
   ChevronRight,
   ExternalLink,
   File,
+  FileText,
+  FileCode,
+  FileSpreadsheet,
+  FileImage,
+  Folder,
   FolderPlus,
   FolderUp,
   Loader2,
@@ -28,6 +33,8 @@ import {
   Play,
   Upload,
   Sparkles,
+  Eye,
+  ArrowLeft,
 } from "lucide-react";
 import { usePanel } from "@/lib/ui-context";
 import { useAuth } from "@/lib/auth-context";
@@ -612,6 +619,7 @@ type DatasourceFile = {
   chunk_count: number | null;
   last_refreshed_at: string | null;
   created_at: string;
+  storage_path?: string | null;
 };
 
 function SettingsPanel() {
@@ -1649,6 +1657,72 @@ const CLOUD_STORAGE_SERVICES = [
   },
 ];
 
+function getFileIcon(name: string, status?: string) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const baseClass = cn(
+    "h-4 w-4 shrink-0",
+    status === "processing" || status === "uploading" ? "text-blue-500" : "",
+  );
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext))
+    return <FileImage className={cn(baseClass, "text-purple-500")} />;
+  if (["xlsx", "xls", "csv", "tsv"].includes(ext))
+    return <FileSpreadsheet className={cn(baseClass, "text-green-600")} />;
+  if (
+    [
+      "py", "js", "ts", "tsx", "jsx", "java", "cpp", "c", "h", "hpp", "cs", "go",
+      "rs", "rb", "php", "swift", "kt", "html", "htm", "css", "scss", "sh", "sql",
+      "json", "xml", "yaml", "yml", "toml",
+    ].includes(ext)
+  )
+    return <FileCode className={cn(baseClass, "text-amber-600")} />;
+  if (["pdf", "doc", "docx", "txt", "md", "rtf", "ppt", "pptx"].includes(ext))
+    return <FileText className={cn(baseClass, "text-blue-600")} />;
+  return <File className={cn(baseClass, "text-muted-foreground")} />;
+}
+
+type FsNode =
+  | { type: "folder"; name: string; path: string; children: FsNode[] }
+  | { type: "file"; name: string; path: string; file: DatasourceFile };
+
+function buildFileTree(files: DatasourceFile[]): FsNode {
+  const root: FsNode = { type: "folder", name: "", path: "", children: [] };
+  for (const f of files) {
+    const parts = (f.name || "file").split("/").filter(Boolean);
+    if (parts.length === 0) continue;
+    let cur = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const segment = parts[i];
+      const path = parts.slice(0, i + 1).join("/");
+      let next = (cur.children as FsNode[]).find(
+        (c): c is Extract<FsNode, { type: "folder" }> => c.type === "folder" && c.name === segment,
+      );
+      if (!next) {
+        next = { type: "folder", name: segment, path, children: [] };
+        (cur.children as FsNode[]).push(next);
+      }
+      cur = next;
+    }
+    const fileName = parts[parts.length - 1];
+    (cur.children as FsNode[]).push({
+      type: "file",
+      name: fileName,
+      path: parts.join("/"),
+      file: f,
+    });
+  }
+  // sort folders first, then files alphabetically
+  const sortNode = (n: FsNode) => {
+    if (n.type !== "folder") return;
+    n.children.sort((a, b) => {
+      if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    n.children.forEach(sortNode);
+  };
+  sortNode(root);
+  return root;
+}
+
 function DatasourcesPanel() {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -1659,6 +1733,8 @@ function DatasourcesPanel() {
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(
     null,
   );
+  const uploadCancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
+  const [currentPath, setCurrentPath] = useState<string>("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["ds-files"],
@@ -1880,10 +1956,12 @@ function DatasourcesPanel() {
       return;
     }
 
+    uploadCancelRef.current = { cancelled: false };
     setUploading(true);
     setUploadProgress({ done: 0, total: valid.length });
 
     let succeeded = 0;
+    let cancelled = 0;
     const failures: string[] = [];
 
     // Limit concurrency to 3 to avoid overwhelming the browser/server
@@ -1891,6 +1969,10 @@ function DatasourcesPanel() {
     let idx = 0;
     const workers = Array.from({ length: Math.min(CONCURRENCY, valid.length) }, async () => {
       while (idx < valid.length) {
+        if (uploadCancelRef.current.cancelled) {
+          cancelled = valid.length - idx;
+          break;
+        }
         const myIdx = idx++;
         const file = valid[myIdx];
         const result = await uploadSingleFile(file);
@@ -1907,17 +1989,26 @@ function DatasourcesPanel() {
     });
     await Promise.all(workers);
 
+    const wasCancelled = uploadCancelRef.current.cancelled;
     setUploading(false);
     setUploadProgress(null);
     qc.invalidateQueries({ queryKey: ["ds-files"] });
 
-    if (succeeded > 0 && failures.length === 0) {
+    if (wasCancelled) {
+      toast.info(
+        `Upload cancelled. ${succeeded} uploaded, ${cancelled} skipped.`,
+      );
+    } else if (succeeded > 0 && failures.length === 0) {
       toast.success(succeeded === 1 ? "File is processing." : `${succeeded} files are processing.`);
     } else if (succeeded > 0 && failures.length > 0) {
       toast.warning(`${succeeded} uploaded, ${failures.length} failed. ${failures[0]}`);
     } else {
       toast.error(`Upload failed: ${failures[0] ?? "unknown error"}`);
     }
+  }
+
+  function cancelUpload() {
+    uploadCancelRef.current.cancelled = true;
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1930,12 +2021,89 @@ function DatasourcesPanel() {
     CLOUD_STORAGE_SERVICES.some((s) => s.service === c.service),
   );
 
-  const sorted = [...files].sort((a, b) => {
-    const ord: Record<string, number> = { uploading: 0, processing: 0, error: 1, ready: 2 };
-    // Unknown statuses go to the end
-    const getOrd = (status: string) => ord[status] ?? 3;
-    return getOrd(a.status) - getOrd(b.status);
-  });
+  const tree = buildFileTree(files);
+
+  // Navigate to a folder node by path
+  const currentNode: FsNode = (() => {
+    if (!currentPath) return tree;
+    const parts = currentPath.split("/").filter(Boolean);
+    let cur: FsNode = tree;
+    for (const p of parts) {
+      if (cur.type !== "folder") break;
+      const next = cur.children.find((c) => c.type === "folder" && c.name === p);
+      if (!next) return tree; // path no longer exists
+      cur = next;
+    }
+    return cur;
+  })();
+
+  // Reset path if it became invalid
+  useEffect(() => {
+    if (currentPath && currentNode === tree && currentPath !== "") {
+      setCurrentPath("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files.length]);
+
+  const breadcrumbs = currentPath ? currentPath.split("/").filter(Boolean) : [];
+
+  const sortedChildren =
+    currentNode.type === "folder"
+      ? [...currentNode.children].sort((a, b) => {
+          if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+          // file ordering: active first
+          if (a.type === "file" && b.type === "file") {
+            const ord: Record<string, number> = {
+              uploading: 0,
+              processing: 0,
+              error: 1,
+              ready: 2,
+            };
+            const oa = ord[a.file.status] ?? 3;
+            const ob = ord[b.file.status] ?? 3;
+            if (oa !== ob) return oa - ob;
+          }
+          return a.name.localeCompare(b.name);
+        })
+      : [];
+
+  async function viewFile(f: DatasourceFile) {
+    if (!f.storage_path) {
+      toast.error("File location unavailable.");
+      return;
+    }
+    const { data: signed, error } = await supabase.storage
+      .from("datasource-files")
+      .createSignedUrl(f.storage_path, 60 * 10);
+    if (error || !signed?.signedUrl) {
+      toast.error("Couldn't open file.");
+      return;
+    }
+    window.open(signed.signedUrl, "_blank", "noopener,noreferrer");
+  }
+
+  async function downloadFile(f: DatasourceFile) {
+    if (!f.storage_path) {
+      toast.error("File location unavailable.");
+      return;
+    }
+    const fileName = f.name.split("/").pop() || f.name;
+    const { data: signed, error } = await supabase.storage
+      .from("datasource-files")
+      .createSignedUrl(f.storage_path, 60 * 10, { download: fileName });
+    if (error || !signed?.signedUrl) {
+      toast.error("Couldn't download file.");
+      return;
+    }
+    const a = window.document.createElement("a");
+    a.href = signed.signedUrl;
+    a.download = fileName;
+    a.target = "_blank";
+    a.rel = "noreferrer";
+    a.click();
+  }
+
+  const totalFileCount = files.length;
 
   return (
     <div className="flex h-full flex-col">
@@ -2003,17 +2171,84 @@ function DatasourcesPanel() {
                 Folder
               </button>
             </div>
-            {uploadProgress && uploadProgress.total > 1 && (
-              <p className="text-[11px] text-muted-foreground">
-                Uploading {uploadProgress.done} of {uploadProgress.total}…
-              </p>
+            {uploadProgress && (
+              <div className="flex items-center gap-2">
+                <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{
+                      width: `${
+                        uploadProgress.total > 0
+                          ? (uploadProgress.done / uploadProgress.total) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {uploadProgress.done}/{uploadProgress.total}
+                </p>
+                <button
+                  onClick={cancelUpload}
+                  className="text-[11px] text-destructive hover:underline"
+                  title="Cancel upload"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {/* Breadcrumbs */}
+            {totalFileCount > 0 && (
+              <div className="flex items-center gap-1 overflow-x-auto text-[11px] text-muted-foreground">
+                {currentPath && (
+                  <button
+                    onClick={() => {
+                      const parts = currentPath.split("/").filter(Boolean);
+                      parts.pop();
+                      setCurrentPath(parts.join("/"));
+                    }}
+                    className="flex h-5 w-5 items-center justify-center rounded hover:bg-accent hover:text-foreground"
+                    title="Up"
+                  >
+                    <ArrowLeft className="h-3 w-3" />
+                  </button>
+                )}
+                <button
+                  onClick={() => setCurrentPath("")}
+                  className={cn(
+                    "rounded px-1 py-0.5 hover:bg-accent hover:text-foreground",
+                    !currentPath && "font-medium text-foreground",
+                  )}
+                >
+                  All files
+                </button>
+                {breadcrumbs.map((seg, i) => {
+                  const path = breadcrumbs.slice(0, i + 1).join("/");
+                  const isLast = i === breadcrumbs.length - 1;
+                  return (
+                    <span key={path} className="flex items-center gap-1">
+                      <ChevronRight className="h-3 w-3" />
+                      <button
+                        onClick={() => setCurrentPath(path)}
+                        className={cn(
+                          "max-w-[120px] truncate rounded px-1 py-0.5 hover:bg-accent hover:text-foreground",
+                          isLast && "font-medium text-foreground",
+                        )}
+                        title={seg}
+                      >
+                        {seg}
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
             )}
           </div>
           <ScrollArea className="flex-1">
             {isLoading && (
               <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>
             )}
-            {!isLoading && sorted.length === 0 && (
+            {!isLoading && totalFileCount === 0 && (
               <div className="px-4 py-8 text-center">
                 <Upload className="mx-auto mb-2 h-8 w-8 text-muted-foreground/40" />
                 <p className="text-xs text-muted-foreground">No files yet.</p>
@@ -2022,48 +2257,104 @@ function DatasourcesPanel() {
                 </p>
               </div>
             )}
+            {!isLoading && totalFileCount > 0 && sortedChildren.length === 0 && (
+              <p className="px-4 py-6 text-center text-xs text-muted-foreground">
+                This folder is empty.
+              </p>
+            )}
             <div className="space-y-0.5 px-2 pb-2">
-              {sorted.map((f) => {
+              {sortedChildren.map((node) => {
+                if (node.type === "folder") {
+                  // Count files within this folder recursively
+                  const countFiles = (n: FsNode): number =>
+                    n.type === "file"
+                      ? 1
+                      : n.children.reduce((acc, c) => acc + countFiles(c), 0);
+                  const fileCount = countFiles(node);
+                  return (
+                    <button
+                      key={`folder-${node.path}`}
+                      onClick={() => setCurrentPath(node.path)}
+                      className="group flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-accent/40"
+                    >
+                      <Folder className="h-4 w-4 shrink-0 text-amber-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">{node.name}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {fileCount} {fileCount === 1 ? "item" : "items"}
+                        </p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </button>
+                  );
+                }
+                const f = node.file;
                 const isActive = f.status === "processing" || f.status === "uploading";
+                const canOpen = f.status === "ready" && !!f.storage_path;
                 return (
                   <div
                     key={f.id}
                     className="group flex items-center gap-2 rounded-md px-2 py-2 hover:bg-accent/40"
                   >
-                    <File
-                      className={cn(
-                        "h-4 w-4 shrink-0",
-                        isActive ? "text-blue-500" : "text-muted-foreground",
-                      )}
-                    />
+                    {getFileIcon(f.name, f.status)}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium">{f.name}</p>
+                      <p className="truncate text-xs font-medium" title={f.name}>
+                        {node.name}
+                      </p>
                       <p className="text-[11px] text-muted-foreground">
                         {fmtBytes(f.file_size_bytes ?? 0)}
-                        {f.chunk_count ? ` · ${f.chunk_count} chunks` : ""}
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <span
-                        className={cn(
-                          "rounded px-1.5 py-0.5 text-[10px] font-medium capitalize",
-                          FILE_STATUS_STYLES[f.status] ?? "",
-                        )}
-                      >
-                        {isActive ? (
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      {isActive && (
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5 text-[10px] font-medium capitalize",
+                            FILE_STATUS_STYLES[f.status] ?? "",
+                          )}
+                        >
                           <span className="flex items-center gap-1">
                             <Loader2 className="h-2.5 w-2.5 animate-spin" />
                             {f.status}
                           </span>
-                        ) : (
-                          f.status
-                        )}
-                      </span>
+                        </span>
+                      )}
+                      {f.status === "error" && (
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5 text-[10px] font-medium capitalize",
+                            FILE_STATUS_STYLES.error,
+                          )}
+                        >
+                          error
+                        </span>
+                      )}
+                      {canOpen && (
+                        <button
+                          onClick={() => viewFile(f)}
+                          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                          title="View"
+                          aria-label="View file"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {canOpen && (
+                        <button
+                          onClick={() => downloadFile(f)}
+                          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                          title="Download"
+                          aria-label="Download file"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                       {(f.status === "ready" || f.status === "error") && (
                         <button
                           onClick={() => setPendingDeleteFileId(f.id)}
-                          className="hidden h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-destructive group-hover:flex"
+                          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-destructive"
                           title="Remove file"
+                          aria-label="Remove file"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
