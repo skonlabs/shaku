@@ -15,8 +15,8 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShareShareIdRouteImport } from './routes/share.$shareId'
 import { Route as ApiFeedbackRouteImport } from './routes/api/feedback'
-import { Route as AppBillingRouteImport } from './routes/_app.billing'
 import { Route as AppMyProfileRouteImport } from './routes/_app.my-profile'
+import { Route as AppBillingRouteImport } from './routes/_app.billing'
 import { Route as AppAppRouteImport } from './routes/_app.app'
 import { Route as ApiWebhooksStripeRouteImport } from './routes/api/webhooks.stripe'
 import { Route as ApiWebhooksSlackRouteImport } from './routes/api/webhooks.slack'
@@ -54,14 +54,14 @@ const ApiFeedbackRoute = ApiFeedbackRouteImport.update({
   path: '/api/feedback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppBillingRoute = AppBillingRouteImport.update({
-  id: '/billing',
-  path: '/billing',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppMyProfileRoute = AppMyProfileRouteImport.update({
   id: '/my-profile',
   path: '/my-profile',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBillingRoute = AppBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAppRoute = AppAppRouteImport.update({
@@ -260,18 +260,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFeedbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/billing': {
-      id: '/_app/billing'
-      path: '/billing'
-      fullPath: '/billing'
-      preLoaderRoute: typeof AppBillingRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/my-profile': {
       id: '/_app/my-profile'
       path: '/my-profile'
       fullPath: '/my-profile'
       preLoaderRoute: typeof AppMyProfileRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/billing': {
+      id: '/_app/billing'
+      path: '/billing'
+      fullPath: '/billing'
+      preLoaderRoute: typeof AppBillingRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/app': {
