@@ -1042,6 +1042,16 @@ export const Route = createFileRoute("/api/chat/stream")({
                       content: messageContentToText(m.content),
                     })),
                   ];
+                  if (resumingFromFallback) {
+                    oaiMessages.push({
+                      role: "assistant",
+                      content: trimContinuationTurn(assistantText),
+                    });
+                    oaiMessages.push({
+                      role: "user",
+                      content: "Continue from exactly where you stopped. Do not repeat prior content.",
+                    });
+                  }
 
                   // OpenAI native web search: gpt-4o family supports a
                   // `-search-preview` variant on Chat Completions that runs
