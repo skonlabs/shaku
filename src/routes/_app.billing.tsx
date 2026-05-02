@@ -107,6 +107,8 @@ function BillingPage() {
     }>
   >([]);
   const [loadingMoreActivity, setLoadingMoreActivity] = useState(false);
+  const [filterMonth, setFilterMonth] = useState<string>("all"); // "all" | "0".."11"
+  const [filterYear, setFilterYear] = useState<string>("all"); // "all" | "2024" etc.
 
   const stateQ = useQuery({
     queryKey: ["credit-state"],
