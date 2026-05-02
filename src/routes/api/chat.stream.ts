@@ -980,6 +980,15 @@ export const Route = createFileRoute("/api/chat/stream")({
                   }
                 }
 
+                // Successful end-to-end generation. In deferred-output mode,
+                // flush the entire buffered response now — the user sees the
+                // complete answer in one shot, only after 100% of processing
+                // finished (all auto-continues for every tab/section).
+                if (needsLongOutput && deferredBuffer.length > 0) {
+                  send("progress", { stage: "complete" });
+                  send("delta", { text: deferredBuffer });
+                  deferredBuffer = "";
+                }
                 streamError = null;
                 recordModelResult(candidateModel.id, false);
                 break;
