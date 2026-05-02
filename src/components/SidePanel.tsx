@@ -1574,6 +1574,28 @@ function fmtBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+function safeStorageRelativePath(path: string): string {
+  return path
+    .split("/")
+    .map((part) => part.trim().replace(/[\\?#%\u0000-\u001F]/g, "-").replace(/^\.+$/, "-") || "file")
+    .filter((part) => part !== "." && part !== "..")
+    .join("/");
+}
+
+function formatDatasourceUploadError(error: { message?: string; statusCode?: string }): string {
+  const msg = (error.message || "").toLowerCase();
+  if (msg.includes("bucket") || msg.includes("not found")) {
+    return "Data source storage is not ready yet. Please retry after the latest update finishes applying.";
+  }
+  if (msg.includes("row-level security") || msg.includes("violates row-level security policy")) {
+    return "File uploads are blocked by storage permissions right now.";
+  }
+  if (msg.includes("size") || msg.includes("too large") || error.statusCode === "413") {
+    return "That file exceeds the storage size limit.";
+  }
+  return error.message || "Upload failed.";
+}
+
 const CLOUD_STORAGE_SERVICES = [
   { service: "google_drive", name: "Google Drive", desc: "Sync Docs, Sheets, Slides and files", implemented: true },
   { service: "google_docs", name: "Google Docs", desc: "Index your Google Docs documents", implemented: true },
