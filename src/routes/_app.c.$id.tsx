@@ -1,6 +1,6 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChatComposer, type Attachment } from "@/components/ChatComposer";
 import { MessageList, type DisplayMessage } from "@/components/MessageList";
 import { getConversation } from "@/lib/conversations.functions";
@@ -27,10 +27,12 @@ function ChatPage() {
   const qc = useQueryClient();
   const { user, loading: authLoading } = useAuth();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ["conversation", id],
     queryFn: () => getConversation({ data: { id } }),
     enabled: !authLoading && !!user,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 
   const [streamingMessages, setStreamingMessages] = useState<DisplayMessage[]>([]);
@@ -39,17 +41,34 @@ function ChatPage() {
   const abortRef = useRef<AbortController | null>(null);
   const sendInFlightRef = useRef(false);
 
-  const serverMessages: DisplayMessage[] = (data?.messages ?? []).map((m) => ({
-    id: m.id,
-    role: m.role as "user" | "assistant",
-    content: m.content,
-    is_edited: m.is_edited,
-    metadata: m.metadata,
-  }));
-  // De-dupe: hide any streaming placeholders whose real id has now arrived from the server.
-  const serverIds = new Set(serverMessages.map((m) => m.id));
-  const visibleStreaming = streamingMessages.filter((m) => !serverIds.has(m.id));
-  const messages = [...serverMessages, ...visibleStreaming];
+  // Reset transient streaming state when switching conversations so prior
+  // chat's in-flight bubbles don't leak into the new one and cause flicker.
+  const lastIdRef = useRef(id);
+  if (lastIdRef.current !== id) {
+    lastIdRef.current = id;
+    if (streamingMessages.length) setStreamingMessages([]);
+    if (streamingId) setStreamingId(null);
+    abortRef.current?.abort();
+    abortRef.current = null;
+    sendInFlightRef.current = false;
+  }
+
+  const serverMessages: DisplayMessage[] = useMemo(
+    () =>
+      (data?.messages ?? []).map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        is_edited: m.is_edited,
+        metadata: m.metadata,
+      })),
+    [data?.messages],
+  );
+  const messages = useMemo(() => {
+    const serverIds = new Set(serverMessages.map((m) => m.id));
+    const visibleStreaming = streamingMessages.filter((m) => !serverIds.has(m.id));
+    return [...serverMessages, ...visibleStreaming];
+  }, [serverMessages, streamingMessages]);
 
   const send = async (text: string, attachments: Attachment[] = []) => {
     if (sendInFlightRef.current) return;
@@ -246,7 +265,7 @@ function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, isLoading]);
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-sm text-muted-foreground">Loading…</div>
@@ -254,12 +273,18 @@ function ChatPage() {
     );
   }
   if (!data?.conversation) throw notFound();
+  // While placeholder data is shown for a different conversation id, render
+  // a soft fade rather than swapping in a stale chat.
+  const showingStale = isFetching && data?.conversation?.id !== id;
 
   const isRateLimited =
     rateLimitedUntil !== null && new Date(rateLimitedUntil).getTime() > Date.now();
 
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className="flex h-full flex-col transition-opacity duration-150"
+      style={{ opacity: showingStale ? 0.6 : 1 }}
+    >
       <ActiveTaskBanner conversationId={id} />
       <ChatContextHeader
         conversationId={id}
