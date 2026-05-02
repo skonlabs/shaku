@@ -86,7 +86,8 @@ export class GeminiProvider implements LLMProvider {
         try {
           const chunk = JSON.parse(jsonStr) as GeminiStreamChunk;
           const text = chunk.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-          if (text) yield { text };
+          const finishReason = chunk.candidates?.[0]?.finishReason;
+          if (text || finishReason) yield { text, finishReason };
         } catch {
           // Malformed SSE chunk — skip
         }
