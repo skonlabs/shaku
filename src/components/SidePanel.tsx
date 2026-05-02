@@ -2069,14 +2069,14 @@ function DatasourcesPanel() {
 
   async function viewFile(f: DatasourceFile) {
     if (!f.storage_path) {
-      toast.error("File location unavailable.");
+      toast.error("This file's original isn't available to preview. Try re-uploading.");
       return;
     }
     const { data: signed, error } = await supabase.storage
       .from("datasource-files")
       .createSignedUrl(f.storage_path, 60 * 10);
     if (error || !signed?.signedUrl) {
-      toast.error("Couldn't open file.");
+      toast.error("I ran into a problem opening that file.");
       return;
     }
     window.open(signed.signedUrl, "_blank", "noopener,noreferrer");
@@ -2084,7 +2084,7 @@ function DatasourcesPanel() {
 
   async function downloadFile(f: DatasourceFile) {
     if (!f.storage_path) {
-      toast.error("File location unavailable.");
+      toast.error("This file's original isn't available to download. Try re-uploading.");
       return;
     }
     const fileName = f.name.split("/").pop() || f.name;
@@ -2092,7 +2092,7 @@ function DatasourcesPanel() {
       .from("datasource-files")
       .createSignedUrl(f.storage_path, 60 * 10, { download: fileName });
     if (error || !signed?.signedUrl) {
-      toast.error("Couldn't download file.");
+      toast.error("I ran into a problem downloading that file.");
       return;
     }
     const a = window.document.createElement("a");
