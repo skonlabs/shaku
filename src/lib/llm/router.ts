@@ -81,11 +81,12 @@ export function route(ctx: RoutingContext): RoutingDecision {
     adjustedReasoningDepth = Math.min(1.0, adjustedReasoningDepth + 0.15);
   }
 
-  // 3. Hard filters: health, context window, modality.
+  // 3. Hard filters: health, context window, modality, provider availability.
   const eligible = MODEL_REGISTRY.filter((m) => {
     if (!isModelHealthy(m.id)) return false;
     if (!fitsInContext(m.id, ctx.estimatedContextTokens)) return false;
     if (ctx.hasImages && !m.multimodal) return false;
+    if (ctx.availableProviders && !ctx.availableProviders.has(m.provider)) return false;
     return true;
   });
 
