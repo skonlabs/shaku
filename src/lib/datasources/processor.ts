@@ -211,7 +211,6 @@ export async function processExtractedContent(
     metadata: { ...opts.metadata, file_name: fileName, file_type: fileType },
     content_hash: contentHash,
     embedding: embeddings?.[i]?.length ? `[${embeddings[i].join(",")}]` : null,
-    needs_embedding: !embeddings,
     expires_at: expiresAt,
   }));
 
