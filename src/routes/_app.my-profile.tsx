@@ -661,3 +661,100 @@ function ConstraintCard({
     </div>
   );
 }
+
+function ReferralCodesCard() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["referral-codes"],
+    queryFn: () => getMyReferralCodes(),
+  });
+  const [copied, setCopied] = React.useState<string | null>(null);
+  const codes = data?.codes ?? [];
+
+  const onCopy = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(code);
+      toast.success("Code copied!");
+      setTimeout(() => setCopied(null), 1800);
+    } catch {
+      toast.error("Couldn't copy — try selecting manually.");
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Gift className="h-5 w-5" />
+        </div>
+        <div className="flex-1">
+          <h2 className="font-display text-lg font-semibold">Your invites</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            You get 2 invite codes each month. Each code works once.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {isLoading ? (
+          <>
+            <div className="h-20 animate-pulse rounded-xl bg-muted/40" />
+            <div className="h-20 animate-pulse rounded-xl bg-muted/40" />
+          </>
+        ) : (
+          codes.map((c) => {
+            const used = c.status === "used";
+            return (
+              <div
+                key={c.code}
+                className={cn(
+                  "rounded-xl border p-3.5 transition-all",
+                  used
+                    ? "border-border/50 bg-muted/30 opacity-70"
+                    : "border-primary/30 bg-primary/5",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={cn(
+                      "font-mono text-base font-semibold tracking-[0.2em]",
+                      used && "line-through text-muted-foreground",
+                    )}
+                  >
+                    {c.code}
+                  </span>
+                  {used ? (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      Used
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onCopy(c.code)}
+                      className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                    >
+                      {copied === c.code ? (
+                        <>
+                          <Check className="h-3.5 w-3.5" /> Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" /> Copy
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {used && c.used_at
+                    ? `Used ${new Date(c.used_at).toLocaleDateString()}`
+                    : "Available — share with a friend"}
+                </p>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
