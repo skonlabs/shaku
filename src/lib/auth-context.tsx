@@ -14,6 +14,7 @@ export interface AuthContextValue {
     email: string,
     password: string,
     name?: string,
+    referralCode?: string,
   ) => Promise<{ error: string | null; needsConfirmation: boolean }>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -105,15 +106,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         return { error: error?.message ?? null };
       },
-      signUpWithPassword: async (email, password, name) => {
+      signUpWithPassword: async (email, password, name, referralCode) => {
         const redirectTo =
           typeof window !== "undefined" ? `${window.location.origin}/` : undefined;
+        const meta: Record<string, string> = {};
+        if (name) meta.name = name;
+        if (referralCode) meta.referral_code = referralCode.trim().toUpperCase();
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             emailRedirectTo: redirectTo,
-            data: name ? { name } : undefined,
+            data: Object.keys(meta).length ? meta : undefined,
           },
         });
         return {
