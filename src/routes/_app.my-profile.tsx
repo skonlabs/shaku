@@ -210,6 +210,9 @@ export default function MyProfilePage() {
           <StatCard icon={Award}        label="Expertise areas"    value={String(ukm?.expertise.length ?? 0)} />
         </div>
 
+        {/* ── Referral codes ────────────────────────────────────────────────── */}
+        <ReferralCodesCard />
+
         {/* ── Main content grid ─────────────────────────────────────────────── */}
         <div className="grid gap-5 lg:grid-cols-3">
 
