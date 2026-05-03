@@ -13,11 +13,17 @@ import {
   Star,
   Target,
   Zap,
+  Gift,
+  Copy,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getUkm, getMemories, getMemoryStats } from "@/lib/memory.functions";
+import { getMyReferralCodes } from "@/lib/referrals.functions";
 import type { UserKnowledgeModel } from "@/lib/knowledge/ukm";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import * as React from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/my-profile")({
   component: MyProfilePage,
