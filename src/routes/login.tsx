@@ -133,6 +133,32 @@ function LoginPage() {
                 required
               />
             </div>
+            {mode === "signup" && (
+              <div className="space-y-2">
+                <Label htmlFor="referral">
+                  Referral code{" "}
+                  {referralRequired ? (
+                    <span className="text-destructive">*</span>
+                  ) : (
+                    <span className="text-muted-foreground">(optional)</span>
+                  )}
+                </Label>
+                <Input
+                  id="referral"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                  placeholder="ABCD1234"
+                  className="h-11 rounded-xl font-mono tracking-wider uppercase"
+                  maxLength={16}
+                  required={referralRequired}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {referralRequired
+                    ? "Ekonomical is invite-only — ask a friend for their code."
+                    : "You're one of our first 25 — no code needed."}
+                </p>
+              </div>
+            )}
             <Button type="submit" className="h-11 w-full rounded-xl text-sm font-medium" disabled={submitting}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {mode === "signin" ? "Sign in" : "Create my account"}
