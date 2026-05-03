@@ -14,6 +14,7 @@ export interface AuthContextValue {
     email: string,
     password: string,
     name?: string,
+    referralCode?: string,
   ) => Promise<{ error: string | null; needsConfirmation: boolean }>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
