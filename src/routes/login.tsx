@@ -19,11 +19,25 @@ function LoginPage() {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [name, setName] = React.useState("");
+  const [referralCode, setReferralCode] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  const [referralRequired, setReferralRequired] = React.useState(true);
 
   React.useEffect(() => {
     if (user) void navigate({ to: "/app" });
   }, [user, navigate]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void signupRequiresReferral()
+      .then((r) => {
+        if (!cancelled) setReferralRequired(r.required);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +48,16 @@ function LoginPage() {
         if (error) toast.error(error);
         else toast.success("Welcome back!");
       } else {
-        const { error, needsConfirmation } = await signUpWithPassword(email, password, name);
+        if (referralRequired && !referralCode.trim()) {
+          toast.error("A referral code is required to sign up.");
+          return;
+        }
+        const { error, needsConfirmation } = await signUpWithPassword(
+          email,
+          password,
+          name,
+          referralCode.trim() || undefined,
+        );
         if (error) toast.error(error);
         else if (needsConfirmation)
           toast.info("Check your email — we sent a quick confirmation link.");
